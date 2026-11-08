@@ -127,6 +127,15 @@ scrollTick/liveTask/token/turnSeqs/发送状态），`ConnectionModel` 只保留
 - 新增任何会写 `messages`/`steps` 的异步路径，都要走同样的双重校验，不要只依赖 Task.cancel
   （取消是协作式的，可能晚一拍）。
 
+## 发送模式：steer 代替 queue（消除排队）
+
+- DSH `session/prompt` 的 `mode`：`queue` = 追加到当前轮之后（进 inbox 排队，本轮结束后才处理）；
+  `steer` = **打断当前轮**并把新消息作为引导继续。
+- 约定：`isTurnRunning ? "steer" : "queue"`——生成中发送一律 steer，不再排队；空闲时 queue 等价于普通一轮。
+- UI 状态：steer 的消息气泡显示「已引导，正在继续」；普通发送显示「已发出，等待处理」。
+- 发送的 `requestId` 必须与发件箱/ pending 记录的一致（曾误用新 UUID 导致 rpcId 对账失效）。
+- steer 会中断当前生成，属于产品预期（引导式对话）；若以后要"排队/引导"二选一，加设置项。
+
 ## 消息顺序（排队消息）
 
 **现象**：生成中（"深度求索中"）发送的新消息，显示在正在生成那一轮的旧回复上方。

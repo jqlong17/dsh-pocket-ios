@@ -49,6 +49,7 @@ final class ConversationState {
     var turnEnds: [Int] = []
     var ackedRpcIds: Set<String> = []
     var failedRpcIds: Set<String> = []
+    var steeredRpcIds: Set<String> = []
 
     init(sessionId: String) { self.sessionId = sessionId }
 }
@@ -744,6 +745,7 @@ final class ConnectionModel {
         confirmOutbox(rpcIds: incomingRpcIds)
         ackedSendRpcIds.subtract(incomingRpcIds)
         failedSendRpcIds.subtract(incomingRpcIds)
+        activeConversation?.steeredRpcIds.subtract(incomingRpcIds)
         // 只用 rpcId 精确确认 pending。绝不能按“文本出现在历史里”来判断：
         // 用户发过同样内容的短消息（如“继续”）时，会把刚发出的 pending 误删，表现为消息发不出去。
         let previousMaxConfirmed = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
@@ -867,12 +869,14 @@ final class ConnectionModel {
             .map { PocketMessage(pendingText: $0.text, rpcId: $0.id) }
     }
 
-    enum PendingSendState { case sending, acked, failed }
+    enum PendingSendState { case sending, acked(steered: Bool), failed }
 
     func pendingSendState(for message: PocketMessage) -> PendingSendState? {
         guard message.isPending, let rpcId = message.rpcId else { return nil }
         if failedSendRpcIds.contains(rpcId) { return .failed }
-        if ackedSendRpcIds.contains(rpcId) { return .acked }
+        if ackedSendRpcIds.contains(rpcId) {
+            return .acked(steered: activeConversation?.steeredRpcIds.contains(rpcId) ?? false)
+        }
         return .sending
     }
 
@@ -1373,18 +1377,23 @@ final class ConnectionModel {
                     "name": image.name
                 ])
             }
+            // 生成中发送用 steer：打断当前轮并把新消息作为引导立即处理；
+            // 不再用 queue（queue 会把消息排到本轮之后，形成 inbox 排队）。
+            let promptMode = isTurnRunning ? "steer" : "queue"
+            recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
             _ = try await rpc("session/prompt", args: ["request": [
-                "requestId": UUID().uuidString,
+                "requestId": requestId,
                 "sessionId": session.sessionId,
-                "mode": "queue",
+                "mode": promptMode,
                 "content": content,
                 "clientTimeZone": TimeZone.current.identifier
             ]])
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")
             recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
             ackedSendRpcIds.insert(requestId)
+            if promptMode == "steer" { activeConversation?.steeredRpcIds.insert(requestId) }
             conversationError = nil
-            // 服务端已受理：立刻结束"发送中"状态，恢复发送按钮；后续等待回复交给轮询与停止按钮。
+            // 服务端已受理：立刻结束"发送中"状态，恢复发送按钮；若为 steer，服务端会打断当前轮。
             isSending = false
             pendingSendID = nil
             cancelledDraft = ""
@@ -2293,6 +2302,11 @@ struct MessageRow: View {
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
 
+    private func pendingStateColor(_ state: ConnectionModel.PendingSendState) -> Color {
+        if case .failed = state { return Color.red.opacity(0.85) }
+        return Color.secondary
+    }
+
     var body: some View {
         VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
             HStack(spacing: 5) {
@@ -2342,9 +2356,9 @@ struct MessageRow: View {
                     case .sending:
                         ProgressView().scaleEffect(0.55).frame(width: 11, height: 11)
                         Text("发送中…")
-                    case .acked:
-                        Image(systemName: "clock").font(.caption2)
-                        Text("已发出，等待处理")
+                    case .acked(let steered):
+                        Image(systemName: steered ? "arrow.triangle.branch" : "clock").font(.caption2)
+                        Text(steered ? "已引导，正在继续" : "已发出，等待处理")
                     case .failed:
                         Image(systemName: "exclamationmark.circle").font(.caption2)
                         Text("发送失败")
@@ -2354,7 +2368,7 @@ struct MessageRow: View {
                     }
                 }
                 .font(.caption2)
-                .foregroundStyle(state == .failed ? Color.red.opacity(0.85) : Color.secondary)
+                .foregroundStyle(pendingStateColor(state))
                 .padding(.horizontal, 4)
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
