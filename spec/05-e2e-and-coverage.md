@@ -60,6 +60,14 @@
 - 新增 `scripts/coverage-gate.sh`
 - 可选 `.github/workflows/ci.yml`
 
+## 包内验收结果（2026-11-09）
+
+- ✅ E01–E12 中可由包内 Mock 覆盖的 9 条集成用例全绿（登录/错误 PIN/列表过滤/同步+重连/
+  发送生命周期+发件箱恢复/steer/失败重发/loadOlder/A-B 隔离/HTTP 兜底）
+- ✅ DSHKit 总测试 **115 条**，行覆盖率 **92.73%**
+- ⏭ XCUITest（E20–E24）需要新增 iOS UI Test target 与 Demo 模式 UI 自动化，作为 05b 待办；
+  真机/局域网手工冒烟维持在每次发版前执行
+
 ## 最终验收标准
 
 - [ ] E01–E24 全绿；

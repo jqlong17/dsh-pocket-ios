@@ -69,6 +69,14 @@
 3. 子视图拆分 + 快照测试；
 4. 回归 E2E；覆盖率 ≥85%（ViewModel 层），验收。
 
+## 验收结果（2026-11-09，纯逻辑部分）
+
+- ✅ U01–U05（滚动）、U10–U15（输入/发送）、U12/U13（状态文案）、U20（复制）、U30（连接状态）共 13 条全绿
+- ✅ `UI/ConversationUIModel.swift` 行覆盖率 **93.7%**
+- 实现位置：`DSHKit/Sources/DSHKit/UI/ConversationUIModel.swift`（ScrollPolicy / ComposerPolicy /
+  PendingPresentation / ConnectionStatusPresentation / CopyTextBuilder）
+- ⏭ SwiftUI 子视图拆分、视觉快照（U22/U23/U24/U25/U31/U32）依赖 App target，作为 04b 待办
+
 ## 验收标准
 
 - [ ] U01–U32 全绿；

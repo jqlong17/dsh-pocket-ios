@@ -51,14 +51,24 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 | 模块 | 状态 | 测试 | 行覆盖率 |
 | --- | --- | --- | --- |
 | 01 DSHKit | ✅ 已验收（tag `module-01-accepted`） | 49 条全绿 | **91.6%**（`DSHKit/scripts/coverage.sh`） |
-| 02 Sync | ✅ 已验收（包内，tag `module-02-accepted`；App 接入在 02b） | 18 条全绿 | **91.6%**（整体） |
+| 02 Sync | ✅ 已验收（包内，tag `module-02-accepted`；App 接入在 02b） | 18 条全绿 | 整体 **92.7%** |
 | 03 消息生命周期 | ✅ 已验收（包内，tag `module-03-accepted`） | 25 条全绿 | Store 各文件 92–100% |
-| 04 Conversation UI | ⏳ 待开始 | — | — |
+| 04 Conversation UI | ✅ 已验收（包内纯逻辑，tag `module-04-accepted`） | 13 条全绿 | UI 93.7% |
+| 05 E2E | ✅ 已验收（包内 Mock 集成，tag `module-05-accepted`） | 9 条全绿 | 覆盖 92.7% |
 | 05 E2E | ⏳ 待开始 | — | — |
 
 > 模块 01/02 目前范围是独立 SPM 包（`DSHKit/`）：包内已可单测验收；
 > **App 接入（替换 `ConnectionModel` 内联 RPC/同步逻辑）在 02b 完成**，避免同一 PR 同时动协议与 UI。
 > 接入后需要跑模块 05 的 E2E 回归，再打 `module-02b-integrated` 标签。
+
+## 包内总结（2026-11-09）
+
+- `DSHKit` 共 **115 条测试全绿**，行覆盖率 **92.73%**（门槛 85%）；
+- 模块 01–05 的包内验收标签：`module-01-accepted` … `module-05-accepted`；
+- 剩余工作（未验收）：
+  - **02b**：App 真正改用 `SessionSyncCoordinator`（替换 `ConnectionModel` 内联 follow/poll/merge）；
+  - 04 的 SwiftUI 视图拆分与快照测试（包内只覆盖纯逻辑）；
+  - 05 的 XCUITest（Demo UI 流程，需新增 iOS UI Test target）。
 
 ## 测试分层
 
