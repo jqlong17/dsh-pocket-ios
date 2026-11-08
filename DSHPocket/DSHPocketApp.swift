@@ -55,6 +55,10 @@ final class ConnectionModel {
     var liveDiagnosticHistory: [String] = []
     var liveTask: Task<Void, Never>?
     var fallbackTask: Task<Void, Never>?
+    var sendTask: Task<Void, Never>?
+    private var pendingSendID: String?
+    private var cancelledDraft = ""
+    private var cancelledImages: [PocketDraftImage] = []
 
     @MainActor
     func recordDiagnostic(_ message: String) {
@@ -312,13 +316,23 @@ final class ConnectionModel {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = draftImages
         guard (!text.isEmpty || !images.isEmpty), selectedSession != nil, !isSending else { return }
-        messages.append(PocketMessage(pendingText: text, localImages: images.map(\.uiImage)))
+        let pending = PocketMessage(pendingText: text, localImages: images.map(\.uiImage))
+        messages.append(pending)
+        pendingSendID = pending.id
+        cancelledDraft = text
+        cancelledImages = images
         draft = ""
         draftImages = []
         isSending = true
-        defer { isSending = false }
+        defer {
+            isSending = false
+            pendingSendID = nil
+            cancelledDraft = ""
+            cancelledImages = []
+        }
         recordDiagnostic("演示模式：本地模拟发送")
         try? await Task.sleep(for: .seconds(1))
+        if Task.isCancelled { return }
         messages.removeAll { $0.isPending }
         let nextSequence = (messages.map(\.sequence).max() ?? 0) + 1
         messages.append(PocketMessage(
@@ -880,21 +894,69 @@ final class ConnectionModel {
     }
 
     @MainActor
-    func sendMessage() async {
-        if isDemoMode { await sendDemoMessage(); return }
+    func sendMessage() {
+        if isSending { return }
+        if isDemoMode {
+            sendTask = Task { await self.sendDemoMessage() }
+            return
+        }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = draftImages
-        guard (!text.isEmpty || !attachments.isEmpty), let session = selectedSession, !isSending else { return }
+        guard (!text.isEmpty || !attachments.isEmpty), selectedSession != nil else { return }
+        sendTask = Task { await self.performSend(text: text, attachments: attachments) }
+    }
+
+    /// 取消"发送中"的消息：撤回本地待确认气泡，恢复输入内容。
+    @MainActor
+    func cancelSend() {
+        guard isSending else { return }
+        sendTask?.cancel()
+        sendTask = nil
+        if let id = pendingSendID { messages.removeAll { $0.id == id } }
+        pendingSendID = nil
+        draft = cancelledDraft
+        draftImages = cancelledImages
+        cancelledDraft = ""
+        cancelledImages = []
+        isSending = false
+        conversationError = nil
+        recordDiagnostic("已取消发送")
+    }
+
+    /// 停止当前这一轮生成（消息已发出、正在等回复时使用）。
+    @MainActor
+    func cancelTurn() async {
+        guard let session = selectedSession, !isDemoMode else { return }
+        do {
+            _ = try await rpc("session/cancel", args: ["request": ["sessionId": session.sessionId]])
+            isTurnRunning = false
+            recordDiagnostic("已请求停止当前生成")
+        } catch {
+            conversationError = "停止失败：\(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func performSend(text: String, attachments: [PocketDraftImage]) async {
+        guard let session = selectedSession, !isSending else { return }
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage))
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
         recordDiagnostic("用户点击发送：\(text.count) 字，图片 \(attachments.count) 张")
         messages.append(pending)
+        pendingSendID = pending.id
+        cancelledDraft = text
+        cancelledImages = attachments
         draft = ""
         draftImages = []
         isSending = true
-        defer { isSending = false }
+        defer {
+            isSending = false
+            pendingSendID = nil
+            cancelledDraft = ""
+            cancelledImages = []
+        }
         do {
             timingLog("prompt_start chars=\(text.count) images=\(attachments.count)")
             var content: [[String: Any]] = []
@@ -922,6 +984,7 @@ final class ConnectionModel {
             await loadHistory(session)
             await pollForReply(session, after: text, afterSequence: lastSequence)
         } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
             messages.removeAll { $0.id == pending.id }
             draft = text
             draftImages = attachments
@@ -1659,6 +1722,10 @@ struct ConversationView: View {
                                 ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
                                 Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
                                     .font(.caption).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                                Button { Task { await model.cancelTurn() } } label: {
+                                    Image(systemName: "stop.circle.fill").font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }.accessibilityLabel("停止生成")
                             }
                         }
                     }
@@ -1731,7 +1798,7 @@ struct ConversationView: View {
                 }
                 try? await Task.sleep(for: .seconds(2))
                 model.draft = text
-                await model.sendMessage()
+                model.sendMessage()
             }
 #endif
         }
@@ -1776,14 +1843,19 @@ struct ConversationView: View {
                     .focused($composerFocused)
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                Button { Task { await model.sendMessage() } } label: {
-                    if model.isSending { ProgressView().frame(width: 44, height: 44) }
-                    else {
+                if model.isSending {
+                    Button { model.cancelSend() } label: {
+                        Image(systemName: "xmark").font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white).frame(width: 44, height: 44)
+                            .background(Color.red.opacity(0.85), in: Circle())
+                    }.accessibilityLabel("取消发送")
+                } else {
+                    Button { model.sendMessage() } label: {
                         Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white).frame(width: 44, height: 44)
                             .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
-                    }
-                }.disabled(model.isSending || !canSend).accessibilityLabel("发送消息")
+                    }.disabled(!canSend).accessibilityLabel("发送消息")
+                }
             }.padding(.horizontal).padding(.vertical, 10)
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
