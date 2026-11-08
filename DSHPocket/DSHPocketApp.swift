@@ -387,11 +387,11 @@ final class ConnectionModel {
                 PocketMessage(demoText: """
                 已完成三个 builder，保留了旧入口做兼容：
 
-                | 文件 | 改动 | 状态 |
+                | 插件 | 来源 | 说明 |
                 | --- | --- | --- |
-                | context/system.ts | 新增 builder | ✓ |
-                | context/workspace.ts | 新增 builder | ✓ |
-                | context/history.ts | 新增 builder | ✓ |
+                | xii/dsh-api-usage | GitHub | 侧边栏常驻小音 |
+                | jqlong17/dsh-plugin-account-balance | GitHub | 在侧边栏显示余额 |
+                | ithwinter/DeepSeek-Balance-Whale-Widget-Bowl | npm | 三维小鲸鱼挂件 |
                 """, isUser: false, sequence: 4)
             ]
         }
@@ -1545,38 +1545,44 @@ struct MarkdownBody: View {
         }
     }
 
-    /// GFM 表格：横向可滚动，表头加底色，行间细分隔线，隔行浅色。
+    /// GFM 表格：用 Grid 共享列宽保证对齐，单元格自动换行并铺满气泡宽度。
     private func table(headers: [String], rows: [[String]]) -> some View {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
-        return ScrollView(.horizontal, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    ForEach(0..<columnCount, id: \.self) { column in
-                        Text(inline(headers.indices.contains(column) ? headers[column] : ""))
-                            .font(.footnote.weight(.semibold))
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(minWidth: 88, alignment: .leading)
-                            .padding(.horizontal, 10).padding(.vertical, 8)
-                    }
-                }
-                .background(Color.primary.opacity(0.07))
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    Divider().opacity(0.5)
-                    HStack(spacing: 0) {
-                        ForEach(0..<columnCount, id: \.self) { column in
-                            Text(inline(row.indices.contains(column) ? row[column] : ""))
-                                .font(.footnote)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: 88, alignment: .leading)
-                                .padding(.horizontal, 10).padding(.vertical, 7)
-                        }
-                    }
-                    .background(index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
+        let headerColor = Color.primary.opacity(0.07)
+        let separator = Color.primary.opacity(0.12)
+
+        func cell(_ value: String, bold: Bool, background: Color) -> some View {
+            Text(inline(value))
+                .font(bold ? .footnote.weight(.semibold) : .footnote)
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, bold ? 8 : 7)
+                .background(background)
+                .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
+                .overlay(alignment: .trailing) { Rectangle().fill(separator).frame(width: 0.5) }
+        }
+
+        return Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+            GridRow {
+                ForEach(0..<columnCount, id: \.self) { column in
+                    cell(column < headers.count ? headers[column] : "", bold: true, background: headerColor)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                GridRow {
+                    ForEach(0..<columnCount, id: \.self) { column in
+                        cell(column < row.count ? row[column] : "",
+                             bold: false,
+                             background: index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
+                    }
+                }
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
