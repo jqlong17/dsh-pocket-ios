@@ -63,6 +63,9 @@ final class ConnectionModel {
     var scrollToBottomTick = 0
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     private var conversationToken = UUID()
+    /// turn 起止 seq：用于把"生成中排队发送"的用户消息排到该轮回复之后。
+    private var turnStarts: [Int] = []
+    private var turnEnds: [Int] = []
     private var cancelledDraft = ""
     private var cancelledImages: [PocketDraftImage] = []
 
@@ -234,6 +237,8 @@ final class ConnectionModel {
     func disconnect() {
         if isDemoMode { exitDemoMode(); return }
         conversationToken = UUID()
+        turnStarts.removeAll()
+        turnEnds.removeAll()
         liveTask?.cancel()
         fallbackTask?.cancel()
         liveTask = nil
@@ -521,6 +526,8 @@ final class ConnectionModel {
         liveTask?.cancel()
         fallbackTask?.cancel()
         conversationToken = UUID()
+        turnStarts.removeAll()
+        turnEnds.removeAll()
         selectedSession = session
         liveConnectionState = "正在连接"
         messages = []
@@ -614,6 +621,20 @@ final class ConnectionModel {
         return (sessions.first(where: { $0.sessionId == id }) ?? selectedSession)?.displayTitle ?? "对话"
     }
 
+    /// 消息展示排序键。
+    /// 常规消息按 seq；若用户消息落在某个 turn 区间内（生成中排队发送），
+    /// 说明它属于下一轮、但 seq 小于本轮正在生成的助手回复，需要排到该轮结束之后。
+    func displaySortKey(for message: PocketMessage) -> Int {
+        guard message.isUser else { return message.sequence }
+        for (index, start) in turnStarts.enumerated() {
+            let end = index < turnEnds.count ? turnEnds[index] : Int.max
+            if message.sequence > start && message.sequence < end {
+                return end
+            }
+        }
+        return message.sequence
+    }
+
     @MainActor
     private func requestScrollToBottom() {
         scrollToBottomTick &+= 1
@@ -694,10 +715,12 @@ final class ConnectionModel {
             steps[index].isError = message["isError"] as? Bool ?? false
             steps[index].finished = true
         case "turn/start":
+            if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
             isTurnRunning = true
             let time = (event["time"] as? NSNumber)?.doubleValue ?? 0
             turnStartedAt = time > 0 ? Date(timeIntervalSince1970: time / 1000) : Date()
         case "turn/end":
+            if !turnEnds.contains(sequence) { turnEnds.append(sequence) }
             isTurnRunning = false
         case "session/title":
             if let title = data["title"] as? String, !title.isEmpty {
@@ -1580,21 +1603,29 @@ struct ConversationView: View {
 
     private struct TimelineEntry: Identifiable {
         let id: String
-        let sequence: Int
+        let sortKey: Int
         let message: PocketMessage?
         let group: PocketStepGroup?
     }
 
     private var entries: [TimelineEntry] {
         var result: [TimelineEntry] = model.messages.map {
-            TimelineEntry(id: $0.id, sequence: $0.sequence, message: $0, group: nil)
+            TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), message: $0, group: nil)
         }
         for group in model.stepGroups {
-            result.append(TimelineEntry(id: "steps-\(group.turn)", sequence: group.sequence, message: nil, group: group))
+            result.append(TimelineEntry(id: "steps-\(group.turn)", sortKey: group.sequence, message: nil, group: group))
         }
         return result.sorted { lhs, rhs in
-            if lhs.sequence == rhs.sequence { return lhs.message != nil }
-            return lhs.sequence < rhs.sequence
+            if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+            switch (lhs.message, rhs.message) {
+            case let (.some(l), .some(r)):
+                if l.isPending != r.isPending { return !l.isPending }
+                return l.id < r.id
+            case (.some, nil):
+                return true
+            case (nil, .some), (nil, nil):
+                return lhs.id < rhs.id
+            }
         }
     }
 
