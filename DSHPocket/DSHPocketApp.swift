@@ -59,6 +59,8 @@ final class ConnectionModel {
     var fallbackTask: Task<Void, Never>?
     var sendTask: Task<Void, Never>?
     private var pendingSendID: String?
+    /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
+    private var conversationToken = UUID()
     private var cancelledDraft = ""
     private var cancelledImages: [PocketDraftImage] = []
 
@@ -229,6 +231,7 @@ final class ConnectionModel {
     @MainActor
     func disconnect() {
         if isDemoMode { exitDemoMode(); return }
+        conversationToken = UUID()
         liveTask?.cancel()
         fallbackTask?.cancel()
         liveTask = nil
@@ -515,6 +518,7 @@ final class ConnectionModel {
         if selectedSession?.sessionId == session.sessionId, liveTask != nil { return }
         liveTask?.cancel()
         fallbackTask?.cancel()
+        conversationToken = UUID()
         selectedSession = session
         liveConnectionState = "正在连接"
         messages = []
@@ -533,7 +537,8 @@ final class ConnectionModel {
         // 不能只依赖 follow 的首帧快照。
         fallbackTask?.cancel()
         fallbackTask = Task { await pollLiveFallback(session) }
-        let historyTask = Task { await self.loadHistory(session) }
+        let token = conversationToken
+        let historyTask = Task { await self.loadHistory(session, token: token) }
         await follow(session)
         _ = await historyTask.value
         if selectedSession?.sessionId == session.sessionId, isLoadingConversation {
@@ -555,10 +560,11 @@ final class ConnectionModel {
     }
 
     @MainActor
-    private func loadHistory(_ session: PocketSession) async {
+    private func loadHistory(_ session: PocketSession, token: UUID? = nil) async {
         do {
             let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
             let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
+            if let token, token != conversationToken { return }
             guard selectedSession?.sessionId == session.sessionId else { return }
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
@@ -772,6 +778,8 @@ final class ConnectionModel {
             do {
                 let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
                 let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
+                // await 期间可能已切换会话，返回后必须再校验，否则旧会话消息会串进当前会话。
+                guard !Task.isCancelled, selectedSession?.sessionId == session.sessionId else { return }
                 let records = page["records"] as? [[String: Any]] ?? []
                 let incoming = records.compactMap(PocketMessage.init(record:))
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
