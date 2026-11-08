@@ -1845,6 +1845,7 @@ struct MessageRow: View {
                     }
                     if !message.text.isEmpty {
                         MarkdownBody(text: message.text, foreground: message.isUser ? .white : .primary)
+                            .textSelection(.enabled)
                             .padding(.horizontal, 14).padding(.vertical, 11)
                             .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                             .foregroundStyle(message.isUser ? .white : .primary)
@@ -1853,6 +1854,15 @@ struct MessageRow: View {
                 if !message.isUser { Spacer(minLength: 24) }
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+        .contextMenu {
+            if !message.text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = message.text
+                } label: {
+                    Label("复制整条消息", systemImage: "doc.on.doc")
+                }
+            }
+        }
         .fullScreenCover(item: $previewItem) { item in
             FullscreenImageViewer(image: item.image)
         }
