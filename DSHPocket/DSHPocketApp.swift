@@ -599,13 +599,23 @@ final class ConnectionModel {
     private func mergeMessages(_ incoming: [PocketMessage]) {
         var bySequence = Dictionary(uniqueKeysWithValues: messages.filter { !$0.isPending }.map { ($0.sequence, $0) })
         for message in incoming where !message.isPending { bySequence[message.sequence] = message }
-        let incomingUserTexts = Set(incoming.filter(\.isUser).map(\.text))
+        let incomingUserMessages = incoming.filter(\.isUser)
         let incomingRpcIds = Set(incoming.compactMap(\.rpcId))
-        confirmOutbox(rpcIds: incomingRpcIds, texts: incomingUserTexts)
+        confirmOutbox(rpcIds: incomingRpcIds)
+        // 只用 rpcId 精确确认 pending。绝不能按“文本出现在历史里”来判断：
+        // 用户发过同样内容的短消息（如“继续”）时，会把刚发出的 pending 误删，表现为消息发不出去。
+        let previousMaxConfirmed = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
+        let latestIncomingUser = incomingUserMessages.max { $0.sequence < $1.sequence }
         let pending = messages.filter { message in
             guard message.isPending else { return false }
-            if incomingUserTexts.contains(message.text) { return false }
             if let rpcId = message.rpcId, incomingRpcIds.contains(rpcId) { return false }
+            // 兼容不回 rpcId 的服务端：仅当“发送之后新出现的最后一条用户消息”文本相同才确认。
+            if message.rpcId == nil,
+               let latest = latestIncomingUser,
+               latest.text == message.text,
+               latest.sequence > previousMaxConfirmed {
+                return false
+            }
             return true
         }
         messages = (Array(bySequence.values) + pending).sorted { $0.sequence < $1.sequence }
@@ -675,12 +685,11 @@ final class ConnectionModel {
     }
 
     @MainActor
-    private func confirmOutbox(rpcIds: Set<String>, texts: Set<String>) {
+    private func confirmOutbox(rpcIds: Set<String>) {
+        guard !rpcIds.isEmpty else { return }
         loadOutboxIfNeeded()
         let before = outboxEntries.count
-        outboxEntries.removeAll { entry in
-            rpcIds.contains(entry.id) || texts.contains(entry.text)
-        }
+        outboxEntries.removeAll { rpcIds.contains($0.id) }
         if outboxEntries.count != before { persistOutbox() }
     }
 
@@ -993,8 +1002,8 @@ final class ConnectionModel {
                 }) {
                     messages.remove(at: pendingIndex)
                 }
-                if message.isUser {
-                    confirmOutbox(rpcIds: message.rpcId.map { [$0] } ?? [], texts: [message.text])
+                if message.isUser, let rpcId = message.rpcId {
+                    confirmOutbox(rpcIds: [rpcId])
                 }
                 if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
                     messages.append(message)
