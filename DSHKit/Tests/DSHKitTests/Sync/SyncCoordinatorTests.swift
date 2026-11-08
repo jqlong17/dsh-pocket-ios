@@ -133,6 +133,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coordinator = SessionSyncCoordinator(sessionId: "s", transport: transport,
                                                  config: config, clock: RealSyncClock())
         await coordinator.start()
+        await coordinator.setExpectingActivity(true)
         await waitUntil("reconnect attempt") {
             if case .reconnecting = await coordinator.currentState() { return true }
             return false
@@ -161,6 +162,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coordinator = SessionSyncCoordinator(sessionId: "s", transport: transport,
                                                  config: config, clock: RealSyncClock())
         await coordinator.start()
+        await coordinator.setExpectingActivity(true)
         await waitUntil("recovered messages") { await coordinator.currentMessages().count > 0 }
         await coordinator.stop()
     }
@@ -174,6 +176,22 @@ final class SyncCoordinatorTests: XCTestCase {
         await waitUntil("connected") { await coordinator.currentState() == .connected }
         await coordinator.reconnect()
         await waitUntil("reopened") { transport.openCount >= 2 }
+        await coordinator.stop()
+    }
+
+    // S42：空闲（非生成中）不触发看门狗
+    func testIdleConnectionDoesNotReconnect() async throws {
+        let transport = MockSyncTransport(connections: [MockSyncConnection(), MockSyncConnection()],
+                                          snapshotPage: { _ in DSHSessionPage(records: [], hasMore: false) })
+        let config = SyncConfig(watchdog: .milliseconds(30), baseBackoff: .milliseconds(1), maxBackoff: .milliseconds(5))
+        let coordinator = SessionSyncCoordinator(sessionId: "s", transport: transport,
+                                                 config: config, clock: RealSyncClock())
+        await coordinator.start()
+        await waitUntil("connected") { await coordinator.currentState() == .connected }
+        try await Task.sleep(for: .milliseconds(120))
+        let state = await coordinator.currentState()
+        XCTAssertEqual(state, .connected)
+        XCTAssertEqual(transport.openCount, 1)
         await coordinator.stop()
     }
 

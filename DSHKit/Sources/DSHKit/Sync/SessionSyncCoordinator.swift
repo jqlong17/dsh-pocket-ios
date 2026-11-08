@@ -25,6 +25,8 @@ public actor SessionSyncCoordinator {
     private var lastSeq: Int?
     private var state: SyncConnectionState = .idle
     private var reconnectRequested = false
+    /// 仅"本轮生成中"才启用看门狗：空闲会话不主动重连。
+    private var expectingActivity = false
     private var olderPageRequests = 0
 
     public init(sessionId: String,
@@ -78,6 +80,11 @@ public actor SessionSyncCoordinator {
         }
     }
 
+    /// App 在收到 turn/start（或发送确认）时置 true，turn/end 时置 false。
+    public func setExpectingActivity(_ value: Bool) {
+        expectingActivity = value
+    }
+
     public func currentState() -> SyncConnectionState { state }
     public func currentMessages() -> [DSHMessage] { messages }
     public func currentSteps() -> [DSHStepEvent] { steps }
@@ -122,8 +129,13 @@ public actor SessionSyncCoordinator {
 
     private func receiveLoop(_ connection: DSHWebSocketConnection) async throws {
         while !Task.isCancelled {
-            let data = try await withTimeout(config.watchdog) {
-                try await connection.receive()
+            let data: Data
+            if expectingActivity {
+                data = try await withTimeout(config.watchdog) {
+                    try await connection.receive()
+                }
+            } else {
+                data = try await connection.receive()
             }
             try? await handleFrame(data)
         }

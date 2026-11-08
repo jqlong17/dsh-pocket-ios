@@ -45,6 +45,9 @@ final class ConversationState {
     var fallbackTask: Task<Void, Never>?
     /// 实时流是否在运行：避免"返回会话时 liveTask 已结束但仍非 nil"导致不再重连。
     var isFollowing = false
+    var coordinator: SessionSyncCoordinator?
+    var coordinatorTask: Task<Void, Never>?
+    var coordinatorStarted = false
     var conversationToken = UUID()
     var turnStarts: [Int] = []
     var turnEnds: [Int] = []
@@ -344,6 +347,8 @@ final class ConnectionModel {
         for conversation in conversations.values {
             conversation.liveTask?.cancel()
             conversation.fallbackTask?.cancel()
+            conversation.coordinatorTask?.cancel()
+            if let coordinator = conversation.coordinator { Task { await coordinator.stop() } }
         }
         conversations.removeAll()
         activeConversation = nil
@@ -630,12 +635,15 @@ final class ConnectionModel {
     func open(_ session: PocketSession) {
         if isDemoMode { openDemo(session); return }
         if selectedSession?.sessionId == session.sessionId,
-           liveTask != nil, activeConversation?.isFollowing == true { return }
+           activeConversation?.coordinatorStarted == true { return }
 
-        // 切到独立会话实例：旧会话的任务取消，状态留存在 conversations 里，不再写入新会话。
+        // 切到独立会话实例：旧会话的实时流停止，状态留存在 conversations 里，不再写入新会话。
         if let current = activeConversation, current.sessionId != session.sessionId {
             current.liveTask?.cancel()
             current.fallbackTask?.cancel()
+            current.coordinatorTask?.cancel()
+            if let old = current.coordinator { Task { await old.stop() } }
+            current.coordinatorStarted = false
         }
         liveTask?.cancel()
         fallbackTask?.cancel()
@@ -665,7 +673,13 @@ final class ConnectionModel {
         }
         recordDiagnostic("打开会话：\(session.displayTitle)")
         requestScrollToBottom()
-        liveTask = Task { await loadConversation(session) }
+        conversation.isLoadingConversation = true
+        if let client = syncClient {
+            startCoordinator(for: conversation, session: session, client: client)
+        } else {
+            // 地址异常时保留旧路径兜底。
+            liveTask = Task { await loadConversation(session) }
+        }
     }
 
     @MainActor
@@ -1307,14 +1321,120 @@ final class ConnectionModel {
         recordDiagnostic("已取消发送")
     }
 
+    /// 用 DSHKit 构建的协议客户端（共享 URLSession cookie）。
+    private var syncClient: DSHClient? {
+        guard let url = try? Self.serverURL(from: serverAddress) else { return nil }
+        return DSHClient(baseURL: url)
+    }
+
+    @MainActor
+    private func startCoordinator(for conversation: ConversationState, session: PocketSession, client: DSHClient) {
+        conversation.coordinatorTask?.cancel()
+        if let old = conversation.coordinator { Task { await old.stop() } }
+        let config = SyncConfig(maxMessages: Self.conversationMessageLimit,
+                                watchdog: .seconds(25),
+                                baseBackoff: .seconds(1),
+                                maxBackoff: .seconds(15))
+        let coordinator = SessionSyncCoordinator(sessionId: session.sessionId, transport: client, config: config)
+        conversation.coordinator = coordinator
+        conversation.coordinatorStarted = true
+        conversation.isLoadingConversation = true
+        let updates = coordinator.updates
+        conversation.coordinatorTask = Task { [weak self] in
+            for await update in updates {
+                if Task.isCancelled { break }
+                await self?.applyCoordinatorUpdate(update, conversation: conversation)
+            }
+        }
+        Task { await coordinator.start() }
+    }
+
+    @MainActor
+    private func applyCoordinatorUpdate(_ update: SessionUpdate, conversation: ConversationState) async {
+        guard activeConversation === conversation else { return }
+        switch update {
+        case .connection(let state):
+            liveConnection = Self.appConnectionState(from: state)
+            if case .connected = state { conversationError = nil }
+        case .snapshot(let dshMessages, let dshSteps, _):
+            mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
+            for step in dshSteps { applyDSHStep(step) }
+            isLoadingConversation = false
+        case .messages(let dshMessages):
+            mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
+            isLoadingConversation = false
+        case .step(let step):
+            applyDSHStep(step)
+        case .title(_, let title):
+            updateSessionTitle(title)
+        case .assistantDelta:
+            break
+        }
+    }
+
+    @MainActor
+    private func applyDSHStep(_ step: DSHStepEvent) {
+        switch step {
+        case .toolCall(let sequence, let turn, let callId, let name, let detail):
+            guard !steps.contains(where: { $0.id == callId }) else { return }
+            steps.append(PocketStep(id: callId, sequence: sequence, turn: turn, number: 0,
+                                    name: name, detail: detail))
+            steps.sort { $0.sequence < $1.sequence }
+            recordDiagnostic("过程：\(name)\(detail.isEmpty ? "" : "（\(detail)）")")
+        case .toolResult(_, _, let callId, let text, let isError):
+            guard let index = steps.firstIndex(where: { $0.id == callId }) else { return }
+            steps[index].resultText = text
+            steps[index].isError = isError
+            steps[index].finished = true
+        case .turnStart(let sequence, _):
+            if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
+            isTurnRunning = true
+            turnStartedAt = Date()
+            Task { await activeConversation?.coordinator?.setExpectingActivity(true) }
+        case .turnEnd(let sequence, _):
+            if !turnEnds.contains(sequence) { turnEnds.append(sequence) }
+            isTurnRunning = false
+            Task { await activeConversation?.coordinator?.setExpectingActivity(false) }
+        }
+    }
+
+    private static func pocketMessage(from message: DSHMessage) -> PocketMessage {
+        PocketMessage(sequence: message.sequence,
+                      kind: message.kind,
+                      text: message.text,
+                      isUser: message.isUser,
+                      rpcId: message.rpcId,
+                      images: message.images.map {
+                          PocketImageRef(attachmentId: $0.attachmentId,
+                                         mediaType: $0.mediaType,
+                                         width: $0.width,
+                                         height: $0.height,
+                                         name: $0.name)
+                      })
+    }
+
+    private static func appConnectionState(from state: SyncConnectionState) -> LiveConnectionState {
+        switch state {
+        case .idle: return .idle
+        case .connecting: return .connecting
+        case .connected: return .connected
+        case .reconnecting(let attempt): return .reconnecting(attempt: attempt)
+        case .disconnected(let reason): return .disconnected(reason: reason)
+        }
+    }
+
     /// 手动重连实时流（状态机断开时 UI 上的"重连"按钮）。
     @MainActor
     func manualReconnect() {
         guard let session = selectedSession, !isDemoMode else { return }
-        liveTask?.cancel()
-        fallbackTask?.cancel()
         liveConnection = .connecting
         recordDiagnostic("手动重连实时流")
+        if let coordinator = activeConversation?.coordinator {
+            Task { await coordinator.reconnect() }
+            return
+        }
+        liveTask?.cancel()
+        fallbackTask?.cancel()
         liveTask = Task { await loadConversation(session) }
     }
 
@@ -1383,6 +1503,7 @@ final class ConnectionModel {
             recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
             ackedSendRpcIds.insert(requestId)
             if promptMode == "steer" { activeConversation?.steeredRpcIds.insert(requestId) }
+            Task { await activeConversation?.coordinator?.setExpectingActivity(true) }
             conversationError = nil
             // 服务端已受理：立刻结束"发送中"状态，恢复发送按钮；若为 steer，服务端会打断当前轮。
             isSending = false
@@ -1517,6 +1638,19 @@ struct PocketMessage: Identifiable {
         self.rpcId = rpcId
     }
 
+    init(sequence: Int, kind: String, text: String, isUser: Bool,
+         rpcId: String?, images: [PocketImageRef]) {
+        self.id = "event-\(sequence)"
+        self.sequence = sequence
+        self.kind = kind
+        self.text = text
+        self.isUser = isUser
+        self.isPending = false
+        self.images = images
+        self.localImages = []
+        self.rpcId = rpcId
+    }
+
     init?(record: [String: Any]) {
         guard let event = record["event"] as? [String: Any] else { return nil }
         self.init(event: event)
@@ -1567,6 +1701,16 @@ struct OutboxEntry: Codable, Identifiable {
 
 /// 一张已落到电脑端附件库的图片引用（会话历史 / 工具结果里的图片）。
 struct PocketImageRef: Identifiable, Hashable {
+    init(attachmentId: String, mediaType: String? = nil, width: Int? = nil,
+         height: Int? = nil, name: String? = nil) {
+        self.attachmentId = attachmentId
+        self.mediaType = mediaType ?? "image/jpeg"
+        self.bytes = 0
+        self.width = width ?? 0
+        self.height = height ?? 0
+        self.name = name
+    }
+
     let attachmentId: String
     let mediaType: String
     let bytes: Int

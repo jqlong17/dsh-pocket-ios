@@ -79,7 +79,14 @@
 
 - ✅ S01–S41（实际 18 条，含 DSHClient 传输实现测试）全绿：`cd DSHKit && swift test`（共 67 tests）
 - ✅ DSHKit 行覆盖率 **91.6%**（`DSHKit/scripts/coverage.sh 85` → PASS）
-- ⏭ App 接入分两步：
+- ✅ App 接入已完成（2026-11-09）：
+  - `ConnectionModel.open()` 改用 `SessionSyncCoordinator`（DSHClient 作为传输，共享 URLSession cookie）；
+  - `SessionUpdate` 映射回 App 状态：messages/steps/turn/连接状态/标题；
+  - 看门狗按"生成中"启用（`setExpectingActivity`），空闲不主动重连；
+  - `manualReconnect()` 走 `coordinator.reconnect()`；切会话/断开时 stop coordinator；
+  - 模拟器局域网真实会话冒烟：已连接、历史消息、生成中状态正常；
+  - **待真机回归**（发送/steer/断线重连/切会话）。
+- 原计划两步记录：
   - **02b-lite（已完成）**：`DSHKit` 作为本地 SPM 包接入 Xcode 工程，App 的 WebSocket URL 构造
     与地址规范化改由 `DSHURL` 实现；模拟器 demo + 局域网真实会话冒烟通过；
   - **02b-full（待做）**：`ConnectionModel` 的 follow/poll/merge 启发式替换为 `SessionSyncCoordinator`，
