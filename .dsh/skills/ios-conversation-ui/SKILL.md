@@ -122,7 +122,8 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 
 **处理**：`ConnectionModel` 记录每轮 `turnStarts` / `turnEnds`（用 seq，去重）；渲染排序时
 对落在 turn 区间内的用户消息改用 `displaySortKey` = 该轮 `turn/end` 的 seq，从而排到本轮
-回复之后、下一轮回复之前。服务端 seq 本身是对的，不要改排序基准为时间戳。
+回复之后、下一轮回复之前。**同一 sortKey 的多条排队消息必须用原始 seq 做二级排序**，
+否则会按 id 随机排（踩过）。服务端 seq 本身是对的，不要改排序基准为时间戳。
 
 ## 消息丢失（发件箱 + rpcId 对账）
 
