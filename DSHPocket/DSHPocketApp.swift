@@ -4,6 +4,7 @@ import AVFoundation
 import Observation
 import PhotosUI
 import UIKit
+import Photos
 import os
 
 private let pocketLogger = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "conversation")
@@ -1905,6 +1906,7 @@ struct ConversationView: View {
 struct MessageRow: View {
     let message: PocketMessage
     @Bindable var model: ConnectionModel
+    @State private var previewItem: PreviewImageItem?
 
     var body: some View {
         VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
@@ -1922,6 +1924,8 @@ struct MessageRow: View {
                             Image(uiImage: image).resizable().scaledToFill()
                                 .frame(width: 150, height: 150)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .contentShape(Rectangle())
+                                .onTapGesture { previewItem = PreviewImageItem(image: image) }
                         }
                     } else if !message.images.isEmpty {
                         ForEach(message.images) { ref in
@@ -1939,7 +1943,15 @@ struct MessageRow: View {
                 if !message.isUser { Spacer(minLength: 24) }
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+        .fullScreenCover(item: $previewItem) { item in
+            FullscreenImageViewer(image: item.image)
+        }
     }
+}
+
+struct PreviewImageItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
 }
 
 /// 会话里的图片（用户发的 / 工具结果里的），按 attachmentId 读取电脑端附件。
@@ -1948,6 +1960,7 @@ struct AttachmentThumbnail: View {
     @Bindable var model: ConnectionModel
     var size: CGFloat = 140
     @State private var image: UIImage?
+    @State private var showsPreview = false
 
     var body: some View {
         Group {
@@ -1962,7 +1975,89 @@ struct AttachmentThumbnail: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { if image != nil { showsPreview = true } }
+        .fullScreenCover(isPresented: $showsPreview) {
+            if let image { FullscreenImageViewer(image: image) }
+        }
         .task { if image == nil { image = await model.loadImage(ref) } }
+    }
+}
+
+/// 全屏图片查看：捏合/双击缩放、关闭、保存到相册、系统分享。
+struct FullscreenImageViewer: View {
+    let image: UIImage
+    @Environment(\.dismiss) private var dismiss
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var toast: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { value in scale = min(max(lastScale * value, 1), 5) }
+                        .onEnded { _ in lastScale = scale }
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        scale = scale > 1 ? 1 : 2.5
+                        lastScale = scale
+                    }
+                }
+        }
+        .overlay(alignment: .top) {
+            HStack(spacing: 12) {
+                Button { dismiss() } label: { circleIcon("xmark") }
+                    .accessibilityLabel("关闭")
+                Spacer()
+                ShareLink(item: Image(uiImage: image),
+                          preview: SharePreview("图片", image: Image(uiImage: image))) {
+                    circleIcon("square.and.arrow.up")
+                }
+                Button { saveToAlbum() } label: { circleIcon("square.and.arrow.down") }
+                    .accessibilityLabel("保存到相册")
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Text(toast)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(.bottom, 24)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: toast)
+        .statusBarHidden(true)
+    }
+
+    private func circleIcon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 40, height: 40)
+            .background(.black.opacity(0.45), in: Circle())
+    }
+
+    private func saveToAlbum() {
+        PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.creationRequestForAsset(from: image)
+        } completionHandler: { success, error in
+            DispatchQueue.main.async {
+                toast = success ? "已保存到相册" : "保存失败：\(error?.localizedDescription ?? "未知错误")"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
+            }
+        }
     }
 }
 
