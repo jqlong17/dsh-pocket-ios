@@ -2,6 +2,8 @@ import SwiftUI
 import VisionKit
 import AVFoundation
 import Observation
+import PhotosUI
+import UIKit
 import os
 
 private let pocketLogger = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "conversation")
@@ -37,6 +39,12 @@ final class ConnectionModel {
     var selectedSession: PocketSession?
     var messages: [PocketMessage] = []
     var draft = ""
+    var draftImages: [PocketDraftImage] = []
+    var steps: [PocketStep] = []
+    var navigationPath: [PocketSession] = []
+    var isTurnRunning = false
+    var turnStartedAt: Date?
+    private static var imageCache: [String: UIImage] = [:]
     var isSending = false
     var isLoadingConversation = false
     var conversationError: String?
@@ -311,11 +319,16 @@ final class ConnectionModel {
 
     @MainActor
     func open(_ session: PocketSession) {
+        if selectedSession?.sessionId == session.sessionId, liveTask != nil { return }
         liveTask?.cancel()
         selectedSession = session
         liveConnectionState = "正在连接"
         messages = []
+        steps = []
+        isTurnRunning = false
+        turnStartedAt = nil
         conversationError = nil
+        recordDiagnostic("打开会话：\(session.displayTitle)")
         liveTask = Task { await loadConversation(session) }
     }
 
@@ -337,6 +350,7 @@ final class ConnectionModel {
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
+            mergeSteps(from: records)
             isLoadingConversation = false
         } catch {
             if error is CancellationError { return }
@@ -353,6 +367,134 @@ final class ConnectionModel {
         let pending = messages.filter { $0.isPending && !incomingUserTexts.contains($0.text) }
         messages = (Array(bySequence.values) + pending).sorted { $0.sequence < $1.sequence }
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
+    }
+
+    /// 按 turn 分组的工具步骤，供会话页折叠成"过程"一行。
+    var stepGroups: [PocketStepGroup] {
+        Dictionary(grouping: steps, by: \.turn)
+            .map { turn, list in
+                PocketStepGroup(turn: turn, sequence: list.map(\.sequence).min() ?? 0,
+                                steps: list.sorted { $0.sequence < $1.sequence })
+            }
+            .sorted { $0.sequence < $1.sequence }
+    }
+
+    @MainActor
+    private func mergeSteps(from records: [[String: Any]]) {
+        for record in records {
+            guard let event = record["event"] as? [String: Any] else { continue }
+            applyStepEvent(event)
+        }
+    }
+
+    /// 处理 tool/call、tool/result、turn/start、turn/end 等过程事件。
+    @MainActor
+    func applyStepEvent(_ event: [String: Any]) {
+        guard let type = event["type"] as? String,
+              let sequence = (event["seq"] as? NSNumber)?.intValue else { return }
+        let data = event["data"] as? [String: Any] ?? [:]
+        switch type {
+        case "tool/call":
+            guard let callId = data["callId"] as? String,
+                  let name = data["name"] as? String else { return }
+            guard !steps.contains(where: { $0.id == callId }) else { return }
+            let turn = (data["turn"] as? NSNumber)?.intValue ?? 0
+            let number = (data["step"] as? NSNumber)?.intValue ?? 0
+            let arguments = (data["arguments"] as? String).flatMap {
+                try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any]
+            } ?? [:]
+            let step = PocketStep(id: callId, sequence: sequence, turn: turn, number: number,
+                                  name: name, detail: Self.stepDetail(name: name, arguments: arguments))
+            steps.append(step)
+            steps.sort { $0.sequence < $1.sequence }
+            recordDiagnostic("过程：\(step.label)\(step.detail.isEmpty ? "" : "（\(step.detail)）")")
+        case "tool/result":
+            let message = data["message"] as? [String: Any] ?? [:]
+            guard let callId = (message["toolCallId"] as? String) ?? (data["callId"] as? String),
+                  let index = steps.firstIndex(where: { $0.id == callId }) else { return }
+            let content = message["content"] as? [[String: Any]] ?? []
+            steps[index].resultText = content.compactMap { block -> String? in
+                guard block["type"] as? String == "text" else { return nil }
+                return block["text"] as? String
+            }.joined()
+            steps[index].images = content.compactMap { block -> PocketImageRef? in
+                guard block["type"] as? String == "image",
+                      let attachment = block["attachment"] as? [String: Any] else { return nil }
+                return PocketImageRef(json: attachment)
+            }
+            steps[index].isError = message["isError"] as? Bool ?? false
+            steps[index].finished = true
+        case "turn/start":
+            isTurnRunning = true
+            let time = (event["time"] as? NSNumber)?.doubleValue ?? 0
+            turnStartedAt = time > 0 ? Date(timeIntervalSince1970: time / 1000) : Date()
+        case "turn/end":
+            isTurnRunning = false
+        default:
+            break
+        }
+    }
+
+    private static func stepDetail(name: String, arguments: [String: Any]) -> String {
+        switch name {
+        case "bash":
+            let command = (arguments["command"] as? String) ?? ""
+            let first = command.split(separator: "\n").first.map(String.init) ?? command
+            return String(first.prefix(80))
+        case "read", "read_image", "write", "edit":
+            guard let path = arguments["file_path"] as? String else { return "" }
+            return URL(fileURLWithPath: path).lastPathComponent
+        case "web_search":
+            return (arguments["queries"] as? [String])?.joined(separator: " / ").prefix(80).description ?? ""
+        case "web_fetch":
+            return (arguments["url"] as? String) ?? ""
+        case "ask_user_question":
+            return "等待你的回答"
+        default:
+            return ""
+        }
+    }
+
+    /// 读取电脑端附件库里的图片（带内存缓存）。
+    @MainActor
+    func loadImage(_ ref: PocketImageRef) async -> UIImage? {
+        if let cached = Self.imageCache[ref.attachmentId] { return cached }
+        guard let session = selectedSession else { return nil }
+        do {
+            let value = try await rpc("session/attachment", args: ["request": [
+                "sessionId": session.sessionId,
+                "attachment": ref.requestJSON
+            ]])
+            guard let base64 = value["data"] as? String,
+                  let data = Data(base64Encoded: base64),
+                  let image = UIImage(data: data) else { return nil }
+            Self.imageCache[ref.attachmentId] = image
+            return image
+        } catch {
+            return nil
+        }
+    }
+
+    /// 把照片/相机图片压缩成待发送附件。
+    @MainActor
+    func addDraftImage(_ image: UIImage) {
+        guard let prepared = Self.prepareImage(image) else { return }
+        draftImages.append(prepared)
+    }
+
+    static func prepareImage(_ image: UIImage) -> PocketDraftImage? {
+        let maxSide: CGFloat = 2048
+        let size = image.size
+        let scale = min(1, maxSide / max(size.width, size.height, 1))
+        let target = CGSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        guard let data = resized.jpegData(compressionQuality: 0.85) else { return nil }
+        return PocketDraftImage(data: data, mediaType: "image/jpeg",
+                                name: "photo-\(Int(Date().timeIntervalSince1970)).jpg", uiImage: resized)
     }
 
     @MainActor
@@ -372,9 +514,11 @@ final class ConnectionModel {
             do {
                 let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
                 let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": 100]])
-                let incoming = (page["records"] as? [[String: Any]] ?? []).compactMap(PocketMessage.init(record:))
+                let records = page["records"] as? [[String: Any]] ?? []
+                let incoming = records.compactMap(PocketMessage.init(record:))
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
                 mergeMessages(incoming)
+                mergeSteps(from: records)
                 if let reply = incoming.first(where: { !$0.isUser && !$0.isPending && $0.sequence > afterSequence }) {
                     timingLog("reply_available source=history seq=\(reply.sequence) chars=\(reply.text.count) total_elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
                     recordDiagnostic("历史轮询找到本次助手回复，等待 \(Int(Date().timeIntervalSince(started) * 1000)) 毫秒；内容：\(reply.text)")
@@ -473,30 +617,30 @@ final class ConnectionModel {
             let records = value["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
+            mergeSteps(from: records)
             recordDiagnostic("收到历史快照：\(history.count) 条消息")
             isLoadingConversation = false
-        } else if let event = value["event"] as? [String: Any],
-                  let message = PocketMessage(event: event) {
-            pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
-            if let pendingIndex = messages.firstIndex(where: { $0.isPending && $0.isUser && $0.text == message.text }) {
-                messages.remove(at: pendingIndex)
-            }
-            if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
-                messages.append(message)
-                messages.sort { $0.sequence < $1.sequence }
-            }
-            timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
-            recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字；内容：\(message.text)")
-            recordDiagnostic("解析并加入界面数据：\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，当前共 \(messages.count) 条")
-        } else if value["type"] as? String == "event" {
-            let event = value["event"] as? [String: Any]
-            let eventType = event?["type"] as? String
-            let eventData = event?["data"] as? [String: Any]
-            let sourceKind = (eventData?["source"] as? [String: Any])?["kind"] as? String
-            // runtime-context / skill-catalog / time-context 等注入型 user/message 是模型输入，
-            // 设计上不显示，也不该写诊断；只有真实用户消息或助手消息解析失败才值得记录。
-            if eventType == "assistant/message" || (eventType == "user/message" && sourceKind == "user") {
-                recordDiagnostic("消息事件未解析：\(eventType ?? "未知")，source=\(sourceKind ?? "-")，键：\(event?.keys.sorted().joined(separator: ",") ?? "无")")
+        } else if let event = value["event"] as? [String: Any] {
+            if let message = PocketMessage(event: event) {
+                pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
+                if let pendingIndex = messages.firstIndex(where: { $0.isPending && $0.isUser && $0.text == message.text }) {
+                    messages.remove(at: pendingIndex)
+                }
+                if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
+                    messages.append(message)
+                    messages.sort { $0.sequence < $1.sequence }
+                }
+                timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
+                recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字")
+            } else {
+                // 工具步骤、turn 起止等过程事件
+                applyStepEvent(event)
+                let eventType = event["type"] as? String
+                let eventData = event["data"] as? [String: Any]
+                let sourceKind = (eventData?["source"] as? [String: Any])?["kind"] as? String
+                if eventType == "assistant/message" || (eventType == "user/message" && sourceKind == "user") {
+                    recordDiagnostic("消息事件未解析：\(eventType ?? "未知")，source=\(sourceKind ?? "-")")
+                }
             }
         } else {
             recordDiagnostic("未识别 follow 数据：\(value.keys.sorted().joined(separator: ","))")
@@ -515,27 +659,39 @@ final class ConnectionModel {
     @MainActor
     func sendMessage() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let session = selectedSession, !isSending else { return }
+        let attachments = draftImages
+        guard (!text.isEmpty || !attachments.isEmpty), let session = selectedSession, !isSending else { return }
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
-        let pending = PocketMessage(pendingText: text)
+        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage))
         let sendStarted = Date()
-        timingLog("send_typed chars=\(text.count)")
-        recordDiagnostic("用户点击发送：\(text.count) 字；内容：\(text)")
+        timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
+        recordDiagnostic("用户点击发送：\(text.count) 字，图片 \(attachments.count) 张")
         messages.append(pending)
         draft = ""
+        draftImages = []
         isSending = true
         defer { isSending = false }
         do {
-            timingLog("prompt_start chars=\(text.count)")
+            timingLog("prompt_start chars=\(text.count) images=\(attachments.count)")
+            var content: [[String: Any]] = []
+            if !text.isEmpty { content.append(["type": "text", "text": text]) }
+            for image in attachments {
+                content.append([
+                    "type": "image",
+                    "mediaType": image.mediaType,
+                    "data": image.data.base64EncodedString(),
+                    "name": image.name
+                ])
+            }
             _ = try await rpc("session/prompt", args: ["request": [
                 "requestId": UUID().uuidString,
                 "sessionId": session.sessionId,
                 "mode": "queue",
-                "content": [["type": "text", "text": text]],
+                "content": content,
                 "clientTimeZone": TimeZone.current.identifier
             ]])
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")
-            recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒；内容：\(text)")
+            recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
             conversationError = nil
             // 先用服务端真实用户消息替换本地待确认消息，保证"用户消息在上、助手回复在下"的顺序；
             // 否则实时回复先到、轮询提前退出时，待确认消息会带着临时序号排在回复后面。
@@ -544,6 +700,7 @@ final class ConnectionModel {
         } catch {
             messages.removeAll { $0.id == pending.id }
             draft = text
+            draftImages = attachments
             conversationError = "发送失败：\(error.localizedDescription)"
         }
     }
@@ -626,14 +783,18 @@ struct PocketMessage: Identifiable {
     let text: String
     let isUser: Bool
     let isPending: Bool
+    let images: [PocketImageRef]
+    let localImages: [UIImage]
 
-    init(pendingText: String) {
+    init(pendingText: String, localImages: [UIImage] = []) {
         self.id = "pending-\(UUID().uuidString)"
         self.sequence = Int.max
         self.kind = "user/message"
         self.text = pendingText
         self.isUser = true
         self.isPending = true
+        self.images = []
+        self.localImages = localImages
     }
 
     init?(record: [String: Any]) {
@@ -658,14 +819,110 @@ struct PocketMessage: Identifiable {
             guard block["type"] as? String == "text" else { return nil }
             return block["text"] as? String
         }.joined()
-        guard !text.isEmpty else { return nil }
+        let images = content.compactMap { block -> PocketImageRef? in
+            guard block["type"] as? String == "image",
+                  let attachment = block["attachment"] as? [String: Any] else { return nil }
+            return PocketImageRef(json: attachment)
+        }
+        guard !text.isEmpty || !images.isEmpty else { return nil }
         self.id = "event-\(sequence)"
         self.sequence = sequence
         self.kind = kind
         self.text = text
         self.isUser = kind == "user/message"
         self.isPending = false
+        self.images = images
+        self.localImages = []
     }
+}
+
+/// 一张已落到电脑端附件库的图片引用（会话历史 / 工具结果里的图片）。
+struct PocketImageRef: Identifiable, Hashable {
+    let attachmentId: String
+    let mediaType: String
+    let bytes: Int
+    let width: Int
+    let height: Int
+    let name: String?
+    var id: String { attachmentId }
+
+    init?(json: [String: Any]) {
+        guard let attachmentId = json["attachmentId"] as? String else { return nil }
+        self.attachmentId = attachmentId
+        self.mediaType = json["mediaType"] as? String ?? "image/jpeg"
+        self.bytes = (json["bytes"] as? NSNumber)?.intValue ?? 0
+        self.width = (json["width"] as? NSNumber)?.intValue ?? 0
+        self.height = (json["height"] as? NSNumber)?.intValue ?? 0
+        self.name = json["name"] as? String
+    }
+
+    var requestJSON: [String: Any] {
+        var value: [String: Any] = ["attachmentId": attachmentId, "mediaType": mediaType]
+        if bytes > 0 { value["bytes"] = bytes }
+        if width > 0 { value["width"] = width }
+        if height > 0 { value["height"] = height }
+        if let name, !name.isEmpty { value["name"] = name }
+        return value
+    }
+}
+
+/// 待发送的本地图片（照片库 / 相机）。
+struct PocketDraftImage: Identifiable {
+    let id = UUID()
+    let data: Data
+    let mediaType: String
+    let name: String
+    let uiImage: UIImage
+}
+
+/// 一轮里的一个工具调用步骤（对应 Mac 端"执行了命令 / 查看了图片"那一行）。
+struct PocketStep: Identifiable {
+    let id: String
+    let sequence: Int
+    let turn: Int
+    let number: Int
+    let name: String
+    let detail: String
+    var resultText = ""
+    var isError = false
+    var finished = false
+    var images: [PocketImageRef] = []
+
+    var label: String {
+        switch name {
+        case "bash": "执行了命令"
+        case "read": "读取了文件"
+        case "read_image": "查看了图片"
+        case "edit": "编辑了文件"
+        case "write": "写入了文件"
+        case "web_search": "搜索了网页"
+        case "web_fetch": "抓取了网页"
+        case "job_output": "读取了任务输出"
+        case "todo_write": "更新了待办"
+        case "ask_user_question": "向你确认问题"
+        default: name
+        }
+    }
+
+    var icon: String {
+        switch name {
+        case "bash": "terminal"
+        case "read", "read_image": "doc.text.magnifyingglass"
+        case "edit", "write": "square.and.pencil"
+        case "web_search", "web_fetch": "globe"
+        case "todo_write": "checklist"
+        case "ask_user_question": "questionmark.bubble"
+        default: "gearshape"
+        }
+    }
+}
+
+/// 同一 turn 内的一组步骤，UI 里折叠成一行"过程"。
+struct PocketStepGroup: Identifiable {
+    let turn: Int
+    let sequence: Int
+    let steps: [PocketStep]
+    var id: Int { turn }
 }
 
 private struct StreamOpen: Encodable {
@@ -736,6 +993,7 @@ enum DebugLaunch {
     static var sessionId: String? { environment["DSH_OPEN"] ?? value(for: "--dsh-open") }
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
+    static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
 
     /// 模拟器用 `SIMCTL_CHILD_DSH_SERVER`，真机用 `DEVICECTL_CHILD_DSH_SERVER`，
     /// 由 simctl / devicectl 去掉前缀后注入进程环境。
@@ -753,7 +1011,7 @@ struct RootView: View {
     @Bindable var model: ConnectionModel
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $model.navigationPath) {
             Group {
                 if model.isConnected {
                     ConnectedView(model: model)
@@ -863,10 +1121,7 @@ struct ConnectedView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(model.sessions) { session in
-                NavigationLink {
-                    ConversationView(model: model)
-                        .onAppear { model.open(session) }
-                } label: {
+                NavigationLink(value: session) {
                     HStack(spacing: 12) {
                         Image(systemName: session.running ? "ellipsis.bubble.fill" : "bubble.left").foregroundStyle(session.running ? .green : .secondary).frame(width: 28)
                         VStack(alignment: .leading, spacing: 4) {
@@ -888,14 +1143,17 @@ struct ConnectedView: View {
             ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话") }
         }
         .navigationTitle("会话")
-        .navigationDestination(item: Binding(get: { model.selectedSession }, set: { if $0 == nil { model.selectedSession = nil } })) { _ in ConversationView(model: model) }
+        .navigationDestination(for: PocketSession.self) { session in
+            ConversationView(model: model)
+                .onAppear { model.open(session) }
+        }
         .task {
             await model.loadSessions(silently: !model.sessions.isEmpty)
 #if DEBUG
             if !didAutoOpen, let id = DebugLaunch.sessionId,
                let session = model.sessions.first(where: { $0.sessionId == id }) {
                 didAutoOpen = true
-                model.open(session)
+                model.navigationPath = [session]
             }
 #endif
         }
@@ -1008,6 +1266,34 @@ struct MarkdownBody: View {
 struct ConversationView: View {
     @Bindable var model: ConnectionModel
     @State private var didAutoSend = false
+    @State private var expandedTurns: Set<Int> = []
+    @State private var showingCamera = false
+    @State private var photoItem: PhotosPickerItem?
+
+    private struct TimelineEntry: Identifiable {
+        let id: String
+        let sequence: Int
+        let message: PocketMessage?
+        let group: PocketStepGroup?
+    }
+
+    private var entries: [TimelineEntry] {
+        var result: [TimelineEntry] = model.messages.map {
+            TimelineEntry(id: $0.id, sequence: $0.sequence, message: $0, group: nil)
+        }
+        for group in model.stepGroups {
+            result.append(TimelineEntry(id: "steps-\(group.turn)", sequence: group.sequence, message: nil, group: group))
+        }
+        return result.sorted { lhs, rhs in
+            if lhs.sequence == rhs.sequence { return lhs.message != nil }
+            return lhs.sequence < rhs.sequence
+        }
+    }
+
+    private var canSend: Bool {
+        !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftImages.isEmpty
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let error = model.conversationError {
@@ -1017,28 +1303,34 @@ struct ConversationView: View {
                 Circle().fill(model.liveConnectionState == "已连接" ? .green : .orange).frame(width: 7, height: 7)
                 Text("实时连接：\(model.liveConnectionState)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                if model.isTurnRunning {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        HStack(spacing: 5) {
+                            ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
+                            Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
+                                .font(.caption).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        }
+                    }
+                }
             }.padding(.horizontal).padding(.vertical, 6)
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        if model.isLoadingConversation && model.messages.isEmpty { ProgressView().padding(.top, 36) }
-                        if model.messages.isEmpty && !model.isLoadingConversation { ContentUnavailableView("开始对话", systemImage: "text.bubble", description: Text("发送第一条消息。")) }
-                        ForEach(model.messages) { message in
-                            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
-                                HStack(spacing: 5) {
-                                    if !message.isUser { Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37)) }
-                                    Text(message.isUser ? "你" : "DSH").foregroundStyle(.secondary)
-                                }.font(.caption2.weight(.semibold))
-                                HStack {
-                                    if message.isUser { Spacer(minLength: 48) }
-                                    MarkdownBody(text: message.text)
-                                        .textSelection(.enabled)
-                                        .padding(.horizontal, 14).padding(.vertical, 11)
-                                        .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                                        .foregroundStyle(message.isUser ? .white : .primary)
-                                    if !message.isUser { Spacer(minLength: 28) }
-                                }
-                            }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading).id(message.id)
+                        if model.isLoadingConversation && model.messages.isEmpty && model.steps.isEmpty {
+                            ProgressView().padding(.top, 36)
+                        }
+                        if entries.isEmpty && !model.isLoadingConversation {
+                            ContentUnavailableView("开始对话", systemImage: "text.bubble", description: Text("发送第一条消息。"))
+                        }
+                        ForEach(entries) { entry in
+                            if let message = entry.message {
+                                MessageRow(message: message, model: model).id(entry.id)
+                            } else if let group = entry.group {
+                                ProcessRow(group: group, expanded: expandedTurns.contains(group.turn), model: model) {
+                                    if expandedTurns.contains(group.turn) { expandedTurns.remove(group.turn) } else { expandedTurns.insert(group.turn) }
+                                }.id(entry.id)
+                            }
                         }
                     }.padding()
                 }
@@ -1046,41 +1338,257 @@ struct ConversationView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
-                    if newCount > oldCount, let latest = model.messages.last {
-                        model.recordDiagnostic("界面消息列表更新：\(latest.isUser ? "用户" : "助手")消息，序号 \(latest.sequence)，当前共 \(newCount) 条；内容：\(latest.text)")
-                    }
                     guard oldCount > 0, newCount > oldCount, let id = model.messages.last?.id else { return }
                     withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
                 }
             }
             Divider()
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("发送消息", text: $model.draft, axis: .vertical).lineLimit(1...5).padding(.horizontal, 12).padding(.vertical, 9).background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                Button { Task { await model.sendMessage() } } label: {
-                    if model.isSending { ProgressView().frame(width: 44, height: 44) }
-                    else { Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold)).foregroundStyle(.white).frame(width: 44, height: 44).background(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : Color(red: 0.08, green: 0.48, blue: 0.37), in: Circle()) }
-                }.disabled(model.isSending || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityLabel("发送消息")
-            }.padding(.horizontal).padding(.vertical, 10).background(.background)
+            inputBar
         }
         .navigationTitle(model.selectedSession?.title ?? "对话")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    UIPasteboard.general.string = model.diagnosticReport()
-                } label: { Image(systemName: "doc.on.doc") }
-                .accessibilityLabel("复制诊断记录")
+                Button { UIPasteboard.general.string = model.diagnosticReport() } label: { Image(systemName: "doc.on.doc") }
+                    .accessibilityLabel("复制诊断记录")
+            }
+        }
+        .sheet(isPresented: $showingCamera) {
+            CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
+        }
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                    model.addDraftImage(image)
+                }
+                photoItem = nil
             }
         }
         .task {
 #if DEBUG
             if !didAutoSend, let text = DebugLaunch.sendText {
                 didAutoSend = true
+                if let path = DebugLaunch.attachPath {
+                    let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let url = path.hasPrefix("/") ? URL(fileURLWithPath: path) : documents.appendingPathComponent(path)
+                    if let data = try? Data(contentsOf: url), let image = UIImage(data: data) { model.addDraftImage(image) }
+                }
                 try? await Task.sleep(for: .seconds(2))
                 model.draft = text
                 await model.sendMessage()
             }
 #endif
+        }
+    }
+
+    private var inputBar: some View {
+        VStack(spacing: 8) {
+            if !model.draftImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.draftImages) { image in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: image.uiImage).resizable().scaledToFill()
+                                    .frame(width: 64, height: 64)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Button {
+                                    model.draftImages.removeAll { $0.id == image.id }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                                        .foregroundStyle(.white, .black.opacity(0.55))
+                                }
+                                .offset(x: 5, y: -5)
+                            }
+                        }
+                    }.padding(.horizontal).padding(.top, 6)
+                }
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                    Image(systemName: "photo").font(.system(size: 20))
+                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        .frame(width: 38, height: 38)
+                }
+                .accessibilityLabel("从相册选择图片")
+                Button { showingCamera = true } label: {
+                    Image(systemName: "camera").font(.system(size: 20))
+                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        .frame(width: 38, height: 38)
+                }
+                .accessibilityLabel("拍照")
+                TextField("发送消息", text: $model.draft, axis: .vertical).lineLimit(1...5)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+                Button { Task { await model.sendMessage() } } label: {
+                    if model.isSending { ProgressView().frame(width: 44, height: 44) }
+                    else {
+                        Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white).frame(width: 44, height: 44)
+                            .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
+                    }
+                }.disabled(model.isSending || !canSend).accessibilityLabel("发送消息")
+            }.padding(.horizontal).padding(.vertical, 10)
+        }
+        .background(.background)
+    }
+
+    private func elapsed(since start: Date?, now: Date) -> String {
+        guard let start else { return "计算中" }
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        return seconds < 60 ? "\(seconds) 秒" : "\(seconds / 60) 分 \(seconds % 60) 秒"
+    }
+}
+
+struct MessageRow: View {
+    let message: PocketMessage
+    @Bindable var model: ConnectionModel
+
+    var body: some View {
+        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                if !message.isUser {
+                    Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                }
+                Text(message.isUser ? "你" : "DSH").foregroundStyle(.secondary)
+            }.font(.caption2.weight(.semibold))
+            HStack {
+                if message.isUser { Spacer(minLength: 40) }
+                VStack(alignment: .leading, spacing: 8) {
+                    if !message.localImages.isEmpty {
+                        ForEach(Array(message.localImages.enumerated()), id: \.offset) { _, image in
+                            Image(uiImage: image).resizable().scaledToFill()
+                                .frame(width: 150, height: 150)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    } else if !message.images.isEmpty {
+                        ForEach(message.images) { ref in
+                            AttachmentThumbnail(ref: ref, model: model, size: 150)
+                        }
+                    }
+                    if !message.text.isEmpty {
+                        MarkdownBody(text: message.text)
+                            .textSelection(.enabled)
+                            .padding(.horizontal, 14).padding(.vertical, 11)
+                            .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                            .foregroundStyle(message.isUser ? .white : .primary)
+                    }
+                }
+                if !message.isUser { Spacer(minLength: 24) }
+            }
+        }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+    }
+}
+
+/// 会话里的图片（用户发的 / 工具结果里的），按 attachmentId 读取电脑端附件。
+struct AttachmentThumbnail: View {
+    let ref: PocketImageRef
+    @Bindable var model: ConnectionModel
+    var size: CGFloat = 140
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .tertiarySystemFill))
+                    ProgressView()
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .task { if image == nil { image = await model.loadImage(ref) } }
+    }
+}
+
+/// 一步或一轮的工具过程，折叠成一行，展开看细节和图片。
+struct ProcessRow: View {
+    let group: PocketStepGroup
+    let expanded: Bool
+    @Bindable var model: ConnectionModel
+    let toggle: () -> Void
+
+    private var summary: String {
+        let labels = Array(Set(group.steps.map(\.label)))
+        let joined = labels.prefix(3).joined(separator: "、")
+        return "过程 · \(group.steps.count) 步 · \(joined)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: toggle) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                    Text(summary).font(.footnote).lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }.buttonStyle(.plain)
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(group.steps) { step in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: step.icon).font(.caption).foregroundStyle(.secondary).frame(width: 16)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(step.label).font(.footnote)
+                                    if !step.detail.isEmpty {
+                                        Text(step.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                    if !step.resultText.isEmpty {
+                                        Text(String(step.resultText.prefix(280))).font(.caption2)
+                                            .foregroundStyle(.secondary).lineLimit(4)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            ForEach(step.images) { ref in
+                                AttachmentThumbnail(ref: ref, model: model, size: 180)
+                            }
+                        }
+                    }
+                }
+                .padding(.leading, 2)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(_ parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage { parent.onImage(image) }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
         }
     }
 }
