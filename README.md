@@ -30,7 +30,7 @@ DSH Pocket iOS 让你用 iPhone 直接操作电脑里的 **DeepSeek Harness（DS
 
 ## 功能
 
-- 🔌 **两种连接方式**：局域网 `http://<电脑IP>:3081`，或 dsh-pocket 生成的公网隧道（HTTPS）；支持扫二维码直接填入地址。
+- 🔌 **两种连接方式**：局域网 `http://<电脑IP>:<端口>`（dsh-pocket 默认 **3081**，可在其 `settings.json` 的 `proxyPort` 改成别的端口），或 dsh-pocket 生成的公网隧道（HTTPS）；**扫码会自动填入地址和端口**，不需要自己记。
 - 🔑 **PIN 登录**：走 dsh-pocket 的 `/pocket-login` 协议；登录态用 cookie 保持，**PIN 不会保存在手机上**。登录失效时回到连接页，重新输入即可。
 - 📋 **会话列表**：与桌面端同样的可见性规则，下拉或回到前台自动刷新。
 - 💬 **历史 + 实时**：进入会话直接定位到底部（无滚动动画），历史快照之后由 `session/follow` WebSocket 实时推送增量消息。
@@ -43,7 +43,7 @@ DSH Pocket iOS 让你用 iPhone 直接操作电脑里的 **DeepSeek Harness（DS
 
 ## 工作原理
 
-依赖电脑端已安装并启用 [`dsh-pocket`](https://github.com/shaobeichen/dsh-pocket) 插件（它把 DSH 暴露到 `:3081`）。
+依赖电脑端已安装并启用 [`dsh-pocket`](https://github.com/shaobeichen/dsh-pocket) 插件。它把 DSH 反代到局域网（默认监听 **3081**，端口可在插件 `settings.json` 的 `proxyPort` 里改），并负责 PIN 登录与公网隧道。
 
 | 环节 | 实现 |
 | --- | --- |
