@@ -392,8 +392,6 @@ final class ConnectionModel {
                 | chenzhexi/dsh-api-usage | GitHub | 侧边栏常驻小部件：余额、今日消费、Token 数、请求数、24h 消费柱状图，一键直达充值页。 |
                 | cailikelog/dsh-plugin-account-balance | GitHub | 在输入框 cache-hit 读数旁显示账户剩余余额 |
                 | Witherwithwinter/DeepSeek-Balance-Whale-Widget-Bowl | GitHub | 右下角常驻余额挂件（鲸鱼娘版），支持 DeepSeek、OpenRouter、Kimi、GLM 等多个平台 |
-                | dsh-balance-monitor / balance-dsh / dsh-deepseek-balance-cn | npm | npm 上的同类包，具体功能需进一步核实 |
-                | dsh-account-hud | npm | ⚠️ 标题带警告标记，不建议直接装 |
                 """, isUser: false, sequence: 4)
             ]
         }
@@ -1503,6 +1501,7 @@ struct ConnectedView: View {
 
 struct MarkdownBody: View {
     let text: String
+    @State private var availableWidth: CGFloat = 0
 
     private enum Block {
         case paragraph(String)
@@ -1545,6 +1544,13 @@ struct MarkdownBody: View {
                 }
             }
         }
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { availableWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, newWidth in availableWidth = newWidth }
+            }
+        )
     }
 
     /// GFM 表格：用 Grid 共享列宽保证对齐，单元格自动换行并铺满气泡宽度。
@@ -1552,6 +1558,11 @@ struct MarkdownBody: View {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         let headerColor = Color.primary.opacity(0.07)
         let separator = Color.primary.opacity(0.12)
+
+        let measuredWidth = availableWidth > 0 ? availableWidth : 320
+        let minColumnWidth: CGFloat = 110
+        let fits = measuredWidth >= CGFloat(columnCount) * minColumnWidth
+        let columnWidth = fits ? measuredWidth / CGFloat(columnCount) : minColumnWidth
 
         func cell(_ value: String, bold: Bool, background: Color) -> some View {
             Text(inline(value))
@@ -1561,30 +1572,35 @@ struct MarkdownBody: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10)
                 .padding(.vertical, bold ? 8 : 7)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(width: columnWidth, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .topLeading)
                 .background(background)
                 .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
                 .overlay(alignment: .trailing) { Rectangle().fill(separator).frame(width: 0.5) }
         }
 
-        return Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
-            GridRow {
+        func makeRow(_ values: [String], bold: Bool, background: Color) -> some View {
+            HStack(alignment: .top, spacing: 0) {
                 ForEach(0..<columnCount, id: \.self) { column in
-                    cell(column < headers.count ? headers[column] : "", bold: true, background: headerColor)
-                }
-            }
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                GridRow {
-                    ForEach(0..<columnCount, id: \.self) { column in
-                        cell(column < row.count ? row[column] : "",
-                             bold: false,
-                             background: index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
-                    }
+                    cell(column < values.count ? values[column] : "",
+                         bold: bold,
+                         background: background)
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                makeRow(headers, bold: true, background: headerColor)
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    makeRow(row, bold: false,
+                            background: index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
+                }
+            }
+            .frame(width: CGFloat(columnCount) * columnWidth, alignment: .leading)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
