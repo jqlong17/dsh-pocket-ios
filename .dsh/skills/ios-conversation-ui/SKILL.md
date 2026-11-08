@@ -36,8 +36,8 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - **为什么从 MarkdownUI 迁移**：MarkdownUI 的已知限制（[issue #264](https://github.com/gonzalezreal/swift-markdown-ui/issues/264)）——每个段落/块是独立 `Text`，只能按段落选中，无法跨行选择。作者的新库 Textual 用 SwiftUI Text 管线重生，支持跨视图选择。
 - **部署目标因此升到 iOS 18**（Textual 所有版本都要求 iOS 18；iOS 18 与 17 支持相同机型，代价可接受）。不要再降回 17，除非放弃 Textual。
 - 表格：`.gitHub` 风格自带边框，列多时会压缩换行（与 MarkdownUI 类似），**仍不要**在消息列表里套横向滚动。
-- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.29, 1.18, 1.0, 0.94, 0.88, 0.76]`（Textual 基准 `.body` = 17pt）：
-  实际 H1 22 / H2 20 / H3 17 / H4 16 / H5 15 / H6 13，对齐 iOS 字体阶梯（Title2 / Title3 / Headline）；
+- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.18, 1.06, 1.0, 0.94, 0.88, 0.76]`（Textual 基准 `.body` = 17pt）：
+  实际 H1 20 / H2 18 / H3 17 / H4 16 / H5 15 / H6 13。移动端刻意克制，标题不抢正文；
   权重统一 semibold，间距 `fontScaled(top: 0.9, bottom: 0.35)`。改标题大小只动这个数组。
 - 代码块由 Textual 内置语法高亮，样式通过 `structuredTextStyle` 控制，不要自己写高亮。
 
