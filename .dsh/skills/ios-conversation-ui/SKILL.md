@@ -84,6 +84,17 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - 新增任何会写 `messages`/`steps` 的异步路径，都要走同样的双重校验，不要只依赖 Task.cancel
   （取消是协作式的，可能晚一拍）。
 
+## 消息顺序（排队消息）
+
+**现象**：生成中（"深度求索中"）发送的新消息，显示在正在生成那一轮的旧回复上方。
+
+**原因**：DSH 里排队消息的 `user/message` 事件 seq 落在当前 `turn/start` 与 `turn/end`
+之间，而这一轮的助手回复 seq 更大；只按 seq 排序就会把"下一轮的用户消息"插到"本轮回复"前面。
+
+**处理**：`ConnectionModel` 记录每轮 `turnStarts` / `turnEnds`（用 seq，去重）；渲染排序时
+对落在 turn 区间内的用户消息改用 `displaySortKey` = 该轮 `turn/end` 的 seq，从而排到本轮
+回复之后、下一轮回复之前。服务端 seq 本身是对的，不要改排序基准为时间戳。
+
 ## 文本选择与复制
 
 - **部分/跨行复制**：Textual 的 `.textual.textSelection(.enabled)` 支持**跨段落/跨块**选择（这是迁移的核心理由）。长按文字出现选择手柄，可跨行、跨列表选中后复制。
