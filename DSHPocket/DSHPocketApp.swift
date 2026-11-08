@@ -1683,7 +1683,7 @@ struct ConversationView: View {
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
                     guard oldCount > 0, newCount > oldCount, let id = model.messages.last?.id else { return }
-                    withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
+                    proxy.scrollTo(id, anchor: .bottom)
                 }
             }
             Divider()
@@ -1845,7 +1845,6 @@ struct MessageRow: View {
                     }
                     if !message.text.isEmpty {
                         MarkdownBody(text: message.text, foreground: message.isUser ? .white : .primary)
-                            .textSelection(.enabled)
                             .padding(.horizontal, 14).padding(.vertical, 11)
                             .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                             .foregroundStyle(message.isUser ? .white : .primary)
