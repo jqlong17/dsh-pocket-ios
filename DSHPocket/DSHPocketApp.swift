@@ -1704,6 +1704,10 @@ struct ConversationView: View {
                     guard newCount > 0, newCount != oldCount else { return }
                     scrollToBottom(proxy: proxy)
                 }
+                .onChange(of: model.steps.count) { oldCount, newCount in
+                    guard newCount != oldCount else { return }
+                    scrollToBottom(proxy: proxy)
+                }
             }
             Divider()
             inputBar
@@ -1828,11 +1832,11 @@ struct ConversationView: View {
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
 
-    private func scrollToBottom(proxy: ScrollViewProxy, retries: Int = 4) {
-        // 只滚一帧不够：MarkdownUI/Textual 渲染、图片/过程行到达后高度还会变。
-        // 多次补滚（0 / 0.15s / 0.35s / 0.7s）确保最终停在最新消息。
-        let delays: [Double] = [0, 0.15, 0.35, 0.7]
-        for (index, delay) in delays.enumerated() where index < retries {
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        // 只滚一帧不够：Markdown/Textual 渲染、表格重排、图片/过程行到达后高度还会变。
+        // 在 ~3 秒内多次补滚，确保最终停在最新消息。
+        let delays: [Double] = [0, 0.08, 0.2, 0.4, 0.7, 1.1, 1.6, 2.2, 3.0]
+        for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
