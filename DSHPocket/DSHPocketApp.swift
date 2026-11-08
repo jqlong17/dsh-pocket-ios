@@ -581,6 +581,21 @@ final class ConnectionModel {
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
     }
 
+    /// 电脑端该会话的日志文件绝对路径（DSH 的磁盘布局：~/.dsh/sessions/--<cwd转义>--/<sessionId>/session.v4.jsonl.zstd）。
+    var sessionLogPath: String? {
+        guard let session = selectedSession, let cwd = session.cwd, cwd.hasPrefix("/") else { return nil }
+        let trimmed = String(cwd.dropFirst())
+        let encoded = "--" + trimmed.replacingOccurrences(of: "/", with: "-") + "--"
+        return "\(Self.homeDirectory(for: cwd))/.dsh/sessions/\(encoded)/\(session.sessionId)/session.v4.jsonl.zstd"
+    }
+
+    private static func homeDirectory(for cwd: String) -> String {
+        let parts = cwd.split(separator: "/").map(String.init)
+        if parts.count >= 2, parts[0] == "Users" { return "/Users/\(parts[1])" }
+        if parts.count >= 2, parts[0] == "home" { return "/home/\(parts[1])" }
+        return "~"
+    }
+
     /// 会话页标题：优先用列表中最新标题，避免打开后改标题不刷新。
     var currentConversationTitle: String {
         guard let id = selectedSession?.sessionId else { return "对话" }
@@ -1537,6 +1552,7 @@ struct ConversationView: View {
     @State private var showingCamera = false
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var composerFocused: Bool
+    @State private var copiedLogPath: String?
 
     private struct TimelineEntry: Identifiable {
         let id: String
@@ -1631,9 +1647,31 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { UIPasteboard.general.string = model.diagnosticReport() } label: { Image(systemName: "doc.on.doc") }
-                    .accessibilityLabel("复制诊断记录")
+                Button {
+                    if let path = model.sessionLogPath {
+                        UIPasteboard.general.string = path
+                        copiedLogPath = path
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .accessibilityLabel("复制会话日志路径")
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = model.diagnosticReport()
+                    } label: {
+                        Label("复制诊断信息", systemImage: "stethoscope")
+                    }
+                }
             }
+        }
+        .alert("已复制会话日志路径", isPresented: Binding(
+            get: { copiedLogPath != nil },
+            set: { if !$0 { copiedLogPath = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(copiedLogPath ?? "")
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
