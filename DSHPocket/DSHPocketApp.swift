@@ -1554,7 +1554,7 @@ struct MarkdownBody: View {
         )
     }
 
-    /// GFM 表格：用 Grid 共享列宽保证对齐，单元格自动换行并铺满气泡宽度。
+    /// GFM 表格：固定列宽 + 行级网格线，行高由内容决定，天然对齐且无截断。
     private func table(headers: [String], rows: [[String]]) -> some View {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         let headerColor = Color.primary.opacity(0.07)
@@ -1565,7 +1565,7 @@ struct MarkdownBody: View {
         let fits = measuredWidth >= CGFloat(columnCount) * minColumnWidth
         let columnWidth = fits ? measuredWidth / CGFloat(columnCount) : minColumnWidth
 
-        func cell(_ value: String, bold: Bool, background: Color) -> some View {
+        func textCell(_ value: String, bold: Bool) -> some View {
             Text(inline(value))
                 .font(bold ? .footnote.weight(.semibold) : .footnote)
                 .lineLimit(nil)
@@ -1574,18 +1574,27 @@ struct MarkdownBody: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, bold ? 8 : 7)
                 .frame(width: columnWidth, alignment: .topLeading)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-                .background(background)
-                .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
-                .overlay(alignment: .trailing) { Rectangle().fill(separator).frame(width: 0.5) }
         }
 
         func makeRow(_ values: [String], bold: Bool, background: Color) -> some View {
             HStack(alignment: .top, spacing: 0) {
                 ForEach(0..<columnCount, id: \.self) { column in
-                    cell(column < values.count ? values[column] : "",
-                         bold: bold,
-                         background: background)
+                    textCell(column < values.count ? values[column] : "", bold: bold)
+                }
+            }
+            .background(background)
+            .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
+            .overlay {
+                GeometryReader { geo in
+                    Path { path in
+                        guard columnCount > 1 else { return }
+                        for index in 1..<columnCount {
+                            let x = CGFloat(index) * columnWidth
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                        }
+                    }
+                    .stroke(separator, lineWidth: 0.5)
                 }
             }
         }
@@ -1593,8 +1602,8 @@ struct MarkdownBody: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 makeRow(headers, bold: true, background: headerColor)
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    makeRow(row, bold: false,
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, rowValues in
+                    makeRow(rowValues, bold: false,
                             background: index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
                 }
             }
