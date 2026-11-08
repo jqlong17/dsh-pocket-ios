@@ -120,7 +120,6 @@ DSHPocket/
 DSHPocket.xcodeproj       # Xcode 工程
 Info.plist                # 本地网络权限、ATS 局域网例外
 docs/screenshots/         # README 截图
-HANDOFF.md                # 开发交接文档（协议细节、根因记录、构建命令）
 ```
 
 ## 配套 DSH 插件（可选）
