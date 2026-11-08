@@ -1613,6 +1613,7 @@ struct ConversationView: View {
     @State private var expandedTurns: Set<Int> = []
     @State private var showingCamera = false
     @State private var photoItem: PhotosPickerItem?
+    @FocusState private var composerFocused: Bool
 
     private struct TimelineEntry: Identifiable {
         let id: String
@@ -1689,6 +1690,7 @@ struct ConversationView: View {
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
                     guard oldCount > 0, newCount > oldCount, let id = model.messages.last?.id else { return }
@@ -1700,6 +1702,13 @@ struct ConversationView: View {
         }
         .navigationTitle(model.currentConversationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("收起") { composerFocused = false }
+                    .font(.footnote.weight(.semibold))
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { UIPasteboard.general.string = model.diagnosticReport() } label: { Image(systemName: "doc.on.doc") }
@@ -1771,6 +1780,7 @@ struct ConversationView: View {
                 }
                 .accessibilityLabel("拍照")
                 TextField("发送消息", text: $model.draft, axis: .vertical).lineLimit(1...5)
+                    .focused($composerFocused)
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                 Button { Task { await model.sendMessage() } } label: {
