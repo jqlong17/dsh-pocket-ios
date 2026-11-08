@@ -1826,6 +1826,15 @@ struct MessageRow: View {
                     Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                 }
                 Text(message.isUser ? "你" : "DSH").foregroundStyle(.secondary)
+                if !message.text.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = message.text
+                    } label: {
+                        Image(systemName: "doc.on.doc").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("复制整条消息")
+                }
             }.font(.caption2.weight(.semibold))
             HStack {
                 if message.isUser { Spacer(minLength: 40) }
@@ -1854,15 +1863,6 @@ struct MessageRow: View {
                 if !message.isUser { Spacer(minLength: 24) }
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
-        .contextMenu {
-            if !message.text.isEmpty {
-                Button {
-                    UIPasteboard.general.string = message.text
-                } label: {
-                    Label("复制整条消息", systemImage: "doc.on.doc")
-                }
-            }
-        }
         .fullScreenCover(item: $previewItem) { item in
             FullscreenImageViewer(image: item.image)
         }
