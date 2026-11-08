@@ -69,9 +69,9 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 ## 文本选择与复制
 
 - **部分复制**：消息气泡的 Markdown 视图开启 `.textSelection(.enabled)`，长按文字出现系统选择手柄后可复制任意片段。
-- **整条复制**：`MessageRow` 外层加 `.contextMenu`，长按气泡弹出「复制整条消息」，写入 `UIPasteboard`（原始 Markdown 文本）。
+- **整条复制**：消息头部（"DSH/你"旁边）的小图标按钮，点击把整条 Markdown 写入 `UIPasteboard`。
+- **不要给整行加 `.contextMenu`**：它会拦截长按，导致文本选择无法触发（踩过）。整条复制放头部按钮，长按留给文本选择。
 - 图片不参与复制（需要时走全屏预览里的保存/分享）。
-- 长按行为的优先级：文本选择与 contextMenu 可能冲突；若用户反馈长按选不中文字，优先保证选择，把整条复制改成别处入口（例如消息左侧菜单）。
 
 ## 键盘与输入
 
