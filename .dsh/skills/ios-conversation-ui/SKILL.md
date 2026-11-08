@@ -134,6 +134,20 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
   `model.sendMessage(in: session)`；模型先校验 `selectedSession` 是否一致，不一致先纠正再发。
 - 这样"用户看到的会话"和"消息实际发送的会话"始终一致。
 
+## 发送状态机与重发（借鉴 stream-chat LocalMessageState）
+
+- pending 气泡下方显示状态：`发送中…` → `已发出，等待处理`（服务端已 ACK、等队列消费）→ 失败时显示
+  `发送失败 + 重新发送` 按钮；
+- 状态集合：`ackedSendRpcIds` / `failedSendRpcIds`（按 rpcId），收到服务端 user/message（rpcId 匹配）后清理；
+- 失败**不再**把文字塞回输入框，而是保留气泡可重发（`retryPendingMessage` 从发件箱取回文本重新发送）。
+
+## 跟随底部与回到底部（借鉴 SwiftyChat followsLatest）
+
+- `onScrollGeometryChange` 计算距底部距离（≤48pt 视为在底部）→ `isAtBottom`；
+- 在底部/首屏稳定期才自动跟随新消息；用户往上翻时不抢滚动，只累计 `unreadWhileScrolled`；
+- 非底部时显示右下角**回到底部按钮**（带未读数），点击强制滚到底；
+- `scrollToBottom(force:)`：只有按钮或首屏才强制，其余调用受 followsLatest 门控。
+
 ## 消息丢失（发件箱 + rpcId 对账）
 
 **现象**：有时"发出的消息没了"。

@@ -60,6 +60,9 @@ final class ConnectionModel {
     var sendTask: Task<Void, Never>?
     private var pendingSendID: String?
     private var pendingSendRpcId: String?
+    /// 发送状态：已确认（服务端受理、等待处理）/ 失败（可重发）。
+    private var ackedSendRpcIds: Set<String> = []
+    private var failedSendRpcIds: Set<String> = []
     private static let outboxDefaultsKey = "dsh-pocket.send-outbox"
     private var outboxEntries: [OutboxEntry] = []
     private var outboxLoaded = false
@@ -605,6 +608,8 @@ final class ConnectionModel {
         let incomingUserMessages = incoming.filter(\.isUser)
         let incomingRpcIds = Set(incoming.compactMap(\.rpcId))
         confirmOutbox(rpcIds: incomingRpcIds)
+        ackedSendRpcIds.subtract(incomingRpcIds)
+        failedSendRpcIds.subtract(incomingRpcIds)
         // 只用 rpcId 精确确认 pending。绝不能按“文本出现在历史里”来判断：
         // 用户发过同样内容的短消息（如“继续”）时，会把刚发出的 pending 误删，表现为消息发不出去。
         let previousMaxConfirmed = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
@@ -726,6 +731,28 @@ final class ConnectionModel {
         return outboxEntries
             .filter { $0.sessionId == session.sessionId && !$0.text.isEmpty }
             .map { PocketMessage(pendingText: $0.text, rpcId: $0.id) }
+    }
+
+    enum PendingSendState { case sending, acked, failed }
+
+    func pendingSendState(for message: PocketMessage) -> PendingSendState? {
+        guard message.isPending, let rpcId = message.rpcId else { return nil }
+        if failedSendRpcIds.contains(rpcId) { return .failed }
+        if ackedSendRpcIds.contains(rpcId) { return .acked }
+        return .sending
+    }
+
+    /// 失败消息重发：从发件箱取回文本，作为新消息重新发送。
+    @MainActor
+    func retryPendingMessage(_ message: PocketMessage) {
+        guard let rpcId = message.rpcId, let session = selectedSession,
+              let entry = outboxEntries.first(where: { $0.id == rpcId }) else { return }
+        failedSendRpcIds.remove(rpcId)
+        ackedSendRpcIds.remove(rpcId)
+        messages.removeAll { $0.id == message.id }
+        removeOutbox(rpcIds: [rpcId])
+        draft = entry.text
+        sendMessage(in: session)
     }
 
     @MainActor
@@ -1119,7 +1146,11 @@ final class ConnectionModel {
         sendTask?.cancel()
         sendTask = nil
         if let id = pendingSendID { messages.removeAll { $0.id == id } }
-        if let rpcId = pendingSendRpcId { removeOutbox(rpcIds: [rpcId]) }
+        if let rpcId = pendingSendRpcId {
+            removeOutbox(rpcIds: [rpcId])
+            ackedSendRpcIds.remove(rpcId)
+            failedSendRpcIds.remove(rpcId)
+        }
         pendingSendID = nil
         pendingSendRpcId = nil
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1192,6 +1223,7 @@ final class ConnectionModel {
             ]])
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")
             recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
+            ackedSendRpcIds.insert(requestId)
             conversationError = nil
             // 服务端已受理：立刻结束"发送中"状态，恢复发送按钮；后续等待回复交给轮询与停止按钮。
             isSending = false
@@ -1203,12 +1235,14 @@ final class ConnectionModel {
             await loadHistory(session)
             await pollForReply(session, after: text, afterSequence: lastSequence)
         } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            removeOutbox(rpcIds: [requestId])
-            messages.removeAll { $0.id == pending.id }
-            draft = text
-            draftImages = attachments
-            conversationError = "发送失败：\(error.localizedDescription)"
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                removeOutbox(rpcIds: [requestId])
+                messages.removeAll { $0.id == pending.id }
+                return
+            }
+            // 保留气泡并标记失败，用户可直接重发（不再把文字塞回输入框）。
+            failedSendRpcIds.insert(requestId)
+            conversationError = "发送失败：\(error.localizedDescription)（点消息气泡下方「重新发送」可重试）"
         }
     }
 
@@ -1764,6 +1798,9 @@ struct ConversationView: View {
     @Bindable var model: ConnectionModel
     let session: PocketSession
     @State private var isSettlingScroll = false
+    /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
+    @State private var isAtBottom = true
+    @State private var unreadWhileScrolled = 0
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
     @State private var showingCamera = false
@@ -1889,12 +1926,51 @@ struct ConversationView: View {
                 }
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
-                    guard newCount > 0, newCount != oldCount else { return }
-                    scrollToBottom(proxy: proxy)
+                    guard newCount != oldCount else { return }
+                    if isAtBottom || isSettlingScroll {
+                        scrollToBottom(proxy: proxy)
+                    } else if newCount > oldCount {
+                        unreadWhileScrolled += newCount - oldCount
+                    }
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
                     guard newCount != oldCount else { return }
-                    scrollToBottom(proxy: proxy)
+                    if isAtBottom || isSettlingScroll { scrollToBottom(proxy: proxy) }
+                }
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
+                    return distance <= 48
+                } action: { _, atBottom in
+                    isAtBottom = atBottom
+                    if atBottom { unreadWhileScrolled = 0 }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !isAtBottom, !entries.isEmpty {
+                        Button {
+                            unreadWhileScrolled = 0
+                            isAtBottom = true
+                            scrollToBottom(proxy: proxy, force: true)
+                        } label: {
+                            HStack(spacing: 5) {
+                                if unreadWhileScrolled > 0 {
+                                    Text("\(unreadWhileScrolled)")
+                                        .monospacedDigit()
+                                        .font(.caption2.weight(.bold))
+                                }
+                                Image(systemName: "arrow.down")
+                                    .font(.footnote.weight(.semibold))
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                            .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(unreadWhileScrolled > 0 ? "\(unreadWhileScrolled) 条未读，滚到底部" : "滚到底部")
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 12)
+                    }
                 }
             }
             Divider()
@@ -2020,7 +2096,9 @@ struct ConversationView: View {
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
+    private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
+        // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
+        if !force && !isAtBottom && !isSettlingScroll { return }
         // 只滚一帧不够：Markdown/Textual 渲染、表格重排、图片/过程行到达后高度还会变。
         // 在 ~3 秒内多次补滚，确保最终停在最新消息。
         let delays: [Double] = [0, 0.08, 0.2, 0.4, 0.7, 1.1, 1.6, 2.2, 3.0]
@@ -2085,6 +2163,27 @@ struct MessageRow: View {
                     }
                 }
                 if !message.isUser { Spacer(minLength: 24) }
+            }
+            if message.isPending, let state = model.pendingSendState(for: message) {
+                HStack(spacing: 5) {
+                    switch state {
+                    case .sending:
+                        ProgressView().scaleEffect(0.55).frame(width: 11, height: 11)
+                        Text("发送中…")
+                    case .acked:
+                        Image(systemName: "clock").font(.caption2)
+                        Text("已发出，等待处理")
+                    case .failed:
+                        Image(systemName: "exclamationmark.circle").font(.caption2)
+                        Text("发送失败")
+                        Button("重新发送") { model.retryPendingMessage(message) }
+                            .buttonStyle(.borderless)
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(state == .failed ? Color.red.opacity(0.85) : Color.secondary)
+                .padding(.horizontal, 4)
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
         .fullScreenCover(item: $previewItem) { item in
