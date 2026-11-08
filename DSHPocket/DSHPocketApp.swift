@@ -1662,6 +1662,8 @@ struct ConversationView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+                // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
+                .onAppear { scrollToBottom(proxy: proxy) }
                 // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
                 .onChange(of: model.scrollToBottomTick) { _, _ in
                     scrollToBottom(proxy: proxy)
@@ -1795,10 +1797,14 @@ struct ConversationView: View {
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        // 等一帧，让新内容完成布局后再滚动，避免滚到旧位置。
-        DispatchQueue.main.async {
-            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+    private func scrollToBottom(proxy: ScrollViewProxy, retries: Int = 4) {
+        // 只滚一帧不够：MarkdownUI/Textual 渲染、图片/过程行到达后高度还会变。
+        // 多次补滚（0 / 0.15s / 0.35s / 0.7s）确保最终停在最新消息。
+        let delays: [Double] = [0, 0.15, 0.35, 0.7]
+        for (index, delay) in delays.enumerated() where index < retries {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            }
         }
     }
 
