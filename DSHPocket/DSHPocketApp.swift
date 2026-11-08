@@ -1,5 +1,6 @@
 import SwiftUI
 import Textual
+import DSHKit
 import VisionKit
 import AVFoundation
 import Observation
@@ -280,12 +281,7 @@ final class ConnectionModel {
 
     /// 整理用户输入：去掉首尾空白和零宽字符，缺少协议时补 `http://`。
     private static func normalizedAddress(_ rawValue: String) -> String {
-        var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        value.removeAll { character in
-            character == "\u{200B}" || character == "\u{200C}" || character == "\u{200D}" || character == "\u{FEFF}"
-        }
-        if !value.contains("://") { value = "http://" + value }
-        return value
+        DSHURL.normalizedBase(rawValue)?.absoluteString ?? rawValue
     }
 
     private static func serverURL(from rawValue: String) throws -> URL {
@@ -307,14 +303,7 @@ final class ConnectionModel {
     /// 开头时会返回 nil，而 `appendingPathComponent` 对空 path 恰好拼出 "api/remote.mux"。
     /// 这个 nil 曾导致实时 follow 静默不启动、归档查询抛 invalidURL，务必显式补斜杠。
     private static func webSocketURL(from base: URL, path: String) -> URL? {
-        guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else { return nil }
-        let secure = components.scheme == "https"
-        components.scheme = secure ? "wss" : "ws"
-        var target = components.path
-        if !target.hasPrefix("/") { target = "/" + target }
-        if target.hasSuffix("/") { target.removeLast() }
-        components.path = target + "/" + path
-        return components.url
+        DSHURL.webSocketURL(from: base, path: path)
     }
 
     @MainActor

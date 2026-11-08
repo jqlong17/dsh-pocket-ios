@@ -66,7 +66,8 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 - `DSHKit` 共 **115 条测试全绿**，行覆盖率 **92.73%**（门槛 85%）；
 - 模块 01–05 的包内验收标签：`module-01-accepted` … `module-05-accepted`；
 - 剩余工作（未验收）：
-  - **02b**：App 真正改用 `SessionSyncCoordinator`（替换 `ConnectionModel` 内联 follow/poll/merge）；
+  - **02b**：App 的 URL 层已接入 DSHKit（`DSHURL`），剩余**同步层替换**（`ConnectionModel` 改用
+    `SessionSyncCoordinator`）；
   - 04 的 SwiftUI 视图拆分与快照测试（包内只覆盖纯逻辑）；
   - 05 的 XCUITest（Demo UI 流程，需新增 iOS UI Test target）。
 
