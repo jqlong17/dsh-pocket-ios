@@ -1592,8 +1592,14 @@ struct MarkdownBody: View {
     }
 }
 
+private struct ConversationHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 struct ConversationView: View {
     @Bindable var model: ConnectionModel
+    @State private var isSettlingScroll = false
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
     @State private var showingCamera = false
@@ -1689,12 +1695,27 @@ struct ConversationView: View {
                     .padding()
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: ConversationHeightKey.self, value: geo.size.height)
+                        }
+                    )
+                }
+                .onPreferenceChange(ConversationHeightKey.self) { _ in
+                    guard isSettlingScroll else { return }
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    }
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
-                .onAppear { scrollToBottom(proxy: proxy) }
+                .onAppear {
+                    isSettlingScroll = true
+                    scrollToBottom(proxy: proxy)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isSettlingScroll = false }
+                }
                 // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
                 .onChange(of: model.scrollToBottomTick) { _, _ in
                     scrollToBottom(proxy: proxy)
