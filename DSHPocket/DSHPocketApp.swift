@@ -27,6 +27,32 @@ struct DSHPocketApp: App {
     }
 }
 
+/// 单个会话独立的展示/发送状态。
+/// 切换会话时切换 activeConversation 实例，旧会话数据自然不会出现在新会话里（从结构上隔离）。
+@Observable
+final class ConversationState {
+    let sessionId: String
+    var messages: [PocketMessage] = []
+    var steps: [PocketStep] = []
+    var isLoadingConversation = false
+    var conversationError: String?
+    var isTurnRunning = false
+    var turnStartedAt: Date?
+    var scrollToBottomTick = 0
+    var lastLiveFrameAt = Date()
+    var liveTask: Task<Void, Never>?
+    var fallbackTask: Task<Void, Never>?
+    /// 实时流是否在运行：避免"返回会话时 liveTask 已结束但仍非 nil"导致不再重连。
+    var isFollowing = false
+    var conversationToken = UUID()
+    var turnStarts: [Int] = []
+    var turnEnds: [Int] = []
+    var ackedRpcIds: Set<String> = []
+    var failedRpcIds: Set<String> = []
+
+    init(sessionId: String) { self.sessionId = sessionId }
+}
+
 @Observable
 final class ConnectionModel {
     private static let savedServerAddressKey = "dsh-pocket.server-address"
@@ -42,39 +68,113 @@ final class ConnectionModel {
     var archivedSessionIds: Set<String> = []
     var isLoadingSessions = false
     var selectedSession: PocketSession?
-    var messages: [PocketMessage] = []
     var draft = ""
     var draftImages: [PocketDraftImage] = []
-    var steps: [PocketStep] = []
     var navigationPath: [PocketSession] = []
-    var isTurnRunning = false
-    var turnStartedAt: Date?
     private static var imageCache: [String: UIImage] = [:]
     var isSending = false
-    var isLoadingConversation = false
-    var conversationError: String?
-    var liveConnectionState = "未连接"
+
+    // MARK: 会话级状态（按 sessionId 独立存放，切换会话即切换实例）
+
+    private(set) var conversations: [String: ConversationState] = [:]
+    private(set) var activeConversation: ConversationState?
+
+    var messages: [PocketMessage] {
+        get { activeConversation?.messages ?? [] }
+        set { activeConversation?.messages = newValue }
+    }
+    var steps: [PocketStep] {
+        get { activeConversation?.steps ?? [] }
+        set { activeConversation?.steps = newValue }
+    }
+    var isLoadingConversation: Bool {
+        get { activeConversation?.isLoadingConversation ?? false }
+        set { activeConversation?.isLoadingConversation = newValue }
+    }
+    var conversationError: String? {
+        get { activeConversation?.conversationError }
+        set { activeConversation?.conversationError = newValue }
+    }
+    var isTurnRunning: Bool {
+        get { activeConversation?.isTurnRunning ?? false }
+        set { activeConversation?.isTurnRunning = newValue }
+    }
+    var turnStartedAt: Date? {
+        get { activeConversation?.turnStartedAt }
+        set { activeConversation?.turnStartedAt = newValue }
+    }
+    var scrollToBottomTick: Int {
+        get { activeConversation?.scrollToBottomTick ?? 0 }
+        set { activeConversation?.scrollToBottomTick = newValue }
+    }
+    var lastLiveFrameAt: Date {
+        get { activeConversation?.lastLiveFrameAt ?? Date() }
+        set { activeConversation?.lastLiveFrameAt = newValue }
+    }
+    /// 实时连接状态机（替代原来的字符串状态）。
+    enum LiveConnectionState: Equatable {
+        case idle
+        case demo
+        case connecting
+        case connected
+        case reconnecting(attempt: Int)
+        case disconnected(reason: String?)
+
+        var label: String {
+            switch self {
+            case .idle: return "未连接"
+            case .demo: return "演示模式"
+            case .connecting: return "正在连接"
+            case .connected: return "已连接"
+            case .reconnecting(let attempt): return attempt > 1 ? "重连中（第 \(attempt) 次）" : "正在重连"
+            case .disconnected: return "已断开"
+            }
+        }
+
+        var isConnected: Bool { self == .connected }
+        var isDisconnected: Bool { if case .disconnected = self { return true }; return false }
+    }
+
+    var liveConnection: LiveConnectionState = .idle
+    var liveConnectionState: String { liveConnection.label }
     var liveDiagnosticHistory: [String] = []
-    var liveTask: Task<Void, Never>?
-    var fallbackTask: Task<Void, Never>?
+    var liveTask: Task<Void, Never>? {
+        get { activeConversation?.liveTask }
+        set { activeConversation?.liveTask = newValue }
+    }
+    var fallbackTask: Task<Void, Never>? {
+        get { activeConversation?.fallbackTask }
+        set { activeConversation?.fallbackTask = newValue }
+    }
     var sendTask: Task<Void, Never>?
     private var pendingSendID: String?
     private var pendingSendRpcId: String?
-    /// 发送状态：已确认（服务端受理、等待处理）/ 失败（可重发）。
-    private var ackedSendRpcIds: Set<String> = []
-    private var failedSendRpcIds: Set<String> = []
+    /// 发送状态（按会话隔离）：已确认（服务端受理、等待处理）/ 失败（可重发）。
+    private var ackedSendRpcIds: Set<String> {
+        get { activeConversation?.ackedRpcIds ?? [] }
+        set { activeConversation?.ackedRpcIds = newValue }
+    }
+    private var failedSendRpcIds: Set<String> {
+        get { activeConversation?.failedRpcIds ?? [] }
+        set { activeConversation?.failedRpcIds = newValue }
+    }
     private static let outboxDefaultsKey = "dsh-pocket.send-outbox"
     private var outboxEntries: [OutboxEntry] = []
     private var outboxLoaded = false
-    /// 请求会话页滚动到底部的次数（打开会话、历史/快照到达时递增，供视图监听）。
-    var scrollToBottomTick = 0
-    /// 最后一次收到实时帧的时间；用于检测 WebSocket 假死（隧道静默断开）。
-    var lastLiveFrameAt = Date()
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
-    private var conversationToken = UUID()
+    private var conversationToken: UUID {
+        get { activeConversation?.conversationToken ?? UUID() }
+        set { activeConversation?.conversationToken = newValue }
+    }
     /// turn 起止 seq：用于把"生成中排队发送"的用户消息排到该轮回复之后。
-    private var turnStarts: [Int] = []
-    private var turnEnds: [Int] = []
+    private var turnStarts: [Int] {
+        get { activeConversation?.turnStarts ?? [] }
+        set { activeConversation?.turnStarts = newValue }
+    }
+    private var turnEnds: [Int] {
+        get { activeConversation?.turnEnds ?? [] }
+        set { activeConversation?.turnEnds = newValue }
+    }
     private var cancelledDraft = ""
     private var cancelledImages: [PocketDraftImage] = []
 
@@ -251,11 +351,16 @@ final class ConnectionModel {
         liveTask?.cancel()
         fallbackTask?.cancel()
         liveTask = nil
+        for conversation in conversations.values {
+            conversation.liveTask?.cancel()
+            conversation.fallbackTask?.cancel()
+        }
+        conversations.removeAll()
+        activeConversation = nil
         selectedSession = nil
-        messages = []
         sessions = []
         archivedSessionIds = []
-        liveConnectionState = "未连接"
+        liveConnection = .idle
         isConnected = false
     }
 
@@ -296,7 +401,7 @@ final class ConnectionModel {
         navigationPath = []
         messages = []
         steps = []
-        liveConnectionState = "演示模式"
+        liveConnection = .demo
 #if DEBUG
         if let id = DebugLaunch.sessionId, let session = Self.demoSessionList.first(where: { $0.sessionId == id }) {
             navigationPath = [session]
@@ -310,16 +415,19 @@ final class ConnectionModel {
         isConnected = false
         selectedSession = nil
         navigationPath = []
-        messages = []
-        steps = []
+        conversations.removeAll()
+        activeConversation = nil
         sessions = []
         draftImages = []
-        liveConnectionState = "未连接"
+        liveConnection = .idle
     }
 
     @MainActor
     private func openDemo(_ session: PocketSession) {
         liveTask?.cancel()
+        let conversation = ConversationState(sessionId: session.sessionId)
+        conversations[session.sessionId] = conversation
+        activeConversation = conversation
         selectedSession = session
         messages = Self.demoMessages(for: session.sessionId)
         steps = Self.demoSteps(for: session.sessionId)
@@ -329,7 +437,7 @@ final class ConnectionModel {
         conversationError = nil
         draft = ""
         draftImages = []
-        liveConnectionState = "演示模式"
+        liveConnection = .demo
     }
 
     @MainActor
@@ -531,20 +639,40 @@ final class ConnectionModel {
     @MainActor
     func open(_ session: PocketSession) {
         if isDemoMode { openDemo(session); return }
-        if selectedSession?.sessionId == session.sessionId, liveTask != nil { return }
+        if selectedSession?.sessionId == session.sessionId,
+           liveTask != nil, activeConversation?.isFollowing == true { return }
+
+        // 切到独立会话实例：旧会话的任务取消，状态留存在 conversations 里，不再写入新会话。
+        if let current = activeConversation, current.sessionId != session.sessionId {
+            current.liveTask?.cancel()
+            current.fallbackTask?.cancel()
+        }
         liveTask?.cancel()
         fallbackTask?.cancel()
-        conversationToken = UUID()
-        turnStarts.removeAll()
-        turnEnds.removeAll()
+
+        let isNewConversation = conversations[session.sessionId] == nil
+        let conversation = conversations[session.sessionId] ?? ConversationState(sessionId: session.sessionId)
+        conversations[session.sessionId] = conversation
+        activeConversation = conversation
+        conversation.conversationToken = UUID()
+        conversation.turnStarts.removeAll()
+        conversation.turnEnds.removeAll()
+        conversation.isLoadingConversation = false
+        conversation.conversationError = nil
+        conversation.isTurnRunning = false
+        conversation.turnStartedAt = nil
+        if isNewConversation {
+            conversation.messages = []
+            conversation.steps = []
+        }
+
         selectedSession = session
-        liveConnectionState = "正在连接"
-        messages = []
-        steps = []
-        isTurnRunning = false
-        turnStartedAt = nil
-        conversationError = nil
-        messages = restoreOutboxPending(for: session)
+        liveConnection = .connecting
+        // 未确认消息重新挂到该会话（发件箱兜底）；已有 messages 的会话保留历史。
+        let outboxPending = restoreOutboxPending(for: session)
+        for pending in outboxPending where !conversation.messages.contains(where: { $0.rpcId == pending.rpcId }) {
+            conversation.messages.append(pending)
+        }
         recordDiagnostic("打开会话：\(session.displayTitle)")
         requestScrollToBottom()
         liveTask = Task { await loadConversation(session) }
@@ -561,7 +689,9 @@ final class ConnectionModel {
         let historyTask = Task { await self.loadHistory(session, token: token) }
         await follow(session)
         _ = await historyTask.value
-        if selectedSession?.sessionId == session.sessionId, isLoadingConversation {
+        if activeConversation?.sessionId == session.sessionId,
+           selectedSession?.sessionId == session.sessionId,
+           isLoadingConversation {
             isLoadingConversation = false
         }
     }
@@ -569,12 +699,15 @@ final class ConnectionModel {
     /// 实时流不可用（例如公网代理拒绝大帧）时，用 HTTP 分页轮询兜底，保证新消息仍能出现。
     @MainActor
     private func pollLiveFallback(_ session: PocketSession) async {
-        while !Task.isCancelled, selectedSession?.sessionId == session.sessionId {
+        while !Task.isCancelled,
+              activeConversation?.sessionId == session.sessionId,
+              selectedSession?.sessionId == session.sessionId {
             try? await Task.sleep(for: .seconds(5))
             if Task.isCancelled { break }
-            guard selectedSession?.sessionId == session.sessionId else { return }
+            guard activeConversation?.sessionId == session.sessionId,
+                  selectedSession?.sessionId == session.sessionId else { return }
             let stalled = isTurnRunning && Date().timeIntervalSince(lastLiveFrameAt) > 15
-            if liveConnectionState != "已连接" || stalled {
+            if !liveConnection.isConnected || stalled {
                 await loadHistory(session)
             }
         }
@@ -586,7 +719,8 @@ final class ConnectionModel {
             let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
             let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
             if let token, token != conversationToken { return }
-            guard selectedSession?.sessionId == session.sessionId else { return }
+            guard activeConversation?.sessionId == session.sessionId,
+                  selectedSession?.sessionId == session.sessionId else { return }
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
@@ -931,7 +1065,9 @@ final class ConnectionModel {
                 let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
                 let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
                 // await 期间可能已切换会话，返回后必须再校验，否则旧会话消息会串进当前会话。
-                guard !Task.isCancelled, selectedSession?.sessionId == session.sessionId else { return }
+                guard !Task.isCancelled,
+                      activeConversation?.sessionId == session.sessionId,
+                      selectedSession?.sessionId == session.sessionId else { return }
                 let records = page["records"] as? [[String: Any]] ?? []
                 let incoming = records.compactMap(PocketMessage.init(record:))
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
@@ -950,16 +1086,25 @@ final class ConnectionModel {
     @MainActor
     private func follow(_ session: PocketSession) async {
         if isDemoMode { return }
+        defer {
+            if activeConversation?.sessionId == session.sessionId {
+                activeConversation?.isFollowing = false
+            }
+        }
         guard let base = URL(string: serverAddress),
               let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
             recordDiagnostic("实时连接未启动：地址无效 \(serverAddress.debugDescription)")
             return
         }
+        activeConversation?.isFollowing = true
         var retryDelay: Duration = .seconds(1)
+        var retryCount = 0
         var receivedSnapshot = false
         var usedHistoryFallback = false
-        while !Task.isCancelled, selectedSession?.sessionId == session.sessionId {
-            liveConnectionState = "正在连接"
+        while !Task.isCancelled,
+              activeConversation?.sessionId == session.sessionId,
+              selectedSession?.sessionId == session.sessionId {
+            liveConnection = .connecting
             let socket = URLSession.shared.webSocketTask(with: socketURL)
             socket.resume()
             recordDiagnostic("实时连接：发起连接")
@@ -1027,7 +1172,7 @@ final class ConnectionModel {
                     }
                     let valueType = value["type"] as? String ?? "未知"
                     if valueType == "snapshot" { receivedSnapshot = true }
-                    liveConnectionState = "已连接"
+                    liveConnection = .connected
                     if conversationError?.hasPrefix("实时连接") == true { conversationError = nil }
                     retryDelay = .seconds(1)
                     pocketLogger.info("follow item valueType=\(valueType, privacy: .public) keys=\(value.keys.sorted().joined(separator: ","), privacy: .public)")
@@ -1037,7 +1182,7 @@ final class ConnectionModel {
             } catch {
                 socket.cancel(with: .goingAway, reason: nil)
                 guard !Task.isCancelled else { break }
-                liveConnectionState = "正在重连"
+                liveConnection = .reconnecting(attempt: retryCount)
                 if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
                 conversationError = "实时连接中断，正在重连：\(error.localizedDescription)"
                 recordDiagnostic("实时连接中断，\(Int(retryDelay.components.seconds)) 秒后重试：\(error.localizedDescription)")
@@ -1048,14 +1193,17 @@ final class ConnectionModel {
                 }
                 do { try await Task.sleep(for: retryDelay) } catch { break }
                 retryDelay = min(retryDelay * 2, .seconds(15))
+                retryCount += 1
             }
         }
-        if selectedSession?.sessionId == session.sessionId { liveConnectionState = "已断开" }
+        if selectedSession?.sessionId == session.sessionId { liveConnection = .disconnected(reason: nil) }
     }
 
     @MainActor
     private func acceptLive(_ value: [String: Any], sessionId: String) {
-        guard selectedSession?.sessionId == sessionId else { return }
+        // 结构隔离：只接受"当前激活会话"的帧，旧会话迟到帧直接丢弃。
+        guard activeConversation?.sessionId == sessionId,
+              selectedSession?.sessionId == sessionId else { return }
         lastLiveFrameAt = Date()
         if value["type"] as? String == "snapshot" {
             let records = value["records"] as? [[String: Any]] ?? []
@@ -1162,6 +1310,17 @@ final class ConnectionModel {
         isSending = false
         conversationError = nil
         recordDiagnostic("已取消发送")
+    }
+
+    /// 手动重连实时流（状态机断开时 UI 上的"重连"按钮）。
+    @MainActor
+    func manualReconnect() {
+        guard let session = selectedSession, !isDemoMode else { return }
+        liveTask?.cancel()
+        fallbackTask?.cancel()
+        liveConnection = .connecting
+        recordDiagnostic("手动重连实时流")
+        liveTask = Task { await loadConversation(session) }
     }
 
     /// 停止当前这一轮生成（消息已发出、正在等回复时使用）。
@@ -1854,8 +2013,12 @@ struct ConversationView: View {
                     Text("演示模式 · 示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                 } else {
-                    Circle().fill(model.liveConnectionState == "已连接" ? .green : .orange).frame(width: 7, height: 7)
-                    Text("实时连接：\(model.liveConnectionState)").font(.caption).foregroundStyle(.secondary)
+                    Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 7, height: 7)
+                    Text("实时连接：\(model.liveConnection.label)").font(.caption).foregroundStyle(.secondary)
+                    if model.liveConnection.isDisconnected {
+                        Button("重连") { model.manualReconnect() }
+                            .font(.caption2.weight(.semibold))
+                    }
                     Spacer()
                     if model.isTurnRunning {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -2095,6 +2258,15 @@ struct ConversationView: View {
     }
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
+
+    private static func liveStateColor(_ state: ConnectionModel.LiveConnectionState) -> Color {
+        switch state {
+        case .connected: return .green
+        case .connecting, .reconnecting: return .orange
+        case .disconnected: return .red
+        case .idle, .demo: return .gray
+        }
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
         // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。

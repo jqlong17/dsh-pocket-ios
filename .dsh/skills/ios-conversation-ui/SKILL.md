@@ -96,7 +96,21 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - `pollLiveFallback` 每 5 秒检查：只要"未连接"或"生成中且 15 秒无帧"，就用 `session/page` HTTP 兜底拉一次；
 - 空闲（无生成）时不做 25 秒超时，避免空会话反复重连。
 
+## 连接状态机
+
+- `ConnectionModel.LiveConnectionState`：`idle / demo / connecting / connected / reconnecting(attempt) / disconnected(reason)`；
+- UI：状态点颜色（绿/橙/红/灰）+ 文案；`disconnected` 时显示「重连」按钮 → `manualReconnect()`；
+- `follow` 维护重连次数并写入状态；生成中无帧 25s 看门狗仍保留；轮询兜底判断 `!liveConnection.isConnected`。
+
 ## 会话切换与异步隔离（防串台）
+
+**结构级隔离（2026-11-09 重构）**：每个会话一个 `ConversationState` 实例（messages/steps/turn/
+scrollTick/liveTask/token/turnSeqs/发送状态），`ConnectionModel` 只保留 `activeConversation` 与
+`conversations[sessionId]` 字典，会话级属性全部转发到 active 实例。切换会话即切换实例：
+旧会话数据不会出现在新会话；迟到帧/迟到 await 结果通过 `activeConversation?.sessionId` 校验丢弃。
+`ConversationState.isFollowing` 用于判断"实时流是否真的在跑"，避免返回会话时 `liveTask != nil`
+但已结束导致不再重连。
+
 
 **现象**：点进某个会话，偶尔显示其他会话的消息内容。
 
