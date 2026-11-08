@@ -185,6 +185,7 @@ final class ConnectionModel {
     @MainActor
     func restoreConnection() async {
 #if DEBUG
+        if DebugLaunch.showConnect { return }
         if let server = DebugLaunch.server {
             serverAddress = server
             if let pin = DebugLaunch.pin { self.pin = pin }
@@ -218,14 +219,16 @@ final class ConnectionModel {
     }
 
     @MainActor
-    func loadSessions() async {
+    func loadSessions(silently: Bool = false) async {
         guard !isLoadingSessions else { return }
-        isLoadingSessions = true
+        if !silently { isLoadingSessions = true }
         defer { isLoadingSessions = false }
         do {
             sessions = try await fetchSessions()
+            recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
             errorMessage = "无法读取会话：\(error.localizedDescription)"
+            recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
         }
     }
 
@@ -233,12 +236,16 @@ final class ConnectionModel {
         let value = try await rpc("session/list", args: ["_request": ["excludeArchived": true]])
         let items = value["items"] as? [[String: Any]] ?? []
         let sessions = items.compactMap(PocketSession.init(json:))
+        let archived: Set<String>
         if value["archivedSessionsExcluded"] as? Bool == true {
-            archivedSessionIds = []
-            return sessions
+            archived = []
+        } else {
+            archived = try await fetchArchivedSessionIds()
         }
-        archivedSessionIds = try await fetchArchivedSessionIds()
-        return sessions.filter { !archivedSessionIds.contains($0.sessionId) }
+        archivedSessionIds = archived
+        // 与 DSH 桌面端侧边栏保持一致：隐藏已归档、subagent 子会话和空会话，
+        // 这样 iOS 列表数量和 Mac 端看到的数量一致。
+        return sessions.filter { !archived.contains($0.sessionId) && !$0.isSubagent && !$0.isHiddenFromList }
     }
 
     private func fetchArchivedSessionIds() async throws -> Set<String> {
@@ -571,15 +578,19 @@ struct PocketSession: Identifiable, Hashable {
     let blank: Bool
     let title: String?
     let cwd: String?
+    let origin: String?
+    let parentSessionId: String?
     var id: String { sessionId }
 
-    init(sessionId: String, updatedAt: TimeInterval, running: Bool, blank: Bool, title: String? = nil, cwd: String? = nil) {
+    init(sessionId: String, updatedAt: TimeInterval, running: Bool, blank: Bool, title: String? = nil, cwd: String? = nil, origin: String? = nil, parentSessionId: String? = nil) {
         self.sessionId = sessionId
         self.updatedAt = updatedAt
         self.running = running
         self.blank = blank
         self.title = title
         self.cwd = cwd
+        self.origin = origin
+        self.parentSessionId = parentSessionId
     }
 
     init?(json: [String: Any]) {
@@ -589,8 +600,13 @@ struct PocketSession: Identifiable, Hashable {
         let title = values?["title"] as? String
         self.init(sessionId: id, updatedAt: json["updatedAt"] as? TimeInterval ?? 0,
                   running: json["running"] as? Bool ?? false, blank: json["blank"] as? Bool ?? false,
-                  title: title, cwd: json["cwd"] as? String)
+                  title: title, cwd: json["cwd"] as? String,
+                  origin: json["origin"] as? String, parentSessionId: json["parentSessionId"] as? String)
     }
+
+    /// DSH 桌面端侧边栏不显示 subagent 子会话和空会话，iOS 保持同样的可见性规则。
+    var isSubagent: Bool { origin == "subagent" || parentSessionId != nil }
+    var isHiddenFromList: Bool { blank || (title?.isEmpty ?? true) }
 
     var displayTitle: String {
         if let title, !title.isEmpty { return title }
@@ -719,6 +735,7 @@ enum DebugLaunch {
     static var pin: String? { environment["DSH_PIN"] ?? value(for: "--dsh-pin") }
     static var sessionId: String? { environment["DSH_OPEN"] ?? value(for: "--dsh-open") }
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
+    static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
 
     /// 模拟器用 `SIMCTL_CHILD_DSH_SERVER`，真机用 `DEVICECTL_CHILD_DSH_SERVER`，
     /// 由 simctl / devicectl 去掉前缀后注入进程环境。
@@ -734,6 +751,7 @@ enum DebugLaunch {
 
 struct RootView: View {
     @Bindable var model: ConnectionModel
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         NavigationStack {
             Group {
@@ -748,6 +766,11 @@ struct RootView: View {
         }
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
         .task { await model.restoreConnection() }
+        .onChange(of: scenePhase) { _, phase in
+            // 回到前台时静默刷新列表：在电脑上归档的会话会同步消失，不用手动下拉。
+            guard phase == .active, model.isConnected else { return }
+            Task { await model.loadSessions(silently: true) }
+        }
     }
 }
 
@@ -867,7 +890,7 @@ struct ConnectedView: View {
         .navigationTitle("会话")
         .navigationDestination(item: Binding(get: { model.selectedSession }, set: { if $0 == nil { model.selectedSession = nil } })) { _ in ConversationView(model: model) }
         .task {
-            if model.sessions.isEmpty { await model.loadSessions() }
+            await model.loadSessions(silently: !model.sessions.isEmpty)
 #if DEBUG
             if !didAutoOpen, let id = DebugLaunch.sessionId,
                let session = model.sessions.first(where: { $0.sessionId == id }) {

@@ -1,29 +1,124 @@
 # DSH Pocket iOS
 
-A native SwiftUI client for connecting to a computer running DeepSeek Harness with the `dsh-pocket` plugin.
+把 **DeepSeek Harness** 装进口袋 —— 一个原生 SwiftUI 的 iOS 客户端。
 
-## Current status
+> 本项目是 [shaobeichen/dsh-pocket](https://github.com/shaobeichen/dsh-pocket) 的 **iOS 原生版本**。
+> dsh-pocket 让手机通过浏览器访问电脑上的 DeepSeek Harness；我们沿用它的连接协议与思路，
+> 用 SwiftUI 重写了移动端体验：手机可以通过**局域网**或**公网隧道**连回自己的电脑，
+> 查看会话、收发消息，随时继续电脑上的 AI 编程。
 
-- Native SwiftUI connection screen
-- Server URL and secure PIN entry
-- PIN submission to the Pocket `/pocket-login` endpoint (302 + cookie = success, 200 login page = wrong PIN)
-- Session cookies handled by `URLSession`
-- Native session list with refresh, new-session actions, and archived-session exclusion
-- Conversation history and live event updates over `session/follow` (verified: replies appear in ~1s)
-- Block-based message rendering: line breaks preserved, lists/code blocks/headings formatted
-- Native QR scanning for Pocket connection URLs
+<p align="center">
+  <img src="docs/screenshots/list.png" width="260" alt="会话列表">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/chat.png" width="260" alt="对话详情">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/connect.png" width="260" alt="连接电脑上的 DSH">
+</p>
 
-See [HANDOFF.md](./HANDOFF.md) for architecture notes, root causes fixed in the last pass, device
-build commands, and Debug-only self-test hooks (`DSH_SERVER` / `DSH_PIN` / `DSH_OPEN` / `DSH_SEND`).
+<p align="center"><sub>会话列表 · 对话详情 · 连接电脑上的 DSH</sub></p>
 
-## Build
+## 这是什么
 
-Open `DSHPocket.xcodeproj` in Xcode, select an iPhone simulator, and run the `DSHPocket` scheme. The project currently targets iOS 17.0 and newer.
+DSH Pocket iOS 让你用 iPhone 直接操作电脑里的 **DeepSeek Harness（DSH）**：
 
-For LAN testing, use the Pocket LAN URL shown in DSH settings, usually `http://<computer-ip>:3081`. Public tunnel URLs use HTTPS.
+- 电脑上跑项目、跑测试，手机上看进度、发指令、收结果；
+- 通勤、外出、躺在床上，AI 都在继续干活；
+- 和电脑端共享同一份会话与历史，消息**约 1 秒**内实时出现；
+- 会话列表的可见性与 DSH 桌面端一致：已归档、subagent 子会话、空会话都不会显示。
 
-## Current limitations
+它不是网页套壳，而是原生 SwiftUI App：原生导航、系统键盘与安全区、可复制的诊断记录。
 
-- Messages currently render text blocks only; tool activity, images, approvals, and other rich content are not surfaced.
-- The server address is remembered, but the PIN is not stored in Keychain. Existing URL session cookies restore a valid login when the server keeps them active.
-- Newer DSH builds filter archived sessions in `session/list`. Older builds require a workspace snapshot fallback, so their archived session summaries still cross the network before iOS hides them.
+## 功能
+
+- 🔌 **两种连接方式**：局域网 `http://<电脑IP>:3081`，或 dsh-pocket 生成的公网隧道（HTTPS）；支持扫二维码直接填入地址。
+- 🔑 **PIN 登录**：走 dsh-pocket 的 `/pocket-login` 协议；登录态用 cookie 保持，**PIN 不会保存在手机上**。登录失效时回到连接页，重新输入即可。
+- 📋 **会话列表**：与桌面端同样的可见性规则，下拉或回到前台自动刷新。
+- 💬 **历史 + 实时**：进入会话直接定位到底部（无滚动动画），历史快照之后由 `session/follow` WebSocket 实时推送增量消息。
+- ✍️ **发送消息**：本地即时回显 → 服务端确认 → 实时/轮询收到回复；失败自动恢复输入。
+- 📝 **Markdown 渲染**：保留换行，列表、代码块、标题、加粗、行内代码都能正确显示。
+- 🔁 **断线重连**：实时流中断后指数退避重连，会话页顶部显示连接状态。
+- 🩺 **诊断**：会话页可一键复制连接、收帧、渲染的时间线，便于排查问题。
+
+## 工作原理
+
+依赖电脑端已安装并启用 [`dsh-pocket`](https://github.com/shaobeichen/dsh-pocket) 插件（它把 DSH 暴露到 `:3081`）。
+
+| 环节 | 实现 |
+| --- | --- |
+| 登录 | `POST /pocket-login`（表单 `token=<PIN>`）。正确 → `302` + `dsh_pocket_token` cookie；错误 → `200` 登录页 |
+| 会话列表 | `POST /api/session/list`，`type: "client-request"` RPC |
+| 历史分页 | `POST /api/session/page`，取 `records` |
+| 实时消息 | `WebSocket /api/remote.mux`，`open` 一个 `session/follow` 流；帧为 `{type:"item", streamId, value}`，`value` 是 `snapshot` 或 `event` |
+| 归档状态 | `workspace/follow` 首帧 baseline 的 `archivedSessionIds`（旧版服务端回退路径） |
+| 发送 | `POST /api/session/prompt` |
+
+> 一个容易踩的坑：`URLComponents.url` 在 path 不以 `/` 开头时会返回 `nil`，而 `appendingPathComponent("api/remote.mux")` 对空 path 恰好拼出 `"api/remote.mux"`——曾导致实时流静默不启动。代码里已用 `webSocketURL(from:path:)` 显式补斜杠。
+
+## 环境要求
+
+- iPhone，iOS 17.0+
+- 电脑上运行 DeepSeek Harness，并安装启用 `dsh-pocket` 插件
+- 构建：Xcode（Swift 5.9+），已在本机 iPhone 17 Pro / iOS 26.3 真机验证
+
+## 构建与运行
+
+1. 用 Xcode 打开 `DSHPocket.xcodeproj`；
+2. 在 Signing & Capabilities 里选择你自己的 Team，并按需修改 Bundle Identifier；
+3. 选择已连接的 iPhone 运行。
+
+命令行构建（真机）：
+
+```bash
+xcodebuild -project DSHPocket.xcodeproj -scheme DSHPocket -configuration Debug \
+  -destination 'id=<你的设备 UDID>' \
+  -derivedDataPath /tmp/dsh-pocket-ios-derived \
+  DEVELOPMENT_TEAM=<你的 Team ID> CODE_SIGN_STYLE=Automatic build
+```
+
+## 自测入口（仅 Debug）
+
+Debug 构建支持通过环境变量自动连接，方便在模拟器/真机上做回归：
+
+```bash
+SIMCTL_CHILD_DSH_SERVER='http://192.168.1.10:3081' \
+SIMCTL_CHILD_DSH_PIN='<PIN>' \
+SIMCTL_CHILD_DSH_OPEN='session-xxxx' \
+SIMCTL_CHILD_DSH_SEND='你好' \
+xcrun simctl launch --terminate-running-process <UDID> com.ruska.dsh-pocket-ios
+```
+
+- `DSH_SERVER` / `DSH_PIN`：自动登录
+- `DSH_OPEN`：连接后自动打开指定会话
+- `DSH_SEND`：进入会话后自动发送一条消息
+- `DSH_CONNECT=1`：停留在连接页（用于截图/排查）
+
+诊断记录同时写入沙盒 `Documents/diagnostics.log`，真机可用 `xcrun devicectl device copy from` 拉取。
+
+## 项目结构
+
+```
+DSHPocket/
+└── DSHPocketApp.swift    # 连接模型、RPC/WebSocket、消息解析、全部视图（SwiftUI）
+DSHPocket.xcodeproj       # Xcode 工程
+Info.plist                # 本地网络权限、ATS 局域网例外
+docs/screenshots/         # README 截图
+HANDOFF.md                # 开发交接文档（协议细节、根因记录、构建命令）
+```
+
+## 已知限制
+
+- 目前只渲染文本消息块；图片、工具执行状态、审批等富内容尚未接入。
+- 不保存 PIN；服务器重启导致 cookie 失效时需要重新输入 PIN。
+- 旧版 DSH 桌面端不支持 `session/list` 的 `excludeArchived` 参数，iOS 会回退到 `workspace/follow` 拉取归档列表再本地过滤。
+
+## 版本
+
+当前版本 **0.0.1**（首个公开版本）。
+
+## 致谢与许可
+
+- 协议与灵感来自 [shaobeichen/dsh-pocket](https://github.com/shaobeichen/dsh-pocket)（GPL-2.0）；
+- 上游 DSH 为 [DeepSeek Harness](https://github.com/deepseek-ai)；
+- 本项目以 **GPL-2.0** 发布，见 [LICENSE](LICENSE)。
+
+本项目为非官方客户端，与 DeepSeek Harness、dsh-pocket 的维护者无隶属关系。
