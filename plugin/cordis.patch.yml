@@ -1,0 +1,6 @@
+# dsh-pocket-ios bundle patch
+# 只插入自己的插件行；dsh-pocket 通过 package.json 的 dependencies 一起安装。
+# 若用户还没有 dsh-pocket 的 bundle 行，请执行：dsh plugin add dsh-pocket dsh-pocket-ios
+- insert:
+    - id: dsh-pocket-ios
+      name: dsh-pocket-ios

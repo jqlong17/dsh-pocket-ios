@@ -118,6 +118,17 @@ docs/screenshots/         # README 截图
 HANDOFF.md                # 开发交接文档（协议细节、根因记录、构建命令）
 ```
 
+## 配套 DSH 插件（可选）
+
+仓库里的 [`plugin/`](plugin/) 是一个 DSH 插件 `dsh-pocket-ios`：在 **设置 → 手机访问** 里加入 iOS
+客户端下载二维码与连接引导，并依赖 `dsh-pocket`（一条命令装齐电脑端）。
+
+```bash
+dsh plugin add dsh-pocket dsh-pocket-ios
+```
+
+详见 [plugin/README.md](plugin/README.md)。
+
 ## 已知限制
 
 - 文本与图片已支持；工具执行细节以折叠的"过程"行呈现，审批卡片等更复杂的富内容尚未接入。
