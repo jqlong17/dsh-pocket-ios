@@ -272,6 +272,11 @@ final class ConnectionModel {
         messages = []
         steps = []
         liveConnectionState = "演示模式"
+#if DEBUG
+        if let id = DebugLaunch.sessionId, let session = Self.demoSessionList.first(where: { $0.sessionId == id }) {
+            navigationPath = [session]
+        }
+#endif
     }
 
     @MainActor
@@ -365,7 +370,15 @@ final class ConnectionModel {
                 这样可以避免上下文重复注入，也方便以后按模型做裁剪。
                 """, isUser: false, sequence: 2),
                 PocketMessage(demoText: "先把第一步做掉，改完给我 diff。", isUser: true, sequence: 3),
-                PocketMessage(demoText: "已完成 `context/system.ts`、`context/workspace.ts`、`context/history.ts` 三个 builder，并保留了旧入口做兼容。diff 在右侧文件面板。", isUser: false, sequence: 4)
+                PocketMessage(demoText: """
+                已完成三个 builder，保留了旧入口做兼容：
+
+                | 文件 | 改动 | 状态 |
+                | --- | --- | --- |
+                | context/system.ts | 新增 builder | ✓ |
+                | context/workspace.ts | 新增 builder | ✓ |
+                | context/history.ts | 新增 builder | ✓ |
+                """, isUser: false, sequence: 4)
             ]
         }
     }
@@ -1424,6 +1437,7 @@ struct MarkdownBody: View {
         case bullet(String)
         case numbered(String, String)
         case code(String)
+        case table(headers: [String], rows: [[String]])
     }
 
     var body: some View {
@@ -1431,7 +1445,6 @@ struct MarkdownBody: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let value):
-                    // `inlineOnlyPreservingWhitespace` 保留原始换行，避免多行回复被挤成一段。
                     Text(inline(value)).font(.body).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
                 case .heading(let value):
                     Text(inline(value)).font(.headline).fixedSize(horizontal: false, vertical: true)
@@ -1454,9 +1467,46 @@ struct MarkdownBody: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                case .table(let headers, let rows):
+                    table(headers: headers, rows: rows)
                 }
             }
         }
+    }
+
+    /// GFM 表格：横向可滚动，表头加底色，行间细分隔线，隔行浅色。
+    private func table(headers: [String], rows: [[String]]) -> some View {
+        let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(0..<columnCount, id: \.self) { column in
+                        Text(inline(headers.indices.contains(column) ? headers[column] : ""))
+                            .font(.footnote.weight(.semibold))
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 88, alignment: .leading)
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                    }
+                }
+                .background(Color.primary.opacity(0.07))
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    Divider().opacity(0.5)
+                    HStack(spacing: 0) {
+                        ForEach(0..<columnCount, id: \.self) { column in
+                            Text(inline(row.indices.contains(column) ? row[column] : ""))
+                                .font(.footnote)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(minWidth: 88, alignment: .leading)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                        }
+                    }
+                    .background(index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func inline(_ value: String) -> AttributedString {
@@ -1464,12 +1514,14 @@ struct MarkdownBody: View {
             ?? AttributedString(value)
     }
 
-    /// 按空行/列表/代码块切段。段内保留逐行换行，这是"多行回复能正常换行"的关键。
+    /// 按空行/列表/代码块/表格切段。段内保留逐行换行，这是"多行回复能正常换行"的关键。
     private var blocks: [Block] {
         var result: [Block] = []
         var paragraph: [String] = []
         var codeLines: [String] = []
         var insideCode = false
+        let lines = text.components(separatedBy: "\n")
+        var index = 0
 
         func flushParagraph() {
             guard !paragraph.isEmpty else { return }
@@ -1477,7 +1529,8 @@ struct MarkdownBody: View {
             paragraph.removeAll()
         }
 
-        for rawLine in text.components(separatedBy: "\n") {
+        while index < lines.count {
+            let rawLine = lines[index]
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("```") {
                 if insideCode {
@@ -1488,14 +1541,33 @@ struct MarkdownBody: View {
                     flushParagraph()
                     insideCode = true
                 }
+                index += 1
                 continue
             }
             if insideCode {
                 codeLines.append(rawLine)
+                index += 1
                 continue
             }
             if line.isEmpty {
                 flushParagraph()
+                index += 1
+                continue
+            }
+            if line.contains("|"), index + 1 < lines.count, Self.isTableSeparator(lines[index + 1]) {
+                flushParagraph()
+                let headers = Self.tableCells(rawLine)
+                var rows: [[String]] = []
+                var cursor = index + 2
+                while cursor < lines.count {
+                    let candidate = lines[cursor]
+                    let trimmed = candidate.trimmingCharacters(in: .whitespaces)
+                    if trimmed.isEmpty || !candidate.contains("|") { break }
+                    rows.append(Self.tableCells(candidate))
+                    cursor += 1
+                }
+                result.append(.table(headers: headers, rows: rows))
+                index = cursor
                 continue
             }
             if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("+ ") {
@@ -1511,10 +1583,27 @@ struct MarkdownBody: View {
             } else {
                 paragraph.append(line)
             }
+            index += 1
         }
         if insideCode { result.append(.code(codeLines.joined(separator: "\n"))) }
         flushParagraph()
         return result
+    }
+
+    private static func tableCells(_ line: String) -> [String] {
+        var value = line.trimmingCharacters(in: .whitespaces)
+        if value.hasPrefix("|") { value.removeFirst() }
+        if value.hasSuffix("|") { value.removeLast() }
+        return value.split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func isTableSeparator(_ line: String) -> Bool {
+        let cells = tableCells(line)
+        guard cells.count >= 2 else { return false }
+        return cells.allSatisfy { cell in
+            cell.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil
+        }
     }
 }
 
