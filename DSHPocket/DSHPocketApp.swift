@@ -28,6 +28,8 @@ struct DSHPocketApp: App {
 @Observable
 final class ConnectionModel {
     private static let savedServerAddressKey = "dsh-pocket.server-address"
+    /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
+    private static let conversationMessageLimit = 30
     var serverAddress = UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
     var pin = ""
     var isConnecting = false
@@ -52,6 +54,7 @@ final class ConnectionModel {
     var liveConnectionState = "未连接"
     var liveDiagnosticHistory: [String] = []
     var liveTask: Task<Void, Never>?
+    var fallbackTask: Task<Void, Never>?
 
     @MainActor
     func recordDiagnostic(_ message: String) {
@@ -221,6 +224,7 @@ final class ConnectionModel {
     func disconnect() {
         if isDemoMode { exitDemoMode(); return }
         liveTask?.cancel()
+        fallbackTask?.cancel()
         liveTask = nil
         selectedSession = nil
         messages = []
@@ -476,6 +480,7 @@ final class ConnectionModel {
         if isDemoMode { openDemo(session); return }
         if selectedSession?.sessionId == session.sessionId, liveTask != nil { return }
         liveTask?.cancel()
+        fallbackTask?.cancel()
         selectedSession = session
         liveConnectionState = "正在连接"
         messages = []
@@ -490,9 +495,28 @@ final class ConnectionModel {
     @MainActor
     private func loadConversation(_ session: PocketSession) async {
         isLoadingConversation = true
+        // 历史上限走 HTTP 分页：公网隧道可能限制 WebSocket 单帧大小，
+        // 不能只依赖 follow 的首帧快照。
+        fallbackTask?.cancel()
+        fallbackTask = Task { await pollLiveFallback(session) }
+        let historyTask = Task { await self.loadHistory(session) }
         await follow(session)
+        _ = await historyTask.value
         if selectedSession?.sessionId == session.sessionId, isLoadingConversation {
             isLoadingConversation = false
+        }
+    }
+
+    /// 实时流不可用（例如公网代理拒绝大帧）时，用 HTTP 分页轮询兜底，保证新消息仍能出现。
+    @MainActor
+    private func pollLiveFallback(_ session: PocketSession) async {
+        while !Task.isCancelled, selectedSession?.sessionId == session.sessionId {
+            try? await Task.sleep(for: .seconds(5))
+            if Task.isCancelled { break }
+            guard selectedSession?.sessionId == session.sessionId else { return }
+            if liveConnectionState != "已连接" {
+                await loadHistory(session)
+            }
         }
     }
 
@@ -500,7 +524,7 @@ final class ConnectionModel {
     private func loadHistory(_ session: PocketSession) async {
         do {
             let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
-            let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": 100]])
+            let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
             guard selectedSession?.sessionId == session.sessionId else { return }
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
@@ -668,7 +692,7 @@ final class ConnectionModel {
             }
             do {
                 let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
-                let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": 100]])
+                let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
                 let records = page["records"] as? [[String: Any]] ?? []
                 let incoming = records.compactMap(PocketMessage.init(record:))
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
@@ -702,7 +726,7 @@ final class ConnectionModel {
             recordDiagnostic("实时连接：发起连接")
             pocketLogger.info("follow connecting session=\(session.sessionId, privacy: .public) url=\(socketURL.absoluteString, privacy: .private)")
             let streamId = UUID().uuidString
-            let open = StreamOpen(type: "open", streamId: streamId, endpoint: "session/follow", payload: ["args": ["request": ["address": ["kind": "session", "sessionId": session.sessionId], "maxMessages": 100]]])
+            let open = StreamOpen(type: "open", streamId: streamId, endpoint: "session/follow", payload: ["args": ["request": ["address": ["kind": "session", "sessionId": session.sessionId], "maxMessages": Self.conversationMessageLimit]]])
             do {
                 let data = try JSONEncoder().encode(open)
                 guard let text = String(data: data, encoding: .utf8) else { throw ConnectionError.invalidPayload }
@@ -1534,7 +1558,10 @@ struct ConversationView: View {
                                 }.id(entry.id)
                             }
                         }
-                    }.padding()
+                    }
+                    .padding()
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
@@ -1631,6 +1658,8 @@ struct ConversationView: View {
                     }
                 }.disabled(model.isSending || !canSend).accessibilityLabel("发送消息")
             }.padding(.horizontal).padding(.vertical, 10)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
         }
         .background(.background)
     }
