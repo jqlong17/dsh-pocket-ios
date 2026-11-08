@@ -49,7 +49,7 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 1. **用 `VStack` 而不是 `LazyVStack`**。MarkdownUI/图片/表格行高是动态的，LazyVStack 会缓存旧高度导致行重叠。会话窗口只有 30 条消息，全量布局开销可忽略。
 2. **不要在纵向消息列表里嵌套横向 `ScrollView`**（例如给宽表格做横向滚动）。iOS 26 上会出现"表格被缩放/叠到别的消息上"的错位绘制。宽表格宁可让它自适应换行。
 3. **行高变化时不要用带动画的 scrollTo**：`proxy.scrollTo(id, anchor: .bottom)` 直接调用，不要包 `withAnimation`。
-4. **动态行内不要用 `.textSelection(.enabled)`**：文本选择层与动态行高组合会放大错位绘制。
+4. **`.textSelection(.enabled)` 是有意保留的**（为了复制部分文字）：它曾与错位问题一起出现，但真正根因是上面的容器/嵌套滚动。如果以后又出现气泡重叠，再考虑去掉它作为排查手段。
 5. 修改后再排查重叠，先确认真机跑的是新进程：`devicectl install` 不会重启 App，要 `terminate` 后重新 `launch`（或让用户手动强制退出）。曾有多次"改了没效果"其实是旧进程。
 
 排查顺序（由外到内）：容器（VStack/LazyVStack）→ 嵌套滚动 → 动画/选择层 → 单行内容（Markdown/表格/图片）。
@@ -65,6 +65,13 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - 缩略图 `AttachmentThumbnail`（150pt 圆角 14）；点击全屏 `FullscreenImageViewer`：黑底、捏合/双击缩放、关闭、分享、保存到相册。
 - 上传图发送时本地先显示 `localImages` 缩略图，同样可点开全屏。
 - 保存失败（权限被拒）用底部 toast 提示。
+
+## 文本选择与复制
+
+- **部分复制**：消息气泡的 Markdown 视图开启 `.textSelection(.enabled)`，长按文字出现系统选择手柄后可复制任意片段。
+- **整条复制**：`MessageRow` 外层加 `.contextMenu`，长按气泡弹出「复制整条消息」，写入 `UIPasteboard`（原始 Markdown 文本）。
+- 图片不参与复制（需要时走全屏预览里的保存/分享）。
+- 长按行为的优先级：文本选择与 contextMenu 可能冲突；若用户反馈长按选不中文字，优先保证选择，把整条复制改成别处入口（例如消息左侧菜单）。
 
 ## 键盘与输入
 
