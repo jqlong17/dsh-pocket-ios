@@ -1703,13 +1703,6 @@ struct ConversationView: View {
         .navigationTitle(model.currentConversationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("收起") { composerFocused = false }
-                    .font(.footnote.weight(.semibold))
-            }
-        }
-        .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { UIPasteboard.general.string = model.diagnosticReport() } label: { Image(systemName: "doc.on.doc") }
                     .accessibilityLabel("复制诊断记录")
