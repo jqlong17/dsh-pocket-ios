@@ -11,7 +11,7 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 
 | 能力 | 用的组件 | 备注 |
 | --- | --- | --- |
-| Markdown 渲染（GFM：表格/列表/任务列表/代码块/引用） | **MarkdownUI**（SPM，`gonzalezreal/swift-markdown-ui`，锁 `upToNextMajor 2.4.1`） | 不要自研解析器；`Package.resolved` 已提交 |
+| Markdown 渲染（GFM：表格/列表/任务列表/代码块/引用） | **Textual**（SPM，`gonzalezreal/textual`，锁 `from 0.1.0`） | MarkdownUI 的继任者；**原生跨视图文本选择**；要求 iOS 18+；`Package.resolved` 已提交 |
 | 图片选择 / 拍照 | 系统 `PhotosPicker` + `UIImagePickerController` | 权限文案在 Info.plist |
 | 图片保存 | `PHPhotoLibrary` + `NSPhotoLibraryAddUsageDescription` | |
 | 分享 | 系统 `ShareLink` | |
@@ -29,16 +29,15 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - 整体列宽：`maxWidth: 720` 居中，适配 iPad（iPhone 上自然铺满）。
 - 不要给气泡再加内层背景；Markdown 主题自带背景会叠出"白底套灰泡"。
 
-## Markdown 主题（`.chat`）
+## Markdown 渲染（Textual）
 
-`MarkdownBody` 使用自定义主题 `Theme.chat`（基于 `.basic` 派生，见 `DSHPocketApp.swift`）：
+`MarkdownBody` 使用 `StructuredText(markdown:)` + `.textual.textSelection(.enabled)` + `.textual.structuredTextStyle(.gitHub)`，标题用自定义 `ChatHeadingStyle`。
 
-- **不要用 `.gitHub` 主题**：它会给内容块加背景色，叠在气泡上出现内嵌白底。
-- 标题（以 iOS 根字号 17pt 计）：H1 22 / H2 19 / H3 17 / H4 15 / H5 14 / H6 12，半粗；
-  标题上边距约 0.6–0.9em、下边距 0.2–0.35em（比 basic 更紧凑）。
-- 段落：下边距 0.7em、行距 0.12em。
-- 代码块：自定义 `.markdownBlockStyle(\.codeBlock)`，等宽 0.88em、内边距 10、`primary.opacity(0.06)` 圆角底、横向滚动。
-- 表格：默认 MarkdownUI 布局（SwiftUI `Grid`，内容自适应换行），**不要**在消息列表里给表格套横向 `ScrollView`（见"布局稳定性"）。
+- **为什么从 MarkdownUI 迁移**：MarkdownUI 的已知限制（[issue #264](https://github.com/gonzalezreal/swift-markdown-ui/issues/264)）——每个段落/块是独立 `Text`，只能按段落选中，无法跨行选择。作者的新库 Textual 用 SwiftUI Text 管线重生，支持跨视图选择。
+- **部署目标因此升到 iOS 18**（Textual 所有版本都要求 iOS 18；iOS 18 与 17 支持相同机型，代价可接受）。不要再降回 17，除非放弃 Textual。
+- 表格：`.gitHub` 风格自带边框，列多时会压缩换行（与 MarkdownUI 类似），**仍不要**在消息列表里套横向滚动。
+- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.3, 1.12, 1.0, 0.88, 0.8, 0.7]`；若觉得默认偏大，改这个数组。
+- 代码块由 Textual 内置语法高亮，样式通过 `structuredTextStyle` 控制，不要自己写高亮。
 
 ## 布局稳定性（重点，血泪经验）
 
@@ -68,7 +67,7 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 
 ## 文本选择与复制
 
-- **部分复制**：消息气泡的 Markdown 视图开启 `.textSelection(.enabled)`，长按文字出现系统选择手柄后可复制任意片段。
+- **部分/跨行复制**：Textual 的 `.textual.textSelection(.enabled)` 支持**跨段落/跨块**选择（这是迁移的核心理由）。长按文字出现选择手柄，可跨行、跨列表选中后复制。
 - **整条复制**：消息头部（"DSH/你"旁边）的小图标按钮，点击把整条 Markdown 写入 `UIPasteboard`。
 - **不要给整行加 `.contextMenu`**：它会拦截长按，导致文本选择无法触发（踩过）。整条复制放头部按钮，长按留给文本选择。
 - 图片不参与复制（需要时走全屏预览里的保存/分享）。
@@ -106,3 +105,13 @@ xcrun devicectl device process launch --device <UDID> com.ruska.dsh-pocket-ios
 - 每一条记录保持三段式：**现象 / 原因 / 处理**，附上最小复现代码或截图路径。
 - 记录"不要做什么"往往比"要做什么"更有价值（例如：不要 gitHub 主题、不要嵌套横向滚动、不要 LazyVStack）。
 - 若换了组件或改了主题，同步更新"技术栈与组件选型"表，并提交 `Package.resolved`。
+
+## 参考项目（开源，可对照实现）
+
+| 项目 | 可参考点 |
+| --- | --- |
+| [gonzalezreal/textual](https://github.com/gonzalezreal/textual) | 我们当前用的渲染库；跨视图选择、GFM 表格、`.gitHub`/`.default` 样式 |
+| [MarkdownUI issue #264](https://github.com/gonzalezreal/swift-markdown-ui/issues/264) | 说明"只能按段落选中"的限制与业界绕法 |
+| [BasedHardware/omi · SelectableMarkdown.swift](https://github.com/BasedHardware/omi/blob/768905c6/desktop/Desktop/Sources/MainWindow/Components/SelectableMarkdown.swift) | 折中方案：整段合并成单个 `Text(AttributedString)` 以获得跨段落选择，代码块单独渲染 |
+| [exyte/Chat](https://github.com/exyte/Chat) | SwiftUI 聊天 UI 框架，消息单元/媒体选择可参考 |
+| [ml-explore/mlx-swift-examples · Markdown 支持 PR](https://github.com/ml-explore/mlx-swift-examples/pull/303) | 聊天场景下 Markdown 渲染的另一种实现思路 |
