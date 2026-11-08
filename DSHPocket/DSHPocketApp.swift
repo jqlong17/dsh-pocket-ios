@@ -421,8 +421,10 @@ final class ConnectionModel {
         do {
             sessions = try await fetchSessions()
             syncSelectedSessionMetadata()
+            errorMessage = nil
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
             errorMessage = "无法读取会话：\(error.localizedDescription)"
             recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
         }
@@ -564,6 +566,7 @@ final class ConnectionModel {
         } catch {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
             conversationError = "无法读取历史对话：\(error.localizedDescription)"
         }
     }
@@ -835,6 +838,7 @@ final class ConnectionModel {
                 socket.cancel(with: .goingAway, reason: nil)
                 guard !Task.isCancelled else { break }
                 liveConnectionState = "正在重连"
+                if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
                 conversationError = "实时连接中断，正在重连：\(error.localizedDescription)"
                 recordDiagnostic("实时连接中断，\(Int(retryDelay.components.seconds)) 秒后重试：\(error.localizedDescription)")
                 pocketLogger.error("follow failed: \(error.localizedDescription, privacy: .public)")
@@ -1508,8 +1512,21 @@ struct MarkdownBody: View {
 
     var body: some View {
         Markdown(text)
-            .markdownTheme(.gitHub)
+            .markdownTheme(.basic)
             .markdownTextStyle { ForegroundColor(foreground) }
+            .markdownBlockStyle(\.codeBlock) { configuration in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    configuration.label
+                        .markdownTextStyle {
+                            FontFamilyVariant(.monospaced)
+                            FontSize(.em(0.88))
+                        }
+                        .padding(10)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .markdownMargin(top: 4, bottom: 6)
+            }
     }
 }
 
