@@ -391,6 +391,7 @@ final class ConnectionModel {
         defer { isLoadingSessions = false }
         do {
             sessions = try await fetchSessions()
+            syncSelectedSessionMetadata()
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
             errorMessage = "无法读取会话：\(error.localizedDescription)"
@@ -548,6 +549,31 @@ final class ConnectionModel {
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
     }
 
+    /// 会话页标题：优先用列表中最新标题，避免打开后改标题不刷新。
+    var currentConversationTitle: String {
+        guard let id = selectedSession?.sessionId else { return "对话" }
+        return (sessions.first(where: { $0.sessionId == id }) ?? selectedSession)?.displayTitle ?? "对话"
+    }
+
+    @MainActor
+    private func updateSessionTitle(_ title: String) {
+        guard let id = selectedSession?.sessionId else { return }
+        if let index = sessions.firstIndex(where: { $0.sessionId == id }) {
+            sessions[index] = sessions[index].withTitle(title)
+        }
+        if let current = selectedSession {
+            selectedSession = current.withTitle(title)
+        }
+    }
+
+    /// 列表刷新后，把已打开会话的标题/运行状态同步过来。
+    @MainActor
+    private func syncSelectedSessionMetadata() {
+        guard let id = selectedSession?.sessionId,
+              let fresh = sessions.first(where: { $0.sessionId == id }) else { return }
+        selectedSession = fresh
+    }
+
     /// 按 turn 分组的工具步骤，供会话页折叠成"过程"一行。
     var stepGroups: [PocketStepGroup] {
         Dictionary(grouping: steps, by: \.turn)
@@ -609,6 +635,10 @@ final class ConnectionModel {
             turnStartedAt = time > 0 ? Date(timeIntervalSince1970: time / 1000) : Date()
         case "turn/end":
             isTurnRunning = false
+        case "session/title":
+            if let title = data["title"] as? String, !title.isEmpty {
+                updateSessionTitle(title)
+            }
         default:
             break
         }
@@ -940,6 +970,11 @@ struct PocketSession: Identifiable, Hashable {
                   running: json["running"] as? Bool ?? false, blank: json["blank"] as? Bool ?? false,
                   title: title, cwd: json["cwd"] as? String,
                   origin: json["origin"] as? String, parentSessionId: json["parentSessionId"] as? String)
+    }
+
+    func withTitle(_ title: String) -> PocketSession {
+        PocketSession(sessionId: sessionId, updatedAt: updatedAt, running: running, blank: blank,
+                      title: title, cwd: cwd, origin: origin, parentSessionId: parentSessionId)
     }
 
     /// DSH 桌面端侧边栏不显示 subagent 子会话和空会话，iOS 保持同样的可见性规则。
@@ -1574,7 +1609,7 @@ struct ConversationView: View {
             Divider()
             inputBar
         }
-        .navigationTitle(model.selectedSession?.title ?? "对话")
+        .navigationTitle(model.currentConversationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
