@@ -622,6 +622,7 @@ final class ConnectionModel {
             return true
         }
         messages = (Array(bySequence.values) + pending).sorted { $0.sequence < $1.sequence }
+        restoreMissingOutboxMessages()
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
     }
 
@@ -694,6 +695,23 @@ final class ConnectionModel {
         let before = outboxEntries.count
         outboxEntries.removeAll { rpcIds.contains($0.id) }
         if outboxEntries.count != before { persistOutbox() }
+    }
+
+    /// 发件箱里已发出、但列表里没有对应消息的条目：补成 pending 气泡，避免"发了但看不见"。
+    @MainActor
+    private func restoreMissingOutboxMessages() {
+        guard !isDemoMode, let session = selectedSession else { return }
+        loadOutboxIfNeeded()
+        let representedRpcIds = Set(messages.compactMap(\.rpcId))
+        let missing = outboxEntries.filter {
+            $0.sessionId == session.sessionId && !$0.text.isEmpty && !representedRpcIds.contains($0.id)
+        }
+        guard !missing.isEmpty else { return }
+        for entry in missing {
+            messages.append(PocketMessage(pendingText: entry.text, rpcId: entry.id))
+        }
+        messages.sort { $0.sequence < $1.sequence }
+        recordDiagnostic("补回未确认消息 \(missing.count) 条")
     }
 
     @MainActor
@@ -1064,14 +1082,20 @@ final class ConnectionModel {
 
     @MainActor
     func sendMessage() {
-        if isSending { return }
+        if isSending {
+            recordDiagnostic("发送被忽略：上一条仍在发送中")
+            return
+        }
         if isDemoMode {
             sendTask = Task { await self.sendDemoMessage() }
             return
         }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = draftImages
-        guard (!text.isEmpty || !attachments.isEmpty), selectedSession != nil else { return }
+        guard (!text.isEmpty || !attachments.isEmpty), selectedSession != nil else {
+            recordDiagnostic("发送被忽略：文本为空或未打开会话")
+            return
+        }
         sendTask?.cancel()
         sendTask = Task { await self.performSend(text: text, attachments: attachments) }
     }
