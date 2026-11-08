@@ -65,6 +65,8 @@ final class ConnectionModel {
     private var outboxLoaded = false
     /// 请求会话页滚动到底部的次数（打开会话、历史/快照到达时递增，供视图监听）。
     var scrollToBottomTick = 0
+    /// 最后一次收到实时帧的时间；用于检测 WebSocket 假死（隧道静默断开）。
+    var lastLiveFrameAt = Date()
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     private var conversationToken = UUID()
     /// turn 起止 seq：用于把"生成中排队发送"的用户消息排到该轮回复之后。
@@ -568,7 +570,8 @@ final class ConnectionModel {
             try? await Task.sleep(for: .seconds(5))
             if Task.isCancelled { break }
             guard selectedSession?.sessionId == session.sessionId else { return }
-            if liveConnectionState != "已连接" {
+            let stalled = isTurnRunning && Date().timeIntervalSince(lastLiveFrameAt) > 15
+            if liveConnectionState != "已连接" || stalled {
                 await loadHistory(session)
             }
         }
@@ -935,10 +938,33 @@ final class ConnectionModel {
                 }
                 defer { heartbeat.cancel() }
                 while !Task.isCancelled {
-                    let frame = try await withTaskCancellationHandler {
-                        try await socket.receive()
-                    } onCancel: {
-                        socket.cancel(with: .goingAway, reason: nil)
+                    let frame: URLSessionWebSocketTask.Message
+                    if isTurnRunning {
+                        // 生成中理应持续有事件；25 秒没有任何帧说明连接假死（常见于公网隧道），主动断开重连。
+                        frame = try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
+                            group.addTask {
+                                try await withTaskCancellationHandler {
+                                    try await socket.receive()
+                                } onCancel: {
+                                    socket.cancel(with: .goingAway, reason: nil)
+                                }
+                            }
+                            group.addTask {
+                                try await Task.sleep(for: .seconds(25))
+                                throw ConnectionError.remote("生成中 25 秒无实时数据，主动重连")
+                            }
+                            guard let first = try await group.next() else {
+                                throw ConnectionError.remote("实时连接无数据")
+                            }
+                            group.cancelAll()
+                            return first
+                        }
+                    } else {
+                        frame = try await withTaskCancellationHandler {
+                            try await socket.receive()
+                        } onCancel: {
+                            socket.cancel(with: .goingAway, reason: nil)
+                        }
                     }
                     let data: Data
                     switch frame {
@@ -985,6 +1011,7 @@ final class ConnectionModel {
     @MainActor
     private func acceptLive(_ value: [String: Any], sessionId: String) {
         guard selectedSession?.sessionId == sessionId else { return }
+        lastLiveFrameAt = Date()
         if value["type"] as? String == "snapshot" {
             let records = value["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
