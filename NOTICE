@@ -1,0 +1,33 @@
+DSH Pocket iOS — NOTICE
+
+Copyright (c) 2026 jqlong17
+
+1. iOS 客户端为独立实现
+
+`DSHPocket/` 下的 iOS 客户端（SwiftUI）是本项目的**独立实现**：
+它依据 DeepSeek Harness / dsh-pocket 公开可观察的 HTTP、WebSocket
+协议与行为编写，未复制、未翻译任何来自以下项目的源代码：
+  - https://github.com/shaobeichen/dsh-pocket
+  - https://github.com/deepseek-ai/deepseek-harness
+
+协议端点名称、请求/响应字段、帧格式属于接口事实与思想，不构成版权保护的表达；
+本项目对它们的参考不影响 iOS 客户端的独立版权。
+
+2. 许可证按目录划分
+
+- `DSHPocket/`（iOS App）：MIT 许可证，见根目录 `LICENSE`
+- `plugin/`（DSH 插件 `dsh-pocket-ios`）：GPL-2.0，见 `plugin/LICENSE`
+
+3. 上游致谢与商标
+
+- DSH（DeepSeek Harness）：https://github.com/deepseek-ai/deepseek-harness
+- dsh-pocket（手机访问协议与实现）：https://github.com/shaobeichen/dsh-pocket
+  （GPL-2.0）
+
+"DeepSeek Harness"、"DeepSeek"、"dsh-pocket" 等名称与标识归各自权利人所有；
+本项目为非官方客户端，与上述项目维护者无隶属关系，仅为兼容实现。
+
+4. 第三方声明
+
+本项目不包含、不链接任何第三方开源库；iOS 客户端仅使用 Apple 系统框架
+（SwiftUI、Foundation、VisionKit、PhotosUI、AVFoundation、Observation）。

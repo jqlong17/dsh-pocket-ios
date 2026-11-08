@@ -37,4 +37,6 @@ iOS App 通过 GitHub Release 分发（自签安装）：
 
 ## 许可
 
-GPL-2.0（与上游 dsh-pocket 一致）。
+GPL-2.0（与上游 dsh-pocket 一致），见 [LICENSE](LICENSE)。
+
+注意：本仓库根目录的 `LICENSE`（MIT）只覆盖 `DSHPocket/` iOS 客户端，不覆盖本插件目录。

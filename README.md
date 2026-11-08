@@ -144,10 +144,23 @@ dsh plugin add dsh-pocket-ios
 
 当前版本 **0.0.1**（首个公开版本）。
 
-## 致谢与许可
+## 许可证与独立实现声明
 
-- 协议与灵感来自 [shaobeichen/dsh-pocket](https://github.com/shaobeichen/dsh-pocket)（GPL-2.0）；
+本项目**按目录使用不同许可证**：
+
+| 目录 / 产物 | 许可证 | 说明 |
+| --- | --- | --- |
+| `DSHPocket/`（iOS App） | **MIT**，见 [LICENSE](LICENSE) | 独立 Swift 实现，可分发到 App Store |
+| `plugin/`（DSH 插件 `dsh-pocket-ios`） | **GPL-2.0**，见 [plugin/LICENSE](plugin/LICENSE) | 与上游 dsh-pocket 生态一致 |
+
+**iOS 客户端是独立实现**：它依据 DeepSeek Harness / dsh-pocket 公开可观察的 HTTP、WebSocket
+协议与行为编写，没有复制或翻译上游源代码；协议端点、字段、帧格式属于接口事实，不构成版权表达。
+完整声明见 [NOTICE](NOTICE)。
+
+## 致谢
+
+- 协议与设备接入思路来自 [shaobeichen/dsh-pocket](https://github.com/shaobeichen/dsh-pocket)（GPL-2.0）；
 - 上游 DSH 为 [DeepSeek Harness](https://github.com/deepseek-ai)；
-- 本项目以 **GPL-2.0** 发布，见 [LICENSE](LICENSE)。
+- "DeepSeek Harness"、"DeepSeek"、"dsh-pocket" 等名称归各自权利人所有。
 
 本项目为非官方客户端，与 DeepSeek Harness、dsh-pocket 的维护者无隶属关系。
