@@ -76,6 +76,13 @@
 4. 接入发送/接收路径；删除旧启发式；
 5. 覆盖率 ≥85%，验收。
 
+## 验收结果（2026-11-09，包内）
+
+- ✅ M01–M42 对应用例（实际 25 条）全绿；DSHKit 总测试 92 条
+- ✅ Store 模块行覆盖率：MessageLifecycle 93.0% / Ordering 97.6% / Outbox 100% / Reconciler 100%
+- ✅ 发送模式（steer/queue）、rpcId 对账、发件箱 TTL、排序（turn 区间/二级 seq/pending 末尾）全部有单测锁定
+- ⏭ App 接入随 02b（App 仍使用内联逻辑，接入时替换为 Store API）
+
 ## 验收标准
 
 - [ ] M01–M42 全绿；
