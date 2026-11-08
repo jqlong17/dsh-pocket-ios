@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DSH Pocket iOS — 隐私政策 / Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 720px; margin: 40px auto; padding: 0 20px; font: 16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif; color: #1c1c1e; }
+  @media (prefers-color-scheme: dark) { body { background:#111; color:#eee } a { color:#6ea8ff } }
+  h1 { font-size: 24px; } h2 { font-size: 18px; margin-top: 28px; }
+  .muted { color: #888; font-size: 14px; }
+  hr { border: 0; border-top: 1px solid #8884; margin: 32px 0; }
+</style>
+</head>
+<body>
+<h1>DSH Pocket iOS — 隐私政策</h1>
+<p class="muted">最后更新：2026-11-09</p>
+
+<p>DSH Pocket iOS 是一个连接你自己电脑上 DeepSeek Harness（DSH）的客户端。本 App <strong>不运营任何服务器，不收集、不上传你的任何数据</strong>。</p>
+
+<h2>我们不收集什么</h2>
+<ul>
+  <li>没有账号系统，不收集姓名、邮箱、手机号或任何身份信息；</li>
+  <li>没有分析、统计、广告或崩溃上报 SDK；</li>
+  <li>不读取你的照片，除非你主动选择图片并发送（见下文）；</li>
+  <li>不访问你的通讯录、位置、健康等其它数据。</li>
+</ul>
+
+<h2>本地存储</h2>
+<p>服务器地址保存在设备本地的 UserDefaults 中；登录态由系统 cookie 存储维护；诊断日志保存在 App 沙盒的 Documents 目录，仅用于你自己排查问题，不会上传。你可以随时删除 App 清除这些数据。</p>
+
+<h2>网络连接</h2>
+<p>App 只连接你填写的地址：局域网内你的电脑，或你通过 dsh-pocket 插件生成的公网隧道。连接使用你设置的访问密码（PIN）。PIN 不会被 App 保存。</p>
+
+<h2>图片</h2>
+<p>只有你主动从相册选择或拍照并点击发送时，图片才会经过你指定的连接发送到你自己的电脑。相机与相册权限用途仅限此功能。</p>
+
+<h2>儿童</h2>
+<p>本 App 不面向儿童，也不收集儿童数据。</p>
+
+<h2>联系</h2>
+<p>问题或建议请提 <a href="https://github.com/jqlong17/dsh-pocket-ios/issues">GitHub Issues</a>。</p>
+
+<hr>
+
+<h1>Privacy Policy (English)</h1>
+<p>DSH Pocket iOS is a client that connects to DeepSeek Harness (DSH) running on your own computer. The app runs no server and <strong>does not collect or upload any of your data</strong>.</p>
+<ul>
+  <li>There is no account system; we never collect names, emails, phone numbers or identities.</li>
+  <li>There are no analytics, advertising or crash-reporting SDKs.</li>
+  <li>The app only connects to the address you enter — your computer on the LAN, or a tunnel you created with the dsh-pocket plugin — using the PIN you set. The PIN is not stored.</li>
+  <li>Your server address is stored locally via UserDefaults, session cookies are managed by the system, and diagnostics stay in the app sandbox. Deleting the app removes them.</li>
+  <li>Photos are sent only when you pick or capture one and tap send; that image goes to your own computer through your own connection.</li>
+</ul>
+<p>Contact: <a href="https://github.com/jqlong17/dsh-pocket-ios/issues">GitHub Issues</a></p>
+</body>
+</html>

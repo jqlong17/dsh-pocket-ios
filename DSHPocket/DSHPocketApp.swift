@@ -33,6 +33,7 @@ final class ConnectionModel {
     var isConnecting = false
     var errorMessage: String?
     var isConnected = false
+    var isDemoMode = false
     var sessions: [PocketSession] = []
     var archivedSessionIds: Set<String> = []
     var isLoadingSessions = false
@@ -192,8 +193,10 @@ final class ConnectionModel {
 
     @MainActor
     func restoreConnection() async {
+        if isDemoMode { return }
 #if DEBUG
         if DebugLaunch.showConnect { return }
+        if DebugLaunch.demoMode { startDemoMode(); return }
         if let server = DebugLaunch.server {
             serverAddress = server
             if let pin = DebugLaunch.pin { self.pin = pin }
@@ -216,6 +219,7 @@ final class ConnectionModel {
 
     @MainActor
     func disconnect() {
+        if isDemoMode { exitDemoMode(); return }
         liveTask?.cancel()
         liveTask = nil
         selectedSession = nil
@@ -226,8 +230,158 @@ final class ConnectionModel {
         isConnected = false
     }
 
+    // MARK: - 演示模式（App Store 审核 / 没有电脑时体验）
+
+    private static let demoSessionList: [PocketSession] = [
+        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970, running: true, blank: false,
+                      title: "给项目加一个登录页", cwd: "~/projects/demo-app"),
+        PocketSession(sessionId: "demo-2", updatedAt: Date().timeIntervalSince1970 - 3600, running: false, blank: false,
+                      title: "图片识别示例", cwd: "~/projects/demo-app"),
+        PocketSession(sessionId: "demo-3", updatedAt: Date().timeIntervalSince1970 - 7200, running: false, blank: false,
+                      title: "重构 Agent 上下文", cwd: "~/projects/demo-app")
+    ]
+
+    private static let demoPicture: UIImage = {
+        let size = CGSize(width: 640, height: 420)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(red: 0.12, green: 0.30, blue: 0.82, alpha: 1).cgColor,
+                          UIColor(red: 0.06, green: 0.14, blue: 0.42, alpha: 1).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero,
+                                                     end: CGPoint(x: size.width, y: size.height), options: [])
+            }
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 205, y: 105, width: 230, height: 210)).fill()
+        }
+    }()
+
+    @MainActor
+    func startDemoMode() {
+        isDemoMode = true
+        isConnected = true
+        isConnecting = false
+        errorMessage = nil
+        sessions = Self.demoSessionList
+        archivedSessionIds = []
+        selectedSession = nil
+        navigationPath = []
+        messages = []
+        steps = []
+        liveConnectionState = "演示模式"
+    }
+
+    @MainActor
+    func exitDemoMode() {
+        isDemoMode = false
+        isConnected = false
+        selectedSession = nil
+        navigationPath = []
+        messages = []
+        steps = []
+        sessions = []
+        draftImages = []
+        liveConnectionState = "未连接"
+    }
+
+    @MainActor
+    private func openDemo(_ session: PocketSession) {
+        liveTask?.cancel()
+        selectedSession = session
+        messages = Self.demoMessages(for: session.sessionId)
+        steps = Self.demoSteps(for: session.sessionId)
+        isTurnRunning = session.running
+        turnStartedAt = session.running ? Date().addingTimeInterval(-37) : nil
+        isLoadingConversation = false
+        conversationError = nil
+        draft = ""
+        draftImages = []
+        liveConnectionState = "演示模式"
+    }
+
+    @MainActor
+    private func sendDemoMessage() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let images = draftImages
+        guard (!text.isEmpty || !images.isEmpty), selectedSession != nil, !isSending else { return }
+        messages.append(PocketMessage(pendingText: text, localImages: images.map(\.uiImage)))
+        draft = ""
+        draftImages = []
+        isSending = true
+        defer { isSending = false }
+        recordDiagnostic("演示模式：本地模拟发送")
+        try? await Task.sleep(for: .seconds(1))
+        messages.removeAll { $0.isPending }
+        let nextSequence = (messages.map(\.sequence).max() ?? 0) + 1
+        messages.append(PocketMessage(
+            demoText: "（演示模式）这是内置的示例回复，不会真正调用模型。\n\n连接电脑后，消息会发给本机的 DSH，助手回复与工具过程会实时出现在这里。",
+            isUser: false, sequence: nextSequence))
+        messages.sort { $0.sequence < $1.sequence }
+    }
+
+    private static func demoMessages(for sessionId: String) -> [PocketMessage] {
+        switch sessionId {
+        case "demo-1":
+            return [
+                PocketMessage(demoText: "帮我看看这个项目结构，然后给登录页加个入口。", isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                我看了一下项目结构，主要目录如下：
+
+                - `src/` — 业务代码
+                - `src/pages/` — 页面组件
+                - `public/` — 静态资源
+
+                登录页入口可以加在 `src/router.ts`，需要我直接改吗？
+                """, isUser: false, sequence: 4),
+                PocketMessage(demoText: "好，先加一个 /login 路由。", isUser: true, sequence: 5),
+                PocketMessage(demoText: """
+                已加好：
+
+                ```ts
+                { path: "/login", component: LoginPage }
+                ```
+
+                另外在导航栏的「登录」按钮上补了跳转。需要我顺手加个表单校验吗？
+                """, isUser: false, sequence: 6)
+            ]
+        case "demo-2":
+            return [
+                PocketMessage(demoText: "这张图里是什么？", isUser: true, sequence: 1, localImages: [demoPicture]),
+                PocketMessage(demoText: "图片里是一个深蓝色渐变背景上的白色圆形图案，像是某个 App 的图标或占位图。", isUser: false, sequence: 2)
+            ]
+        default:
+            return [
+                PocketMessage(demoText: "帮我重构一下 Agent 的上下文拼接逻辑，太长就总结一下。", isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                改动思路分三步：
+
+                1. **拆**：把 system prompt、workspace 上下文、会话历史拆成独立 builder；
+                2. **合**：统一在 request 组装时按优先级拼接；
+                3. **测**：补一个快照测试，固定输入下的输出。
+
+                这样可以避免上下文重复注入，也方便以后按模型做裁剪。
+                """, isUser: false, sequence: 2),
+                PocketMessage(demoText: "先把第一步做掉，改完给我 diff。", isUser: true, sequence: 3),
+                PocketMessage(demoText: "已完成 `context/system.ts`、`context/workspace.ts`、`context/history.ts` 三个 builder，并保留了旧入口做兼容。diff 在右侧文件面板。", isUser: false, sequence: 4)
+            ]
+        }
+    }
+
+    private static func demoSteps(for sessionId: String) -> [PocketStep] {
+        guard sessionId == "demo-1" else { return [] }
+        return [
+            PocketStep(id: "demo-step-1", sequence: 2, turn: 1, number: 1,
+                       name: "bash", detail: "ls -la",
+                       resultText: "drwxr-xr-x  12 ruska  staff  384  src\n-rw-r--r--   1 ruska  staff  512  package.json",
+                       finished: true),
+            PocketStep(id: "demo-step-2", sequence: 3, turn: 1, number: 2,
+                       name: "read", detail: "src/router.ts",
+                       resultText: "export const routes = [ ... ]", finished: true)
+        ]
+    }
+
     @MainActor
     func loadSessions(silently: Bool = false) async {
+        if isDemoMode { return }
         guard !isLoadingSessions else { return }
         if !silently { isLoadingSessions = true }
         defer { isLoadingSessions = false }
@@ -319,6 +473,7 @@ final class ConnectionModel {
 
     @MainActor
     func open(_ session: PocketSession) {
+        if isDemoMode { openDemo(session); return }
         if selectedSession?.sessionId == session.sessionId, liveTask != nil { return }
         liveTask?.cancel()
         selectedSession = session
@@ -531,6 +686,7 @@ final class ConnectionModel {
 
     @MainActor
     private func follow(_ session: PocketSession) async {
+        if isDemoMode { return }
         guard let base = URL(string: serverAddress),
               let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
             recordDiagnostic("实时连接未启动：地址无效 \(serverAddress.debugDescription)")
@@ -658,6 +814,7 @@ final class ConnectionModel {
 
     @MainActor
     func sendMessage() async {
+        if isDemoMode { await sendDemoMessage(); return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = draftImages
         guard (!text.isEmpty || !attachments.isEmpty), let session = selectedSession, !isSending else { return }
@@ -785,6 +942,17 @@ struct PocketMessage: Identifiable {
     let isPending: Bool
     let images: [PocketImageRef]
     let localImages: [UIImage]
+
+    init(demoText: String, isUser: Bool, sequence: Int, localImages: [UIImage] = []) {
+        self.id = "demo-\(sequence)"
+        self.sequence = sequence
+        self.kind = isUser ? "user/message" : "assistant/message"
+        self.text = demoText
+        self.isUser = isUser
+        self.isPending = false
+        self.images = []
+        self.localImages = localImages
+    }
 
     init(pendingText: String, localImages: [UIImage] = []) {
         self.id = "pending-\(UUID().uuidString)"
@@ -994,6 +1162,7 @@ enum DebugLaunch {
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
     static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
+    static var demoMode: Bool { environment["DSH_DEMO"] == "1" }
 
     /// 模拟器用 `SIMCTL_CHILD_DSH_SERVER`，真机用 `DEVICECTL_CHILD_DSH_SERVER`，
     /// 由 simctl / devicectl 去掉前缀后注入进程环境。
@@ -1059,6 +1228,14 @@ struct ConnectView: View {
                     HStack { Spacer(); if model.isConnecting { ProgressView().padding(.trailing, 6); Text("正在连接") } else { Image(systemName: "arrow.right.circle.fill"); Text("连接") }; Spacer() }.fontWeight(.semibold)
                 }.disabled(model.isConnecting)
             }
+            Section {
+                Button { model.startDemoMode() } label: {
+                    HStack { Spacer(); Image(systemName: "play.circle"); Text("体验演示模式"); Spacer() }
+                }
+                .accessibilityHint("没有电脑时查看内置示例会话与对话")
+            } footer: {
+                Text("演示模式使用内置示例数据，不会连接或发送任何内容。")
+            }
         }
         .onAppear { model.errorMessage = nil }
         .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
@@ -1113,6 +1290,19 @@ struct ConnectedView: View {
     @State private var didAutoOpen = false
     var body: some View {
         List {
+            if model.isDemoMode {
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.circle").foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("演示模式").font(.footnote.weight(.semibold))
+                            Text("示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("退出") { model.exitDemoMode() }.font(.footnote)
+                    }
+                }
+            }
             if let error = model.errorMessage {
                 Section { Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red) }
             }
@@ -1139,7 +1329,13 @@ struct ConnectedView: View {
         .overlay { if model.isLoadingSessions { ProgressView() } }
         .refreshable { await model.loadSessions() }
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Button { model.disconnect() } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }.accessibilityLabel("断开连接") }
+            ToolbarItem(placement: .topBarLeading) {
+                if model.isDemoMode {
+                    Button { model.exitDemoMode() } label: { Image(systemName: "play.circle.fill") }.accessibilityLabel("退出演示模式")
+                } else {
+                    Button { model.disconnect() } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }.accessibilityLabel("断开连接")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话") }
         }
         .navigationTitle("会话")
@@ -1300,15 +1496,21 @@ struct ConversationView: View {
                 Text(error).font(.footnote).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.vertical, 8).background(.red.opacity(0.06))
             }
             HStack(spacing: 6) {
-                Circle().fill(model.liveConnectionState == "已连接" ? .green : .orange).frame(width: 7, height: 7)
-                Text("实时连接：\(model.liveConnectionState)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                if model.isTurnRunning {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        HStack(spacing: 5) {
-                            ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
-                            Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
-                                .font(.caption).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                if model.isDemoMode {
+                    Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
+                    Text("演示模式 · 示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                } else {
+                    Circle().fill(model.liveConnectionState == "已连接" ? .green : .orange).frame(width: 7, height: 7)
+                    Text("实时连接：\(model.liveConnectionState)").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if model.isTurnRunning {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            HStack(spacing: 5) {
+                                ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
+                                Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
+                                    .font(.caption).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                            }
                         }
                     }
                 }
