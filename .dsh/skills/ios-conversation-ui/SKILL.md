@@ -134,3 +134,10 @@ xcrun devicectl device process launch --device <UDID> com.ruska.dsh-pocket-ios
 | [BasedHardware/omi · SelectableMarkdown.swift](https://github.com/BasedHardware/omi/blob/768905c6/desktop/Desktop/Sources/MainWindow/Components/SelectableMarkdown.swift) | 折中方案：整段合并成单个 `Text(AttributedString)` 以获得跨段落选择，代码块单独渲染 |
 | [exyte/Chat](https://github.com/exyte/Chat) | SwiftUI 聊天 UI 框架，消息单元/媒体选择可参考 |
 | [ml-explore/mlx-swift-examples · Markdown 支持 PR](https://github.com/ml-explore/mlx-swift-examples/pull/303) | 聊天场景下 Markdown 渲染的另一种实现思路 |
+| [microsoft/SwiftStreamingMarkdown](https://github.com/microsoft/SwiftStreamingMarkdown) | 微软开源（MIT，iOS 16+）的**流式 Markdown 渲染库**，专为 LLM 流式回复优化：增量解析、表格/代码/图片/LaTeX、约 +1MB；若以后做逐字流式输出优先评估它 |
+| [element-hq/element-x-ios](https://github.com/element-hq/element-x-ios) | SwiftUI 版 Matrix 客户端（Element X），完整聊天 App：时间线滚动定位、消息气泡、附件、已读等，细节参考价值最高 |
+| [tchapgouv/tchap-x-ios](https://github.com/tchapgouv/tchap-x-ios) | 法国政府基于 Element X 的 SwiftUI 聊天客户端分支 |
+| [signalapp/Signal-iOS](https://github.com/signalapp/Signal-iOS) | UIKit 成熟聊天 App，消息渲染/选择/输入体验参考 |
+| [wireapp/wire-ios](https://github.com/wireapp/wire-ios) / [nextcloud/talk-ios](https://github.com/nextcloud/talk-ios) / [RocketChat/Rocket.Chat.iOS](https://github.com/RocketChat/Rocket.Chat.iOS) | 其他开源 Swift 聊天客户端 |
+| [artcc/openclient-llm](https://github.com/ArtCC/openclient-llm) / [Ichigo3766/Open-Relay](https://github.com/Ichigo3766/Open-Relay) | 原生 SwiftUI LLM 客户端（多 provider / Open WebUI），AI 对话 UI 参考 |
+| [EnesKaraosman/SwiftyChat](https://github.com/EnesKaraosman/SwiftyChat) / [GetStream/stream-chat-swiftui](https://github.com/GetStream/stream-chat-swiftui) | SwiftUI 聊天气泡/消息列表组件 |
