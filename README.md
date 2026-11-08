@@ -120,6 +120,8 @@ DSHPocket/
 DSHPocket.xcodeproj       # Xcode 工程
 Info.plist                # 本地网络权限、ATS 局域网例外
 docs/screenshots/         # README 截图
+spec/                     # 重构规格（TDD：模块 spec、测试用例、覆盖率门槛 ≥85%）
+docs/architecture-review-2026-11-09.md  # 架构评审（对比开源聊天客户端）
 ```
 
 ## 配套 DSH 插件（可选）
