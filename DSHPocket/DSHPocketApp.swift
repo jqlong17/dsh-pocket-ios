@@ -1734,20 +1734,23 @@ struct ConversationView: View {
 
     private struct TimelineEntry: Identifiable {
         let id: String
-        let sortKey: Int
+        let sortKey: Int      // 展示排序键（排队消息会被推迟到 turn 结束之后）
+        let sequence: Int     // 原始 seq，二级排序保证同一 turn 内排队消息的先后顺序
         let message: PocketMessage?
         let group: PocketStepGroup?
     }
 
     private var entries: [TimelineEntry] {
         var result: [TimelineEntry] = model.messages.map {
-            TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), message: $0, group: nil)
+            TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), sequence: $0.sequence, message: $0, group: nil)
         }
         for group in model.stepGroups {
-            result.append(TimelineEntry(id: "steps-\(group.turn)", sortKey: group.sequence, message: nil, group: group))
+            result.append(TimelineEntry(id: "steps-\(group.turn)", sortKey: group.sequence, sequence: group.sequence, message: nil, group: group))
         }
         return result.sorted { lhs, rhs in
             if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+            // 同一排序键（同一 turn 内排队的多条消息）用原始 seq 保持发送先后。
+            if lhs.sequence != rhs.sequence { return lhs.sequence < rhs.sequence }
             switch (lhs.message, rhs.message) {
             case let (.some(l), .some(r)):
                 if l.isPending != r.isPending { return !l.isPending }
