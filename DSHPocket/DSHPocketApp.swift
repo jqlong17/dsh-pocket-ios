@@ -1671,7 +1671,9 @@ struct ConversationView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 14) {
+                    // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
+                    // LazyVStack 会缓存旧高度导致行重叠；会话窗口只有 30 条消息，直接布局代价可忽略。
+                    VStack(spacing: 14) {
                         if model.isLoadingConversation && model.messages.isEmpty && model.steps.isEmpty {
                             ProgressView().padding(.top, 36)
                         }
