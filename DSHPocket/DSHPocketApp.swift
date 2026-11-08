@@ -59,6 +59,10 @@ final class ConnectionModel {
     var fallbackTask: Task<Void, Never>?
     var sendTask: Task<Void, Never>?
     private var pendingSendID: String?
+    private var pendingSendRpcId: String?
+    private static let outboxDefaultsKey = "dsh-pocket.send-outbox"
+    private var outboxEntries: [OutboxEntry] = []
+    private var outboxLoaded = false
     /// 请求会话页滚动到底部的次数（打开会话、历史/快照到达时递增，供视图监听）。
     var scrollToBottomTick = 0
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
@@ -535,6 +539,7 @@ final class ConnectionModel {
         isTurnRunning = false
         turnStartedAt = nil
         conversationError = nil
+        messages = restoreOutboxPending(for: session)
         recordDiagnostic("打开会话：\(session.displayTitle)")
         requestScrollToBottom()
         liveTask = Task { await loadConversation(session) }
@@ -595,7 +600,14 @@ final class ConnectionModel {
         var bySequence = Dictionary(uniqueKeysWithValues: messages.filter { !$0.isPending }.map { ($0.sequence, $0) })
         for message in incoming where !message.isPending { bySequence[message.sequence] = message }
         let incomingUserTexts = Set(incoming.filter(\.isUser).map(\.text))
-        let pending = messages.filter { $0.isPending && !incomingUserTexts.contains($0.text) }
+        let incomingRpcIds = Set(incoming.compactMap(\.rpcId))
+        confirmOutbox(rpcIds: incomingRpcIds, texts: incomingUserTexts)
+        let pending = messages.filter { message in
+            guard message.isPending else { return false }
+            if incomingUserTexts.contains(message.text) { return false }
+            if let rpcId = message.rpcId, incomingRpcIds.contains(rpcId) { return false }
+            return true
+        }
         messages = (Array(bySequence.values) + pending).sorted { $0.sequence < $1.sequence }
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
     }
@@ -633,6 +645,57 @@ final class ConnectionModel {
             }
         }
         return message.sequence
+    }
+
+    // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
+
+    private func loadOutboxIfNeeded() {
+        guard !outboxLoaded else { return }
+        outboxLoaded = true
+        guard let data = UserDefaults.standard.data(forKey: Self.outboxDefaultsKey),
+              let entries = try? JSONDecoder().decode([OutboxEntry].self, from: data) else { return }
+        let cutoff = Date().timeIntervalSince1970 - 24 * 3600
+        outboxEntries = entries.filter { $0.createdAt > cutoff }
+        persistOutbox()
+    }
+
+    private func persistOutbox() {
+        if let data = try? JSONEncoder().encode(outboxEntries) {
+            UserDefaults.standard.set(data, forKey: Self.outboxDefaultsKey)
+        }
+    }
+
+    @MainActor
+    private func addOutbox(sessionId: String, rpcId: String, text: String) {
+        guard !text.isEmpty else { return }
+        loadOutboxIfNeeded()
+        outboxEntries.append(OutboxEntry(id: rpcId, sessionId: sessionId, text: text,
+                                         createdAt: Date().timeIntervalSince1970))
+        persistOutbox()
+    }
+
+    @MainActor
+    private func confirmOutbox(rpcIds: Set<String>, texts: Set<String>) {
+        loadOutboxIfNeeded()
+        let before = outboxEntries.count
+        outboxEntries.removeAll { entry in
+            rpcIds.contains(entry.id) || texts.contains(entry.text)
+        }
+        if outboxEntries.count != before { persistOutbox() }
+    }
+
+    @MainActor
+    private func removeOutbox(rpcIds: Set<String>) {
+        loadOutboxIfNeeded()
+        outboxEntries.removeAll { rpcIds.contains($0.id) }
+        persistOutbox()
+    }
+
+    private func restoreOutboxPending(for session: PocketSession) -> [PocketMessage] {
+        loadOutboxIfNeeded()
+        return outboxEntries
+            .filter { $0.sessionId == session.sessionId && !$0.text.isEmpty }
+            .map { PocketMessage(pendingText: $0.text, rpcId: $0.id) }
     }
 
     @MainActor
@@ -924,8 +987,14 @@ final class ConnectionModel {
         } else if let event = value["event"] as? [String: Any] {
             if let message = PocketMessage(event: event) {
                 pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
-                if let pendingIndex = messages.firstIndex(where: { $0.isPending && $0.isUser && $0.text == message.text }) {
+                if let pendingIndex = messages.firstIndex(where: { pending in
+                    pending.isPending && pending.isUser && (pending.text == message.text
+                        || (pending.rpcId != nil && pending.rpcId == message.rpcId))
+                }) {
                     messages.remove(at: pendingIndex)
+                }
+                if message.isUser {
+                    confirmOutbox(rpcIds: message.rpcId.map { [$0] } ?? [], texts: [message.text])
                 }
                 if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
                     messages.append(message)
@@ -978,7 +1047,9 @@ final class ConnectionModel {
         sendTask?.cancel()
         sendTask = nil
         if let id = pendingSendID { messages.removeAll { $0.id == id } }
+        if let rpcId = pendingSendRpcId { removeOutbox(rpcIds: [rpcId]) }
         pendingSendID = nil
+        pendingSendRpcId = nil
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             draft = cancelledDraft
             draftImages = cancelledImages
@@ -1007,12 +1078,15 @@ final class ConnectionModel {
     private func performSend(text: String, attachments: [PocketDraftImage]) async {
         guard let session = selectedSession, !isSending else { return }
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
-        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage))
+        let requestId = UUID().uuidString
+        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId)
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
         recordDiagnostic("用户点击发送：\(text.count) 字，图片 \(attachments.count) 张")
         messages.append(pending)
         pendingSendID = pending.id
+        pendingSendRpcId = requestId
+        addOutbox(sessionId: session.sessionId, rpcId: requestId, text: text)
         cancelledDraft = text
         cancelledImages = attachments
         draft = ""
@@ -1021,6 +1095,7 @@ final class ConnectionModel {
         defer {
             isSending = false
             pendingSendID = nil
+            pendingSendRpcId = nil
             cancelledDraft = ""
             cancelledImages = []
         }
@@ -1057,6 +1132,7 @@ final class ConnectionModel {
             await pollForReply(session, after: text, afterSequence: lastSequence)
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
+            removeOutbox(rpcIds: [requestId])
             messages.removeAll { $0.id == pending.id }
             draft = text
             draftImages = attachments
@@ -1149,6 +1225,8 @@ struct PocketMessage: Identifiable {
     let isPending: Bool
     let images: [PocketImageRef]
     let localImages: [UIImage]
+    /// 发送时客户端生成的 requestId，服务端会回填到 user/message 的 source.rpcId，用来精确对账。
+    let rpcId: String?
 
     init(demoText: String, isUser: Bool, sequence: Int, localImages: [UIImage] = []) {
         self.id = "demo-\(sequence)"
@@ -1159,9 +1237,10 @@ struct PocketMessage: Identifiable {
         self.isPending = false
         self.images = []
         self.localImages = localImages
+        self.rpcId = nil
     }
 
-    init(pendingText: String, localImages: [UIImage] = []) {
+    init(pendingText: String, localImages: [UIImage] = [], rpcId: String? = nil) {
         self.id = "pending-\(UUID().uuidString)"
         self.sequence = Int.max
         self.kind = "user/message"
@@ -1170,6 +1249,7 @@ struct PocketMessage: Identifiable {
         self.isPending = true
         self.images = []
         self.localImages = localImages
+        self.rpcId = rpcId
     }
 
     init?(record: [String: Any]) {
@@ -1185,8 +1265,8 @@ struct PocketMessage: Identifiable {
         let message = (data["message"] as? [String: Any]) ?? data
         // DSH also stores injected runtime context as user/message events. Those
         // are model inputs, not messages the human sent, and must stay out of chat UI.
+        let source = (message["source"] as? [String: Any]) ?? (data["source"] as? [String: Any])
         if kind == "user/message" {
-            let source = (message["source"] as? [String: Any]) ?? (data["source"] as? [String: Any])
             guard source?["kind"] as? String == "user" else { return nil }
         }
         let content = message["content"] as? [[String: Any]] ?? []
@@ -1208,7 +1288,16 @@ struct PocketMessage: Identifiable {
         self.isPending = false
         self.images = images
         self.localImages = []
+        self.rpcId = source?["rpcId"] as? String
     }
+}
+
+/// 本地发件箱：消息已发出但服务端还没落成 user/message 事件时，保持可见，避免"消息丢了"的错觉。
+struct OutboxEntry: Codable, Identifiable {
+    let id: String          // = 发送时生成的 rpcId
+    let sessionId: String
+    let text: String
+    let createdAt: Double
 }
 
 /// 一张已落到电脑端附件库的图片引用（会话历史 / 工具结果里的图片）。

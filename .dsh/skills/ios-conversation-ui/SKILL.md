@@ -109,6 +109,23 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 对落在 turn 区间内的用户消息改用 `displaySortKey` = 该轮 `turn/end` 的 seq，从而排到本轮
 回复之后、下一轮回复之前。服务端 seq 本身是对的，不要改排序基准为时间戳。
 
+## 消息丢失（发件箱 + rpcId 对账）
+
+**现象**：有时"发出的消息没了"。
+
+**原因**：DSH 的一轮生成中发送的消息进入 `agent.inbox.nextTurn` **队列**，要等本轮结束、
+队列被消费时才写成正式的 `user/message` 事件。在这段时间里服务端历史里没有它；如果这时
+App 被杀、重进会话、或本地 pending 气泡被清掉，就会出现"消息丢了"的错觉。
+另外客户端 `session/prompt` 的 `requestId` 会被服务端回填到 `user/message` 的 `source.rpcId`。
+
+**处理**：
+- 发送时生成 `requestId`，pending 气泡和本地**发件箱**（UserDefaults，24 小时过期）都记录它；
+- 收到历史/实时用户消息时，用 `source.rpcId` **精确对账**（回退用文本匹配），匹配后移除
+  pending 与发件箱条目；
+- 打开会话时把该会话未确认的发件箱条目重新渲染成 pending 气泡，所以即使重启 App，
+  已发出但未落库的消息也不会"消失"；
+- 发送失败/取消时移除发件箱条目并把文本还给输入框。
+
 ## 文本选择与复制
 
 - **部分/跨行复制**：Textual 的 `.textual.textSelection(.enabled)` 支持**跨段落/跨块**选择（这是迁移的核心理由）。长按文字出现选择手柄，可跨行、跨列表选中后复制。
