@@ -3,14 +3,14 @@
 在 DSH 的**设置 → 手机访问**里加入 iOS 客户端下载二维码与连接引导，把「手机访问」和
 [DSH Pocket iOS](https://github.com/jqlong17/dsh-pocket-ios) 串起来。
 
-当前版本：**0.1.1**（npm `dsh-pocket-ios`）。卡片里的「直接下载 IPA」指向
-[最新 Release 的 DSHPocket.ipa](https://github.com/jqlong17/dsh-pocket-ios/releases/latest/download/DSHPocket.ipa)。
+当前版本：**0.1.3**（npm `dsh-pocket-ios`）。卡片主按钮与二维码指向 **App Store**（<https://apps.apple.com/app/id6832288744>），
+并保留「GitHub Release（自签）」与「直接下载 IPA」作为备用渠道。
 
 ## 它做什么
 
 - 设置页新增「iOS 客户端」入口（`settings.section` 插槽，原生渲染）；
-- 在「手机访问」页的**局域网访问上方**尽力插入一张 iOS 卡片：下载二维码 + Release 链接 +
-  源码 zip 直链（DOM 注入，插入失败不影响上面的原生入口）；
+- 在「手机访问」页的**局域网访问上方**尽力插入一张 iOS 卡片：App Store 下载二维码 +
+  App Store / GitHub Release / IPA 三个入口（DOM 注入，插入失败不影响上面的原生入口）；
 - `dependencies` 带 `dsh-pocket`，安装本插件会一并安装手机访问所需的 dsh-pocket。
 
 ## 安装
@@ -29,11 +29,12 @@ npm: <https://www.npmjs.com/package/dsh-pocket-ios>
 
 ## 手机端
 
-iOS App 通过 GitHub Release 分发（自签安装）：
+iOS App 已上架 App Store（免费）：
 
-<https://github.com/jqlong17/dsh-pocket-ios/releases>
+<https://apps.apple.com/app/id6832288744>
 
-装好后在 App 里扫描 dsh-pocket 的二维码即可连接本机 DSH。
+没有 App Store 的地区仍可从 [GitHub Release](https://github.com/jqlong17/dsh-pocket-ios/releases)
+下载 IPA 自签安装。装好后在 App 里扫描 dsh-pocket 的二维码即可连接本机 DSH。
 
 ## 许可
 

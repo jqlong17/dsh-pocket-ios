@@ -59,22 +59,24 @@ DSH Pocket iOS 让你用 iPhone 直接操作电脑里的 **DeepSeek Harness（DS
 
 ## 环境要求
 
-- iPhone，iOS 17.0+
+- iPhone，**App Store 版 iOS 17.0+；最新源码 iOS 18.0+**
 - 电脑上运行 DeepSeek Harness，并安装启用 `dsh-pocket` 插件
 - 构建：Xcode（Swift 5.9+），已在本机 iPhone 17 Pro / iOS 26.3 真机验证
 
-## 安装（GitHub Release + 自签）
+## 安装
 
-**本项目未上架 App Store**，通过 GitHub Release 发布 **IPA + 源码**，由使用者自行签名安装：
+**方式 A（推荐，App Store）**：在 App Store 搜索「DSH Pocket」或打开
+<https://apps.apple.com/app/id6832288744> 下载安装（免费）。
 
-- **方式 A（普通用户）**：直接下载 IPA —— [DSHPocket.ipa](https://github.com/jqlong17/dsh-pocket-ios/releases/latest/download/DSHPocket.ipa)，用 [AltStore](https://altstore.io/)、[Sideloadly](https://sideloadly.io/) 等工具自签安装；
-- **方式 B（开发者）**：下载源码，用 Xcode 打开 `DSHPocket.xcodeproj`，选择自己的 Team 与 Bundle ID 后运行到 iPhone；
-- 免费 Apple ID 签名 7 天有效，开发者账号（$99/年）签名一年有效，到期重签即可。
+**方式 B（GitHub Release + 自签）**：从 [Releases](https://github.com/jqlong17/dsh-pocket-ios/releases) 下载
+[DSHPocket.ipa](https://github.com/jqlong17/dsh-pocket-ios/releases/latest/download/DSHPocket.ipa)，
+用 [AltStore](https://altstore.io/)、[Sideloadly](https://sideloadly.io/) 等工具自签安装。
+免费 Apple ID 签名 7 天有效，开发者账号（$99/年）签名一年有效，到期重签即可。
 
-> IPA 是开发签名包，作用是把 App 打包分发；自签工具会用你的证书重签后再安装。
+**方式 C（开发者）**：下载源码，用 Xcode 打开 `DSHPocket.xcodeproj`，选择自己的 Team 与 Bundle ID 后运行到 iPhone。
 
-> 为什么不上架 App Store：App 需要连接用户自己电脑上的 DSH（本地服务器 + PIN），审核无法复现；
-> 且项目沿用上游 GPL-2.0 许可，与 App Store 的分发条款存在冲突。GitHub Release + 自签是最直接的分发方式。
+> 自签 IPA 是开发签名包；自签工具会用你的证书重签后再安装。
+> 没有 App Store 的地区（如部分账号区）仍可用自签方式安装。
 
 ## 构建与运行
 
