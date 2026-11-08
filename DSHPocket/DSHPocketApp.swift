@@ -722,12 +722,13 @@ final class ConnectionModel {
             if let token, token != conversationToken { return }
             guard activeConversation?.sessionId == session.sessionId,
                   selectedSession?.sessionId == session.sessionId else { return }
+            let wasEmpty = messages.isEmpty
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
             mergeSteps(from: records)
             isLoadingConversation = false
-            requestScrollToBottom()
+            if wasEmpty { requestScrollToBottom() }
         } catch {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
@@ -809,7 +810,8 @@ final class ConnectionModel {
         outboxLoaded = true
         guard let data = UserDefaults.standard.data(forKey: Self.outboxDefaultsKey),
               let entries = try? JSONDecoder().decode([OutboxEntry].self, from: data) else { return }
-        let cutoff = Date().timeIntervalSince1970 - 24 * 3600
+        // 10 分钟内未确认视为历史遗留：steer 模式下服务端很快落库，长期 pending 只会造成"发送中"假象。
+        let cutoff = Date().timeIntervalSince1970 - 10 * 60
         outboxEntries = entries.filter { $0.createdAt > cutoff }
         persistOutbox()
     }
@@ -1216,7 +1218,7 @@ final class ConnectionModel {
             mergeSteps(from: records)
             recordDiagnostic("收到历史快照：\(history.count) 条消息")
             isLoadingConversation = false
-            requestScrollToBottom()
+            if messages.isEmpty { requestScrollToBottom() }
         } else if let event = value["event"] as? [String: Any] {
             if let message = PocketMessage(event: event) {
                 pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
@@ -1969,6 +1971,8 @@ struct ConversationView: View {
     /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
     @State private var isAtBottom = true
     @State private var unreadWhileScrolled = 0
+    /// 用户上滑时递增，用于让待执行的补滚任务失效。
+    @State private var scrollGeneration = 0
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
     @State private var showingCamera = false
@@ -2113,6 +2117,7 @@ struct ConversationView: View {
                     let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
                     return distance <= 48
                 } action: { _, atBottom in
+                    if !atBottom { scrollGeneration &+= 1 }
                     isAtBottom = atBottom
                     if atBottom { unreadWhileScrolled = 0 }
                 }
@@ -2280,11 +2285,16 @@ struct ConversationView: View {
     private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
         // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
         if !force && !isAtBottom && !isSettlingScroll { return }
-        // 只滚一帧不够：Markdown/Textual 渲染、表格重排、图片/过程行到达后高度还会变。
-        // 在 ~3 秒内多次补滚，确保最终停在最新消息。
-        let delays: [Double] = [0, 0.08, 0.2, 0.4, 0.7, 1.1, 1.6, 2.2, 3.0]
+        let generation = scrollGeneration
+        // 仅首屏稳定期/强制贴底做多段补滚；日常新消息只滚一次，避免持续抢滚动。
+        let delays: [Double] = (force || isSettlingScroll)
+            ? [0, 0.1, 0.3, 0.7, 1.2, 2.0]
+            : [0]
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                // 用户已上滑或会话已切换：放弃这次补滚。
+                guard force || generation == scrollGeneration else { return }
+                guard force || isSettlingScroll || isAtBottom else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
         }
