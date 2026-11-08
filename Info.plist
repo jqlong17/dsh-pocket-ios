@@ -23,12 +23,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>保存会话中的图片到相册。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>扫描 DSH Pocket 二维码以自动填写电脑连接地址。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>连接到运行 DSH Pocket 的电脑，以查看和控制 DeepSeek Harness。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>保存会话中的图片到相册。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -59,6 +59,8 @@ final class ConnectionModel {
     var fallbackTask: Task<Void, Never>?
     var sendTask: Task<Void, Never>?
     private var pendingSendID: String?
+    /// 请求会话页滚动到底部的次数（打开会话、历史/快照到达时递增，供视图监听）。
+    var scrollToBottomTick = 0
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     private var conversationToken = UUID()
     private var cancelledDraft = ""
@@ -527,6 +529,7 @@ final class ConnectionModel {
         turnStartedAt = nil
         conversationError = nil
         recordDiagnostic("打开会话：\(session.displayTitle)")
+        requestScrollToBottom()
         liveTask = Task { await loadConversation(session) }
     }
 
@@ -571,6 +574,7 @@ final class ConnectionModel {
             mergeMessages(history)
             mergeSteps(from: records)
             isLoadingConversation = false
+            requestScrollToBottom()
         } catch {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
@@ -608,6 +612,11 @@ final class ConnectionModel {
     var currentConversationTitle: String {
         guard let id = selectedSession?.sessionId else { return "对话" }
         return (sessions.first(where: { $0.sessionId == id }) ?? selectedSession)?.displayTitle ?? "对话"
+    }
+
+    @MainActor
+    private func requestScrollToBottom() {
+        scrollToBottomTick &+= 1
     }
 
     @MainActor
@@ -888,6 +897,7 @@ final class ConnectionModel {
             mergeSteps(from: records)
             recordDiagnostic("收到历史快照：\(history.count) 条消息")
             isLoadingConversation = false
+            requestScrollToBottom()
         } else if let event = value["event"] as? [String: Any] {
             if let message = PocketMessage(event: event) {
                 pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
@@ -1642,6 +1652,8 @@ struct ConversationView: View {
                                 }.id(entry.id)
                             }
                         }
+                        // 底部锚点：滚动到它比"最后一条消息"更可靠（能带上后面的过程行/占位）。
+                        Color.clear.frame(height: 1).id(Self.bottomAnchorID)
                     }
                     .padding()
                     .frame(maxWidth: 720)
@@ -1650,10 +1662,14 @@ struct ConversationView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+                // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
+                .onChange(of: model.scrollToBottomTick) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
-                    guard oldCount > 0, newCount > oldCount, let id = model.messages.last?.id else { return }
-                    proxy.scrollTo(id, anchor: .bottom)
+                    guard newCount > 0, newCount != oldCount else { return }
+                    scrollToBottom(proxy: proxy)
                 }
             }
             Divider()
@@ -1775,6 +1791,15 @@ struct ConversationView: View {
             .frame(maxWidth: .infinity)
         }
         .background(.background)
+    }
+
+    private static let bottomAnchorID = "conversation-bottom-anchor"
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        // 等一帧，让新内容完成布局后再滚动，避免滚到旧位置。
+        DispatchQueue.main.async {
+            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+        }
     }
 
     private func elapsed(since start: Date?, now: Date) -> String {
