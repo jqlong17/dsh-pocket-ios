@@ -387,11 +387,13 @@ final class ConnectionModel {
                 PocketMessage(demoText: """
                 已完成三个 builder，保留了旧入口做兼容：
 
-                | 插件 | 来源 | 说明 |
+                | 插件 | 形式 | 功能 |
                 | --- | --- | --- |
-                | xii/dsh-api-usage | GitHub | 侧边栏常驻小音 |
-                | jqlong17/dsh-plugin-account-balance | GitHub | 在侧边栏显示余额 |
-                | ithwinter/DeepSeek-Balance-Whale-Widget-Bowl | npm | 三维小鲸鱼挂件 |
+                | chenzhexi/dsh-api-usage | GitHub | 侧边栏常驻小部件：余额、今日消费、Token 数、请求数、24h 消费柱状图，一键直达充值页。 |
+                | cailikelog/dsh-plugin-account-balance | GitHub | 在输入框 cache-hit 读数旁显示账户剩余余额 |
+                | Witherwithwinter/DeepSeek-Balance-Whale-Widget-Bowl | GitHub | 右下角常驻余额挂件（鲸鱼娘版），支持 DeepSeek、OpenRouter、Kimi、GLM 等多个平台 |
+                | dsh-balance-monitor / balance-dsh / dsh-deepseek-balance-cn | npm | npm 上的同类包，具体功能需进一步核实 |
+                | dsh-account-hud | npm | ⚠️ 标题带警告标记，不建议直接装 |
                 """, isUser: false, sequence: 4)
             ]
         }
@@ -1557,9 +1559,9 @@ struct MarkdownBody: View {
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, bold ? 8 : 7)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(background)
                 .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
                 .overlay(alignment: .trailing) { Rectangle().fill(separator).frame(width: 0.5) }
