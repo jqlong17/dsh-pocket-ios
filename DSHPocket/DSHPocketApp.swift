@@ -387,6 +387,8 @@ final class ConnectionModel {
                 """, isUser: false, sequence: 2),
                 PocketMessage(demoText: "先把第一步做掉，改完给我 diff。", isUser: true, sequence: 3),
                 PocketMessage(demoText: """
+                ## 改动概览
+
                 已完成三个 builder，保留了旧入口做兼容：
 
                 | 插件 | 形式 | 功能 |
@@ -1520,6 +1522,48 @@ struct ConnectedView: View {
     }
 }
 
+extension Theme {
+    /// 聊天场景的 Markdown 主题：标题比 basic 更克制，段落间距更紧凑。
+    /// 以 iOS 根字号 17pt 计算：H1≈22 / H2≈19 / H3≈17 / H4≈15 / H5≈14 / H6≈12。
+    static let chat = Theme.basic
+        .heading1 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.9), bottom: .em(0.35))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.3)) }
+        }
+        .heading2 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.9), bottom: .em(0.35))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.12)) }
+        }
+        .heading3 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.8), bottom: .em(0.3))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.0)) }
+        }
+        .heading4 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.7), bottom: .em(0.25))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.88)) }
+        }
+        .heading5 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.6), bottom: .em(0.2))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.8)) }
+        }
+        .heading6 { configuration in
+            configuration.label
+                .markdownMargin(top: .em(0.6), bottom: .em(0.2))
+                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.7)) }
+        }
+        .paragraph { configuration in
+            configuration.label
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.12))
+                .markdownMargin(top: .zero, bottom: .em(0.7))
+        }
+}
+
 /// 消息 Markdown 渲染：交给成熟的 MarkdownUI（GFM 规范，含表格/列表/代码块）。
 struct MarkdownBody: View {
     let text: String
@@ -1527,7 +1571,7 @@ struct MarkdownBody: View {
 
     var body: some View {
         Markdown(text)
-            .markdownTheme(.basic)
+            .markdownTheme(.chat)
             .markdownTextStyle { ForegroundColor(foreground) }
             .markdownBlockStyle(\.codeBlock) { configuration in
                 ScrollView(.horizontal, showsIndicators: false) {
