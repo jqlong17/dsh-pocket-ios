@@ -125,6 +125,15 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 回复之后、下一轮回复之前。**同一 sortKey 的多条排队消息必须用原始 seq 做二级排序**，
 否则会按 id 随机排（踩过）。服务端 seq 本身是对的，不要改排序基准为时间戳。
 
+## 会话绑定与发送目标（防"消息发到别的会话/丢失"）
+
+- `navigationDestination` 里**不要只靠 `.onAppear { open(session) }`**：同一目的地类型的 onAppear
+  在某些 iOS 版本不会重复触发，导致进入 B 会话时 `selectedSession` 还是 A，看着像串台/消息丢失。
+  用 `.task(id: session.sessionId) { open(session) }`。
+- `ConversationView` 显式持有 `let session: PocketSession`，发送按钮调用
+  `model.sendMessage(in: session)`；模型先校验 `selectedSession` 是否一致，不一致先纠正再发。
+- 这样"用户看到的会话"和"消息实际发送的会话"始终一致。
+
 ## 消息丢失（发件箱 + rpcId 对账）
 
 **现象**：有时"发出的消息没了"。

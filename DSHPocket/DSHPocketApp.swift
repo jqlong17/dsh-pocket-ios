@@ -1080,6 +1080,18 @@ final class ConnectionModel {
         }
     }
 
+    /// 发送按钮入口：先确认当前打开的就是这个会话，避免消息发到别的 session。
+    @MainActor
+    func sendMessage(in session: PocketSession) {
+        if selectedSession?.sessionId != session.sessionId {
+            recordDiagnostic("发送前纠正会话：期望 \(session.displayTitle)")
+            selectedSession = session
+            open(session)
+            return
+        }
+        sendMessage()
+    }
+
     @MainActor
     func sendMessage() {
         if isSending {
@@ -1696,8 +1708,10 @@ struct ConnectedView: View {
         }
         .navigationTitle("会话")
         .navigationDestination(for: PocketSession.self) { session in
-            ConversationView(model: model)
-                .onAppear { model.open(session) }
+            ConversationView(model: model, session: session)
+                // onAppear 在部分 iOS 版本上不会对同一目的地类型重复触发，
+                // 用 task(id:) 确保进入/切换会话时一定重新打开对应会话。
+                .task(id: session.sessionId) { model.open(session) }
         }
         .task {
             await model.loadSessions(silently: !model.sessions.isEmpty)
@@ -1748,6 +1762,7 @@ private struct ConversationHeightKey: PreferenceKey {
 
 struct ConversationView: View {
     @Bindable var model: ConnectionModel
+    let session: PocketSession
     @State private var isSettlingScroll = false
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
@@ -1990,7 +2005,7 @@ struct ConversationView: View {
                             .background(Color.red.opacity(0.85), in: Circle())
                     }.accessibilityLabel("取消发送")
                 } else {
-                    Button { model.sendMessage() } label: {
+                    Button { model.sendMessage(in: session) } label: {
                         Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white).frame(width: 44, height: 44)
                             .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
