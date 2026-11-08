@@ -1562,6 +1562,23 @@ extension Theme {
                 .relativeLineSpacing(.em(0.12))
                 .markdownMargin(top: .zero, bottom: .em(0.7))
         }
+        // MarkdownUI 用 Grid 排版表格（TableView.swift），列多时会被挤压换行、行高变大。
+        // 公开的 .table 钩子可以做两档处理：列少走默认自适应，列多才包横向滚动。
+        .table { configuration in
+            let markdown = configuration.content.renderMarkdown()
+            let headerLine = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+                .first.map(String.init) ?? ""
+            let columnCount = max(headerLine.filter { $0 == "|" }.count - 1, 1)
+            if columnCount >= 4 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    configuration.label.fixedSize(horizontal: true, vertical: false)
+                }
+                .markdownMargin(top: .zero, bottom: .em(0.8))
+            } else {
+                configuration.label
+                    .markdownMargin(top: .zero, bottom: .em(0.8))
+            }
+        }
 }
 
 /// 消息 Markdown 渲染：交给成熟的 MarkdownUI（GFM 规范，含表格/列表/代码块）。
