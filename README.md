@@ -64,11 +64,13 @@ DSH Pocket iOS 让你用 iPhone 直接操作电脑里的 **DeepSeek Harness（DS
 
 ## 安装（GitHub Release + 自签）
 
-**本项目未上架 App Store**，通过 GitHub Release 发布源码，由使用者自行签名安装：
+**本项目未上架 App Store**，通过 GitHub Release 发布 **IPA + 源码**，由使用者自行签名安装：
 
-- **方式 A（开发者推荐）**：克隆/下载源码，用 Xcode 打开 `DSHPocket.xcodeproj`，选择自己的 Team 与 Bundle ID 后直接运行到 iPhone；
-- **方式 B（普通用户）**：下载 Release 中的源码包，用 [AltStore](https://altstore.io/)、[Sideloadly](https://sideloadly.io/) 等工具重签安装；
+- **方式 A（普通用户）**：直接下载 IPA —— [DSHPocket.ipa](https://github.com/jqlong17/dsh-pocket-ios/releases/latest/download/DSHPocket.ipa)，用 [AltStore](https://altstore.io/)、[Sideloadly](https://sideloadly.io/) 等工具自签安装；
+- **方式 B（开发者）**：下载源码，用 Xcode 打开 `DSHPocket.xcodeproj`，选择自己的 Team 与 Bundle ID 后运行到 iPhone；
 - 免费 Apple ID 签名 7 天有效，开发者账号（$99/年）签名一年有效，到期重签即可。
+
+> IPA 是开发签名包，作用是把 App 打包分发；自签工具会用你的证书重签后再安装。
 
 > 为什么不上架 App Store：App 需要连接用户自己电脑上的 DSH（本地服务器 + PIN），审核无法复现；
 > 且项目沿用上游 GPL-2.0 许可，与 App Store 的分发条款存在冲突。GitHub Release + 自签是最直接的分发方式。

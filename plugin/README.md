@@ -3,6 +3,9 @@
 在 DSH 的**设置 → 手机访问**里加入 iOS 客户端下载二维码与连接引导，把「手机访问」和
 [DSH Pocket iOS](https://github.com/jqlong17/dsh-pocket-ios) 串起来。
 
+当前版本：**0.1.1**（npm `dsh-pocket-ios`）。卡片里的「直接下载 IPA」指向
+[最新 Release 的 DSHPocket.ipa](https://github.com/jqlong17/dsh-pocket-ios/releases/latest/download/DSHPocket.ipa)。
+
 ## 它做什么
 
 - 设置页新增「iOS 客户端」入口（`settings.section` 插槽，原生渲染）；
