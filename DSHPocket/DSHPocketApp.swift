@@ -903,6 +903,7 @@ final class ConnectionModel {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = draftImages
         guard (!text.isEmpty || !attachments.isEmpty), selectedSession != nil else { return }
+        sendTask?.cancel()
         sendTask = Task { await self.performSend(text: text, attachments: attachments) }
     }
 
@@ -914,8 +915,10 @@ final class ConnectionModel {
         sendTask = nil
         if let id = pendingSendID { messages.removeAll { $0.id == id } }
         pendingSendID = nil
-        draft = cancelledDraft
-        draftImages = cancelledImages
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft = cancelledDraft
+            draftImages = cancelledImages
+        }
         cancelledDraft = ""
         cancelledImages = []
         isSending = false
@@ -979,6 +982,11 @@ final class ConnectionModel {
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")
             recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
             conversationError = nil
+            // 服务端已受理：立刻结束"发送中"状态，恢复发送按钮；后续等待回复交给轮询与停止按钮。
+            isSending = false
+            pendingSendID = nil
+            cancelledDraft = ""
+            cancelledImages = []
             // 先用服务端真实用户消息替换本地待确认消息，保证"用户消息在上、助手回复在下"的顺序；
             // 否则实时回复先到、轮询提前退出时，待确认消息会带着临时序号排在回复后面。
             await loadHistory(session)
