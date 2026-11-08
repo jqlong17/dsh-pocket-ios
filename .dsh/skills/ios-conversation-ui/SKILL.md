@@ -67,6 +67,23 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - 上传图发送时本地先显示 `localImages` 缩略图，同样可点开全屏。
 - 保存失败（权限被拒）用底部 toast 提示。
 
+## 会话切换与异步隔离（防串台）
+
+**现象**：点进某个会话，偶尔显示其他会话的消息内容。
+
+**原因**：所有 `await` 返回后都必须重新校验"当前会话还是不是发起时的那个"。典型漏洞：
+`pollForReply` 在 `await rpc("session/page")` 返回后直接 `mergeMessages/mergeSteps`，
+此时用户已切到别的会话 → 旧会话消息串进新会话。
+
+**处理（约定）**：
+- 模型里维护 `conversationToken`，`open`/`disconnect` 时更新；异步任务捕获 token，
+  落地数据前检查 `token == conversationToken` **且** `selectedSession.sessionId` 未变。
+- 所有 `loadHistory` / `pollForReply` / 实时流回调：`await` 之后第一件事就是校验，
+  再 merge/append 任何消息或步骤。
+- 实时流（`acceptLive`）入口按 `sessionId` 校验；`follow` 的 while 条件同时检查会话未变。
+- 新增任何会写 `messages`/`steps` 的异步路径，都要走同样的双重校验，不要只依赖 Task.cancel
+  （取消是协作式的，可能晚一拍）。
+
 ## 文本选择与复制
 
 - **部分/跨行复制**：Textual 的 `.textual.textSelection(.enabled)` 支持**跨段落/跨块**选择（这是迁移的核心理由）。长按文字出现选择手柄，可跨行、跨列表选中后复制。
