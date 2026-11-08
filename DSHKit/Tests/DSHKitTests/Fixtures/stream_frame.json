@@ -1,0 +1,11 @@
+{
+  "type": "assistant-stream",
+  "frame": {
+    "type": "chunk",
+    "attemptId": "attempt-1",
+    "revision": 1,
+    "index": 3,
+    "time": 1794177000000,
+    "chunk": { "type": "text-delta", "index": 0, "text": "你好" }
+  }
+}

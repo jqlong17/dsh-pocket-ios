@@ -7,7 +7,7 @@
 
 | 编号 | 模块 | 目标 | 依赖 |
 | --- | --- | --- | --- |
-| [01](01-dshkit-transport-protocol.md) | DSHKit / Transport + Protocol | 抽出可单测的协议客户端（RPC、WS、解码） | — |
+| [01](01-dshkit-transport-protocol.md) | DSHKit / Transport + Protocol | 抽出可单测的协议客户端（RPC、WS、解码） | — ✅ 已验收 |
 | [02](02-sync-coordinator.md) | Sync Coordinator | 单一同步真相源：snapshot/事件/轮询/重连/分页 | 01 |
 | [03](03-message-lifecycle.md) | 消息生命周期 | 状态机、rpcId 对账、发件箱、排序、steer | 01,02 |
 | [04](04-conversation-ui.md) | Conversation UI / ViewModel | 滚动、发送、键盘、复制、附件、渲染 | 03 |
@@ -45,6 +45,19 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 - [ ] 旧功能无回归（演示模式、登录、收发、复制、图片、iPad）；
 - [ ] 代码路径与 spec「预计改动」一致，偏差已更新 spec；
 - [ ] 对应 commit + tag（`module-<编号>-accepted`）。
+
+## 进度
+
+| 模块 | 状态 | 测试 | 行覆盖率 |
+| --- | --- | --- | --- |
+| 01 DSHKit | ✅ 已验收（tag `module-01-accepted`） | 49 条全绿 | **91.6%**（`DSHKit/scripts/coverage.sh`） |
+| 02 Sync | ⏳ 待开始 | — | — |
+| 03 消息生命周期 | ⏳ 待开始 | — | — |
+| 04 Conversation UI | ⏳ 待开始 | — | — |
+| 05 E2E | ⏳ 待开始 | — | — |
+
+> 模块 01 范围是独立 SPM 包（`DSHKit/`），不修改 App 行为；App 的接入（替换 `ConnectionModel`
+> 内联 RPC/URL/解码）与同步层一起在**模块 02 第一步**完成，避免同一 PR 同时动协议与 UI。
 
 ## 测试分层
 

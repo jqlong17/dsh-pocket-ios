@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "sessionId": "session-normal-1",
+      "updatedAt": 1794177753606,
+      "running": true,
+      "blank": false,
+      "cwd": "/Users/me/work/demo",
+      "projections": { "values": { "title": "给项目加一个登录页" } }
+    },
+    {
+      "sessionId": "session-subagent-1",
+      "updatedAt": 1794177700000,
+      "running": false,
+      "blank": false,
+      "cwd": "/Users/me/work/demo",
+      "origin": "subagent",
+      "parentSessionId": "session-normal-1",
+      "projections": { "values": { "title": "子任务" } }
+    },
+    {
+      "sessionId": "session-blank-1",
+      "updatedAt": 1794177600000,
+      "running": false,
+      "blank": true,
+      "cwd": "/Users/me/work/demo",
+      "projections": { "values": { "title": "" } }
+    },
+    {
+      "sessionId": "session-archived-1",
+      "updatedAt": 1794177500000,
+      "running": false,
+      "blank": false,
+      "cwd": "/Users/me/work/demo",
+      "projections": { "values": { "title": "已归档会话" } }
+    }
+  ]
+}

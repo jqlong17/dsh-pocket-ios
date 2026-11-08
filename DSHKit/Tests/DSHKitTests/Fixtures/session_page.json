@@ -1,0 +1,111 @@
+{
+  "records": [
+    {
+      "event": {
+        "type": "session/title",
+        "seq": 1,
+        "time": 1794177000000,
+        "data": { "title": "问候", "source": { "kind": "user" } }
+      }
+    },
+    {
+      "event": {
+        "type": "user/message",
+        "seq": 2,
+        "time": 1794177001000,
+        "data": {
+          "content": [{ "type": "text", "text": "你好" }],
+          "source": { "kind": "user", "rpcId": "RPC-1", "clientTimeZone": "Asia/Shanghai" },
+          "role": "user",
+          "id": "msg-1"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "user/message",
+        "seq": 3,
+        "time": 1794177001500,
+        "data": {
+          "content": [{ "type": "text", "text": "runtime context injected" }],
+          "source": { "kind": "runtime-context" },
+          "role": "user"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "turn/start",
+        "seq": 4,
+        "time": 1794177002000,
+        "data": { "turn": 1 }
+      }
+    },
+    {
+      "event": {
+        "type": "tool/call",
+        "seq": 5,
+        "time": 1794177002500,
+        "data": {
+          "turn": 1, "step": 1,
+          "callId": "call-1", "name": "bash",
+          "arguments": "{\"command\": \"ls -la\"}"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "tool/result",
+        "seq": 6,
+        "time": 1794177003000,
+        "data": {
+          "turn": 1, "step": 1, "toolCallId": "call-1", "isError": false,
+          "message": { "role": "tool", "content": [{ "type": "text", "text": "total 0" }] }
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "assistant/message",
+        "seq": 7,
+        "time": 1794177004000,
+        "data": {
+          "turn": 1, "step": 2,
+          "message": { "role": "assistant", "content": [{ "type": "text", "text": "你好！" }] }
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "turn/end",
+        "seq": 8,
+        "time": 1794177005000,
+        "data": { "turn": 1, "reason": { "kind": "completed" } }
+      }
+    },
+    {
+      "event": {
+        "type": "user/message",
+        "seq": 9,
+        "time": 1794177006000,
+        "data": {
+          "content": [
+            { "type": "text", "text": "看图" },
+            { "type": "image", "attachment": { "attachmentId": "att-1", "mediaType": "image/jpeg", "width": 640, "height": 420, "name": "photo.jpg" } }
+          ],
+          "source": { "kind": "user", "rpcId": "RPC-2" },
+          "role": "user"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "unknown/event",
+        "seq": 10,
+        "time": 1794177007000,
+        "data": { "foo": "bar" }
+      }
+    }
+  ],
+  "hasMore": true
+}

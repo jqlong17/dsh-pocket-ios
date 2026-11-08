@@ -89,9 +89,15 @@
 4. 迁移 `ConnectionModel` 的 `rpc`/`webSocketURL`/解码调用到 DSHKit；
 5. 覆盖率 ≥85%，提交 `module-01-accepted`。
 
+## 验收结果（2026-11-09）
+
+- ✅ P01–P40（实际 49 条，含补充分支）全绿：`cd DSHKit && swift test`
+- ✅ 行覆盖率 **91.6%**（`DSHKit/scripts/coverage.sh 85` → PASS）
+- ⏭ App 接入（替换 `ConnectionModel` 内联 URL/RPC/解码）随模块 02 的 sync coordinator 一起完成
+
 ## 验收标准
 
-- [ ] P01–P40 全绿；
-- [ ] DSHKit 行覆盖率 ≥85%（不含 UI）；
-- [ ] App 仍可登录/收发（E2E）；
+- [x] P01–P40 全绿；
+- [x] DSHKit 行覆盖率 91.6% ≥85%（不含 UI）；
+- [ ] App 仍可登录/收发（E2E，模块 02 接入后验证）；
 - [ ] spec 与实现一致，偏差已更新。
