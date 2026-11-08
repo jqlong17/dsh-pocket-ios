@@ -1524,7 +1524,9 @@ struct ConnectedView: View {
 
 /// 聊天气泡里的标题：比默认更克制（默认 H1/H2 太大）。
 struct ChatHeadingStyle: StructuredText.HeadingStyle {
-    private static let fontScales: [CGFloat] = [1.3, 1.12, 1.0, 0.88, 0.8, 0.7]
+    // 以 Textual 基准字号 17pt（iOS .body）计算：
+    // H1 22 / H2 20 / H3 17 / H4 16 / H5 15 / H6 13，按 iOS 字体阶梯递减。
+    private static let fontScales: [CGFloat] = [1.29, 1.18, 1.0, 0.94, 0.88, 0.76]
 
     func makeBody(configuration: Configuration) -> some View {
         let index = min(max(configuration.headingLevel - 1, 0), Self.fontScales.count - 1)
