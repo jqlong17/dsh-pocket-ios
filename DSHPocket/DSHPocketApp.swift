@@ -1,5 +1,5 @@
 import SwiftUI
-import MarkdownUI
+import Textual
 import VisionKit
 import AVFoundation
 import Observation
@@ -1522,70 +1522,30 @@ struct ConnectedView: View {
     }
 }
 
-extension Theme {
-    /// 聊天场景的 Markdown 主题：标题比 basic 更克制，段落间距更紧凑。
-    /// 以 iOS 根字号 17pt 计算：H1≈22 / H2≈19 / H3≈17 / H4≈15 / H5≈14 / H6≈12。
-    static let chat = Theme.basic
-        .heading1 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.9), bottom: .em(0.35))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.3)) }
-        }
-        .heading2 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.9), bottom: .em(0.35))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.12)) }
-        }
-        .heading3 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.8), bottom: .em(0.3))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(1.0)) }
-        }
-        .heading4 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.7), bottom: .em(0.25))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.88)) }
-        }
-        .heading5 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.6), bottom: .em(0.2))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.8)) }
-        }
-        .heading6 { configuration in
-            configuration.label
-                .markdownMargin(top: .em(0.6), bottom: .em(0.2))
-                .markdownTextStyle { FontWeight(.semibold); FontSize(.em(0.7)) }
-        }
-        .paragraph { configuration in
-            configuration.label
-                .fixedSize(horizontal: false, vertical: true)
-                .relativeLineSpacing(.em(0.12))
-                .markdownMargin(top: .zero, bottom: .em(0.7))
-        }
+/// 聊天气泡里的标题：比默认更克制（默认 H1/H2 太大）。
+struct ChatHeadingStyle: StructuredText.HeadingStyle {
+    private static let fontScales: [CGFloat] = [1.3, 1.12, 1.0, 0.88, 0.8, 0.7]
+
+    func makeBody(configuration: Configuration) -> some View {
+        let index = min(max(configuration.headingLevel - 1, 0), Self.fontScales.count - 1)
+        configuration.label
+            .textual.fontScale(Self.fontScales[index])
+            .fontWeight(.semibold)
+            .textual.blockSpacing(.fontScaled(top: 0.9, bottom: 0.35))
+    }
 }
 
-/// 消息 Markdown 渲染：交给成熟的 MarkdownUI（GFM 规范，含表格/列表/代码块）。
+/// 消息 Markdown 渲染：交给 Textual（MarkdownUI 作者的新库，原生支持跨视图文本选择）。
 struct MarkdownBody: View {
     let text: String
     var foreground: Color = .primary
 
     var body: some View {
-        Markdown(text)
-            .markdownTheme(.chat)
-            .markdownTextStyle { ForegroundColor(foreground) }
-            .markdownBlockStyle(\.codeBlock) { configuration in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    configuration.label
-                        .markdownTextStyle {
-                            FontFamilyVariant(.monospaced)
-                            FontSize(.em(0.88))
-                        }
-                        .padding(10)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .markdownMargin(top: 4, bottom: 6)
-            }
+        StructuredText(markdown: text)
+            .textual.textSelection(.enabled)
+            .textual.structuredTextStyle(.gitHub)
+            .textual.headingStyle(ChatHeadingStyle())
+            .foregroundStyle(foreground)
     }
 }
 
