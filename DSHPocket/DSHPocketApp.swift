@@ -1,4 +1,5 @@
 import SwiftUI
+import MarkdownUI
 import VisionKit
 import AVFoundation
 import Observation
@@ -1500,215 +1501,15 @@ struct ConnectedView: View {
     }
 }
 
+/// 消息 Markdown 渲染：交给成熟的 MarkdownUI（GFM 规范，含表格/列表/代码块）。
 struct MarkdownBody: View {
     let text: String
-    @State private var availableWidth: CGFloat = 0
-
-    private enum Block {
-        case paragraph(String)
-        case heading(String)
-        case bullet(String)
-        case numbered(String, String)
-        case code(String)
-        case table(headers: [String], rows: [[String]])
-    }
+    var foreground: Color = .primary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .paragraph(let value):
-                    Text(inline(value)).font(.body).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-                case .heading(let value):
-                    Text(inline(value)).font(.headline).fixedSize(horizontal: false, vertical: true)
-                case .bullet(let value):
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("•").font(.body)
-                        Text(inline(value)).font(.body).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-                    }
-                case .numbered(let marker, let value):
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(marker).font(.body).foregroundStyle(.secondary)
-                        Text(inline(value)).font(.body).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-                    }
-                case .code(let value):
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        Text(value)
-                            .font(.system(size: 13, design: .monospaced))
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                case .table(let headers, let rows):
-                    table(headers: headers, rows: rows)
-                }
-            }
-        }
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { availableWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, newWidth in availableWidth = newWidth }
-            }
-        )
-    }
-
-    /// GFM 表格：固定列宽 + 行级网格线，行高由内容决定，天然对齐且无截断。
-    private func table(headers: [String], rows: [[String]]) -> some View {
-        let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
-        let headerColor = Color.primary.opacity(0.07)
-        let separator = Color.primary.opacity(0.12)
-
-        let measuredWidth = availableWidth > 0 ? availableWidth : 320
-        let minColumnWidth: CGFloat = 110
-        let fits = measuredWidth >= CGFloat(columnCount) * minColumnWidth
-        let columnWidth = fits ? measuredWidth / CGFloat(columnCount) : minColumnWidth
-
-        func textCell(_ value: String, bold: Bool) -> some View {
-            Text(inline(value))
-                .font(bold ? .footnote.weight(.semibold) : .footnote)
-                .lineLimit(nil)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.vertical, bold ? 8 : 7)
-                .frame(width: columnWidth, alignment: .topLeading)
-        }
-
-        func makeRow(_ values: [String], bold: Bool, background: Color) -> some View {
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(0..<columnCount, id: \.self) { column in
-                    textCell(column < values.count ? values[column] : "", bold: bold)
-                }
-            }
-            .background(background)
-            .overlay(alignment: .bottom) { Rectangle().fill(separator).frame(height: 0.5) }
-            .overlay {
-                GeometryReader { geo in
-                    Path { path in
-                        guard columnCount > 1 else { return }
-                        for index in 1..<columnCount {
-                            let x = CGFloat(index) * columnWidth
-                            path.move(to: CGPoint(x: x, y: 0))
-                            path.addLine(to: CGPoint(x: x, y: geo.size.height))
-                        }
-                    }
-                    .stroke(separator, lineWidth: 0.5)
-                }
-            }
-        }
-
-        return ScrollView(.horizontal, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                makeRow(headers, bold: true, background: headerColor)
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, rowValues in
-                    makeRow(rowValues, bold: false,
-                            background: index % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear)
-                }
-            }
-            .frame(width: CGFloat(columnCount) * columnWidth, alignment: .leading)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func inline(_ value: String) -> AttributedString {
-        (try? AttributedString(markdown: value, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(value)
-    }
-
-    /// 按空行/列表/代码块/表格切段。段内保留逐行换行，这是"多行回复能正常换行"的关键。
-    private var blocks: [Block] {
-        var result: [Block] = []
-        var paragraph: [String] = []
-        var codeLines: [String] = []
-        var insideCode = false
-        let lines = text.components(separatedBy: "\n")
-        var index = 0
-
-        func flushParagraph() {
-            guard !paragraph.isEmpty else { return }
-            result.append(.paragraph(paragraph.joined(separator: "\n")))
-            paragraph.removeAll()
-        }
-
-        while index < lines.count {
-            let rawLine = lines[index]
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("```") {
-                if insideCode {
-                    result.append(.code(codeLines.joined(separator: "\n")))
-                    codeLines.removeAll()
-                    insideCode = false
-                } else {
-                    flushParagraph()
-                    insideCode = true
-                }
-                index += 1
-                continue
-            }
-            if insideCode {
-                codeLines.append(rawLine)
-                index += 1
-                continue
-            }
-            if line.isEmpty {
-                flushParagraph()
-                index += 1
-                continue
-            }
-            if line.contains("|"), index + 1 < lines.count, Self.isTableSeparator(lines[index + 1]) {
-                flushParagraph()
-                let headers = Self.tableCells(rawLine)
-                var rows: [[String]] = []
-                var cursor = index + 2
-                while cursor < lines.count {
-                    let candidate = lines[cursor]
-                    let trimmed = candidate.trimmingCharacters(in: .whitespaces)
-                    if trimmed.isEmpty || !candidate.contains("|") { break }
-                    rows.append(Self.tableCells(candidate))
-                    cursor += 1
-                }
-                result.append(.table(headers: headers, rows: rows))
-                index = cursor
-                continue
-            }
-            if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("+ ") {
-                flushParagraph()
-                result.append(.bullet(String(line.dropFirst(2))))
-            } else if line.hasPrefix("#") {
-                flushParagraph()
-                result.append(.heading(line.trimmingCharacters(in: CharacterSet(charactersIn: "# "))))
-            } else if let match = line.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
-                flushParagraph()
-                let marker = String(line[line.startIndex..<match.upperBound]).trimmingCharacters(in: .whitespaces)
-                result.append(.numbered(marker, String(line[match.upperBound...])))
-            } else {
-                paragraph.append(line)
-            }
-            index += 1
-        }
-        if insideCode { result.append(.code(codeLines.joined(separator: "\n"))) }
-        flushParagraph()
-        return result
-    }
-
-    private static func tableCells(_ line: String) -> [String] {
-        var value = line.trimmingCharacters(in: .whitespaces)
-        if value.hasPrefix("|") { value.removeFirst() }
-        if value.hasSuffix("|") { value.removeLast() }
-        return value.split(separator: "|", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-    }
-
-    private static func isTableSeparator(_ line: String) -> Bool {
-        let cells = tableCells(line)
-        guard cells.count >= 2 else { return false }
-        return cells.allSatisfy { cell in
-            cell.range(of: #"^:?-{3,}:?$"#, options: .regularExpression) != nil
-        }
+        Markdown(text)
+            .markdownTheme(.gitHub)
+            .markdownTextStyle { ForegroundColor(foreground) }
     }
 }
 
@@ -1942,7 +1743,7 @@ struct MessageRow: View {
                         }
                     }
                     if !message.text.isEmpty {
-                        MarkdownBody(text: message.text)
+                        MarkdownBody(text: message.text, foreground: message.isUser ? .white : .primary)
                             .textSelection(.enabled)
                             .padding(.horizontal, 14).padding(.vertical, 11)
                             .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
