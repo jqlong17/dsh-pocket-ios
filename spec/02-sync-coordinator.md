@@ -75,6 +75,13 @@
 4. 切换 A/B 与回退不重拉；
 5. 分页；覆盖率 ≥85%，验收。
 
+## 验收结果（2026-11-09，包内）
+
+- ✅ S01–S41（实际 18 条，含 DSHClient 传输实现测试）全绿：`cd DSHKit && swift test`（共 67 tests）
+- ✅ DSHKit 行覆盖率 **91.6%**（`DSHKit/scripts/coverage.sh 85` → PASS）
+- ⏭ App 接入（`ConnectionModel` 改用 coordinator）在 **02b** 完成；分页游标语义待真实协议确认（当前用同一页兜底 + seq 去重）
+- 已知：`SyncConfig.pollInterval` 暂未启用（轮询兜底接入 02b 时使用）
+
 ## 验收标准
 
 - [ ] S01–S41 全绿；
