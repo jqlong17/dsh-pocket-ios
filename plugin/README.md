@@ -13,12 +13,11 @@
 ## 安装
 
 ```bash
-# 电脑端：一条命令装齐（dsh-pocket + iOS 引导插件）
-dsh plugin add dsh-pocket dsh-pocket-ios
-
-# 若 dsh-pocket 已在用，只装本插件即可：
+# 从 npm 安装（会自动带上依赖 dsh-pocket）
 dsh plugin add dsh-pocket-ios
 ```
+
+npm: <https://www.npmjs.com/package/dsh-pocket-ios>
 
 安装后重启 DSH（或按提示重启），打开 **设置 → 手机访问** 即可看到 iOS 入口。
 

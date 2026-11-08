@@ -124,8 +124,11 @@ HANDOFF.md                # 开发交接文档（协议细节、根因记录、�
 客户端下载二维码与连接引导，并依赖 `dsh-pocket`（一条命令装齐电脑端）。
 
 ```bash
-dsh plugin add dsh-pocket dsh-pocket-ios
+# 已发布到 npm：https://www.npmjs.com/package/dsh-pocket-ios
+dsh plugin add dsh-pocket-ios
 ```
+
+安装后打开 **设置 → 手机访问**，即可看到 iOS 客户端下载二维码与安装引导。
 
 详见 [plugin/README.md](plugin/README.md)。
 
