@@ -3762,6 +3762,8 @@ struct ConversationView: View {
     @State private var scrollGeneration = 0
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
+    /// 展开/收起「过程」后短时间内抑制"自动贴底"，避免一点击就被拽到底部。
+    @State private var suppressAutoScrollUntil = Date.distantPast
     /// 分页加载冷却，避免滚动到顶部时连续翻页。
     @State private var olderCooldownUntil = Date.distantPast
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
@@ -3851,7 +3853,14 @@ struct ConversationView: View {
                                 MessageRow(message: message, model: model).id(entry.id)
                             } else if let group = entry.group {
                                 ProcessRow(group: group, expanded: expandedTurns.contains(group.turn), model: model) {
-                                    if expandedTurns.contains(group.turn) { expandedTurns.remove(group.turn) } else { expandedTurns.insert(group.turn) }
+                                    suppressAutoScrollUntil = Date().addingTimeInterval(0.5)
+                                    withAnimation(.easeInOut(duration: 0.22)) {
+                                        if expandedTurns.contains(group.turn) {
+                                            expandedTurns.remove(group.turn)
+                                        } else {
+                                            expandedTurns.insert(group.turn)
+                                        }
+                                    }
                                 }.id(entry.id)
                             }
                         }
@@ -3870,6 +3879,8 @@ struct ConversationView: View {
                 .onPreferenceChange(ConversationHeightKey.self) { _ in
                     // 行高异步变化（Textual 表格/图片晚渲染）会让内容变高；只要仍在跟随最新，
                     // 就补一次贴底，避免"最后一条消息下方留出空白"。
+                    // 展开/收起「过程」后的 0.5 秒内不贴底，否则点击会被拽到底部。
+                    guard Date() >= suppressAutoScrollUntil else { return }
                     guard isSettlingScroll || followsLatest else { return }
                     DispatchQueue.main.async {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
@@ -4550,6 +4561,7 @@ struct ProcessRow: View {
     let expanded: Bool
     @Bindable var model: ConnectionModel
     let toggle: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 最后一条未完成的步骤 = 当前正在执行的动作。
     private var runningStep: PocketStep? {
@@ -4620,8 +4632,14 @@ struct ProcessRow: View {
                     }
                 }
                 .padding(.leading, 2)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+                .clipped()
             }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expanded)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
