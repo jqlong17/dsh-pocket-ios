@@ -645,6 +645,21 @@ final class ConnectionModel {
         DSHURL.webSocketURL(from: base, path: path)
     }
 
+    /// 引用一条消息后递增，用于让输入框自动聚焦。
+    var focusComposerTick = 0
+
+    /// 引用消息：把原文以 Markdown 引用块追加到草稿，并请求聚焦输入框。
+    @MainActor
+    func beginQuote(_ message: PocketMessage) {
+        let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let quoted = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "> \($0)" }.joined(separator: "\n")
+        let prefix = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : draft + "\n\n"
+        draft = prefix + quoted + "\n\n"
+        focusComposerTick += 1
+    }
+
     /// APNs device token：登录成功后注册到插件，用于后台完成推送。
     var pushToken: String? = UserDefaults.standard.string(forKey: PushDelegate.tokenDefaultsKey)
     private var pushTokenObserver: NSObjectProtocol?
@@ -3905,7 +3920,10 @@ struct ConversationView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isSettlingScroll = false }
                 }
                 // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
-                .onChange(of: model.scrollToBottomTick) { _, _ in
+                .onChange(of: model.focusComposerTick) { _, _ in
+            composerFocused = true
+        }
+        .onChange(of: model.scrollToBottomTick) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: model.messages.count) { oldCount, newCount in
@@ -4203,6 +4221,7 @@ struct MessageRow: View {
     let message: PocketMessage
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
+    @State private var copied = false
 
     private var hasUserImages: Bool {
         message.isUser && (!message.localImages.isEmpty || !message.images.isEmpty)
@@ -4217,6 +4236,9 @@ struct MessageRow: View {
                 case .text(let markdown):
                     MarkdownBody(text: markdown, foreground: message.isUser ? .white : .primary)
                         .textSelection(.enabled)
+                        // 绿色气泡里选区高亮默认取全局绿色 tint → 选中几乎看不出来；
+                        // 用户气泡改用蓝色选区高亮，助手气泡保持默认主题色。
+                        .tint(message.isUser ? Color(red: 0.10, green: 0.35, blue: 0.95) : nil)
                 case .image(let url, let caption):
                     RemoteMarkdownImage(url: url, caption: caption)
                 }
@@ -4260,11 +4282,29 @@ struct MessageRow: View {
                 if !message.text.isEmpty {
                     Button {
                         UIPasteboard.general.string = message.text
+                        withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.2))
+                            withAnimation(.easeInOut(duration: 0.15)) { copied = false }
+                        }
                     } label: {
-                        Image(systemName: "doc.on.doc").font(.caption2).foregroundStyle(.secondary)
+                        Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
+                            .font(.caption2)
+                            .foregroundStyle(copied ? Color(red: 0.08, green: 0.48, blue: 0.37) : .secondary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("复制整条消息")
+                    .accessibilityLabel(copied ? "已复制" : "复制整条消息")
+                    Button {
+                        model.beginQuote(message)
+                    } label: {
+                        Image(systemName: "quote.bubble").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("引用这条消息")
+                }
+                if copied {
+                    Text("已复制").font(.caption2).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        .transition(.opacity)
                 }
             }.font(.caption2.weight(.semibold))
             HStack {
