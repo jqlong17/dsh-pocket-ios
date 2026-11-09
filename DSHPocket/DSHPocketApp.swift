@@ -4736,12 +4736,13 @@ struct ProcessRow: View {
                 .padding(.leading, 2)
                 // 从摘要行下方"向下展开"：只用淡入 + 顶部锚点微缩放，
                 // 不要用 .move(edge: .top)，否则文字会从上一行上方滑下来。
+                .padding(.horizontal, 12)
                 .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                 .clipped()
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expanded)
-        .padding(12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
