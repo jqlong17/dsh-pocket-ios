@@ -121,7 +121,7 @@ function endpointFromPath(pathname) {
   return endpoint
 }
 
-async function readBody(req) {
+async function readRawBody(req) {
   const chunks = []
   let size = 0
   for await (const chunk of req) {
@@ -129,7 +129,11 @@ async function readBody(req) {
     if (size > BODY_MAX) throw new Error('body too large')
     chunks.push(chunk)
   }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readBody(req) {
+  return JSON.parse(await readRawBody(req))
 }
 
 function send(res, status, payload) {
@@ -173,8 +177,16 @@ export function apply(ctx) {
           if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
           let pinAttempt = urlObject.searchParams.get('token') ?? ''
           if (req.method === 'POST') {
-            const body = await readBody(req)
-            pinAttempt = (body && (body.token ?? body.pin)) ?? pinAttempt
+            const raw = await readRawBody(req)
+            const contentType = String(req.headers['content-type'] ?? '')
+            if (contentType.includes('application/json')) {
+              try {
+                const body = JSON.parse(raw)
+                pinAttempt = body?.token ?? body?.pin ?? pinAttempt
+              } catch { /* 非法 JSON 按未提供处理 */ }
+            } else {
+              pinAttempt = new URLSearchParams(raw).get('token') ?? pinAttempt
+            }
           }
           const expected = await readPin()
           if (String(pinAttempt) !== expected) { send(res, 401, { ok: false }); return }

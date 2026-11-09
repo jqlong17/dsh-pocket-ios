@@ -385,7 +385,7 @@ final class ConnectionModel {
             recordDiagnostic("插件登录：HTTP \(pluginHTTP.statusCode)，重定向=\(pluginRedirected ? "是" : "否")，dsh-auth cookie=\(hasDSHAuth ? "有" : "无")")
             if (200..<400).contains(pluginHTTP.statusCode), hasDSHAuth || pluginRedirected {
                 loginOK = true
-            } else if pluginHTTP.statusCode == 404 || pluginHTTP.statusCode == 405 || pluginHTTP.statusCode == 503 {
+            } else if pluginHTTP.statusCode == 404 || pluginHTTP.statusCode == 405 || pluginHTTP.statusCode == 503 || (500..<600).contains(pluginHTTP.statusCode) {
                 // 没有安装本插件：回退 dsh-pocket 的登录协议。
                 let (pocketHTTP, pocketRedirected) = try await postForm("pocket-login")
                 recordDiagnostic("dsh-pocket 登录回退：HTTP \(pocketHTTP.statusCode)")
