@@ -4411,9 +4411,9 @@ struct MessageRow: View {
                     MarkdownBody(text: markdown, foreground: message.isUser ? .white : .primary)
                         .textSelection(.enabled)
                         // 绿色气泡里选区高亮默认取全局绿色 tint → 选中几乎看不出来。
-                        // 保持同一绿色色系，改用更浅的薄荷绿做选区高亮，和深绿气泡形成明暗对比；
+                        // 保持同一绿色色系，用更浅的薄荷绿做选区高亮，和深绿气泡形成明暗对比；
                         // 助手气泡保持默认主题色。
-                        .tint(message.isUser ? Color(red: 0.45, green: 0.86, blue: 0.70) : nil)
+                        .tint(message.isUser ? Color(red: 0.66, green: 0.95, blue: 0.84) : nil)
                 case .image(let url, let caption):
                     RemoteMarkdownImage(url: url, caption: caption)
                 }
