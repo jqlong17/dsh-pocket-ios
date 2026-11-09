@@ -519,7 +519,10 @@ window.__ModuleLoader__.load({
       startObserver();
     }
 
-    module.exports = { apply: apply };
+    // 关键：cordis client 插件必须在导出里声明 name 和 inject，
+    // 否则 ctx.slots / ctx.connection 不会被注入（原生 settings.section 注册会静默失败）。
+    var inject = ["slots", "connection"];
+    module.exports = { name: "dsh-pocket-ios", inject: inject, apply: apply };
     return module.exports;
   }
 });
