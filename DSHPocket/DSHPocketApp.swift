@@ -2102,104 +2102,233 @@ struct RootView: View {
 struct ConnectView: View {
     @Bindable var model: ConnectionModel
     @State private var showingScanner = false
+
     /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
     private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
+
+    private var card: Color { Color(uiColor: .secondarySystemGroupedBackground) }
+    private var pageBackground: Color { Color(uiColor: .systemGroupedBackground) }
+    private var brand: Color { Color(red: 0.08, green: 0.48, blue: 0.37) }
+
     var body: some View {
-        Form {
-            Section {
-                HStack(spacing: 12) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(.green)
-                        .frame(width: 42, height: 42)
-                        .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("连接你的 DSH").font(.headline)
-                        Text("输入电脑地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 8)
-                    Link(destination: Self.usageDocURL) {
-                        Label("使用说明", systemImage: "book")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.green)
-                    }
-                    .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
-                }
-                .padding(.vertical, 2)
-                .listRowBackground(Color.clear)
-            }
-            if !model.savedEndpoints.isEmpty {
-                Section {
-                    ForEach(model.savedEndpoints) { endpoint in
-                        Button {
-                            model.serverAddress = endpoint.address
-                            model.errorMessage = nil
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
-                                    .foregroundStyle(.green)
-                                    .frame(width: 22)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(endpoint.kind.label).font(.caption).foregroundStyle(.secondary)
-                                    Text(endpoint.address).font(.footnote).lineLimit(1)
-                                }
-                                Spacer()
-                                if model.serverAddress == endpoint.address {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Text("已保存的连接")
-                } footer: {
-                    Text("启动时会优先尝试局域网，连不上再自动切到公网；也可以在会话页右上角手动切换。")
-                }
-            }
-            Section {
-                HStack(spacing: 10) {
-                    TextField("http://192.168.1.10:3081", text: $model.serverAddress).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.URL)
-                    Button { showingScanner = true } label: { Image(systemName: "qrcode.viewfinder").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44) }.buttonStyle(.bordered).accessibilityLabel("扫描 Pocket 二维码")
-                }
-                SecureField("访问密码", text: $model.pin).textContentType(.password).textInputAutocapitalization(.never).autocorrectionDisabled()
-            }
-            if let error = model.errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red).font(.subheadline)
-                    if model.addressNeedsRescan {
-                        Button { showingScanner = true } label: {
-                            Label("重新扫码连接", systemImage: "qrcode.viewfinder")
-                        }
-                    }
-                }
-            }
-            Section {
-                Button { Task { await model.connect() } } label: {
-                    HStack { Spacer(); if model.isConnecting { ProgressView().padding(.trailing, 6); Text("正在连接") } else { Image(systemName: "arrow.right.circle.fill"); Text("连接") }; Spacer() }.fontWeight(.semibold)
-                }.disabled(model.isConnecting)
-            }
-            Section {
-                Button { model.startDemoMode() } label: {
-                    HStack { Spacer(); Image(systemName: "play.circle"); Text("体验演示模式"); Spacer() }
-                }
-                .accessibilityHint("没有电脑时查看内置示例会话与对话")
-            } footer: {
+        ScrollView {
+            VStack(spacing: 12) {
+                header
+                if !model.savedEndpoints.isEmpty { savedEndpointsCard }
+                inputCard
+                if let error = model.errorMessage { errorBanner(error) }
+                connectButton
+                demoButton
                 Text("演示模式使用内置示例数据，不会连接或发送任何内容。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
         }
-        .listSectionSpacing(12)
-        .contentMargins(.top, 4, for: .scrollContent)
-        .contentMargins(.bottom, 8, for: .scrollContent)
-        .onAppear { model.errorMessage = nil }
-        .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
+        .scrollDismissesKeyboard(.interactively)
+        .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingScanner) {
             NavigationStack {
                 QRScannerView { value in if model.useScannedAddress(value) { showingScanner = false } }
-                    .navigationTitle("扫描二维码").navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle("扫描二维码")
+                    .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingScanner = false } } }
             }
         }
+        .onAppear { model.errorMessage = nil }
+        .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(brand)
+                .frame(width: 38, height: 38)
+                .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("连接你的 DSH").font(.headline)
+                Text("输入电脑地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Link(destination: Self.usageDocURL) {
+                HStack(spacing: 4) {
+                    Image(systemName: "book").font(.caption)
+                    Text("使用说明").font(.footnote.weight(.medium))
+                }
+                .foregroundStyle(brand)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
+        }
+        .padding(14)
+        .background(card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var savedEndpointsCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("已保存的连接")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("优先局域网")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
+
+            ForEach(Array(model.savedEndpoints.enumerated()), id: \.element.id) { index, endpoint in
+                if index > 0 {
+                    Divider().padding(.leading, 52)
+                }
+                Button {
+                    model.serverAddress = endpoint.address
+                    model.errorMessage = nil
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(brand)
+                            .frame(width: 26, height: 26)
+                            .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(endpoint.kind.label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(endpoint.address)
+                                .font(.footnote)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer(minLength: 8)
+                        if model.serverAddress == endpoint.address {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("启动时优先尝试局域网，连不上自动切公网；也可在会话页右上角切换。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+                .padding(.bottom, 12)
+        }
+        .background(card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var inputCard: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                TextField("http://192.168.1.10:3081", text: $model.serverAddress)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textContentType(.URL)
+                    .font(.subheadline)
+                Button { showingScanner = true } label: {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(brand)
+                        .frame(width: 34, height: 34)
+                        .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("扫描 Pocket 二维码")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+
+            Divider().padding(.leading, 14)
+
+            SecureField("访问密码", text: $model.pin)
+                .textContentType(.password)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.subheadline)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+        }
+        .background(card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func errorBanner(_ error: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                Text(error).font(.footnote).foregroundStyle(.red)
+            }
+            if model.addressNeedsRescan {
+                Button { showingScanner = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "qrcode.viewfinder")
+                        Text("重新扫码连接")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(brand)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var connectButton: some View {
+        Button {
+            Task { await model.connect() }
+        } label: {
+            HStack(spacing: 6) {
+                if model.isConnecting {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "arrow.right.circle.fill")
+                }
+                Text(model.isConnecting ? "正在连接" : "连接")
+                    .fontWeight(.semibold)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .foregroundStyle(.white)
+            .background(brand, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(model.isConnecting)
+        .opacity(model.isConnecting ? 0.7 : 1)
+    }
+
+    private var demoButton: some View {
+        Button { model.startDemoMode() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "play.circle")
+                Text("体验演示模式")
+            }
+            .fontWeight(.medium)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .foregroundStyle(brand)
+            .background(card, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("没有电脑时查看内置示例会话与对话")
     }
 }
 
