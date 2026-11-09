@@ -4585,14 +4585,16 @@ struct ProcessRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: toggle) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .frame(width: 16, height: 16)
+                    Text(summary).font(.footnote).lineLimit(1)
+                        .foregroundStyle(runningStep == nil ? .secondary : Color(red: 0.08, green: 0.48, blue: 0.37))
                     if runningStep != nil {
                         ProgressView().scaleEffect(0.55).frame(width: 12, height: 12)
                     }
-                    Text(summary).font(.footnote).lineLimit(1)
-                        .foregroundStyle(runningStep == nil ? .secondary : Color(red: 0.08, green: 0.48, blue: 0.37))
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.secondary)
