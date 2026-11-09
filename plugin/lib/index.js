@@ -18,7 +18,7 @@ import QRCode from 'qrcode'
 const execFileP = promisify(execFile)
 
 export const name = 'dsh-pocket-ios'
-export const inject = ['connection', 'webServer']
+export const inject = ['connection', 'webServer', 'sessions']
 
 const CHANNEL = '/dsh-pocket-ios'
 const TAILSCALE_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
