@@ -1025,6 +1025,7 @@ final class ConnectionModel {
 
     @MainActor
     private func mergeMessages(_ incoming: [PocketMessage]) {
+        loadOutboxIfNeeded()
         var bySequence = Dictionary(uniqueKeysWithValues: messages.filter { !$0.isPending }.map { ($0.sequence, $0) })
         for message in incoming where !message.isPending { bySequence[message.sequence] = message }
         let incomingUserMessages = incoming.filter(\.isUser)
@@ -1039,7 +1040,20 @@ final class ConnectionModel {
         let latestIncomingUser = incomingUserMessages.max { $0.sequence < $1.sequence }
         let pending = messages.filter { message in
             guard message.isPending else { return false }
-            if let rpcId = message.rpcId, incomingRpcIds.contains(rpcId.lowercased()) { return false }
+            if let rpcId = message.rpcId {
+                if incomingRpcIds.contains(rpcId.lowercased()) { return false }
+                // 兜底：服务端没回填 rpcId（steer 偶发丢确认），但本次新出现了同文本用户消息。
+                if incoming.contains(where: {
+                    $0.isUser && !$0.isPending && $0.rpcId == nil
+                        && $0.text == message.text && $0.sequence > previousMaxConfirmed
+                }) {
+                    confirmOutbox(rpcIds: [rpcId])
+                    return false
+                }
+                if failedSendRpcIds.contains(rpcId) { return true }
+                // 仍在发件箱（未确认）才保留；历史遗留 pending 丢弃。
+                return outboxEntries.contains { $0.id.lowercased() == rpcId.lowercased() }
+            }
             // 兼容不回 rpcId 的服务端：仅当“发送之后新出现的最后一条用户消息”文本相同才确认。
             if message.rpcId == nil,
                let latest = latestIncomingUser,
@@ -1819,6 +1833,13 @@ final class ConnectionModel {
             // 否则实时回复先到、轮询提前退出时，待确认消息会带着临时序号排在回复后面。
             await loadHistory(session)
             await pollForReply(session, after: text, afterSequence: lastSequence)
+            // 服务端 ACK 了但消息始终没有落库（steer 在部分运行状态下会被丢弃）：
+            // 标记失败让用户可重发，而不是永远显示"发送中"。
+            if ackedSendRpcIds.contains(requestId) {
+                failedSendRpcIds.insert(requestId)
+                conversationError = "消息已发出但服务端未确认（可能被丢弃），点消息下方「重新发送」重试。"
+                recordDiagnostic("发送未被确认，标记失败：\(requestId)")
+            }
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled {
                 removeOutbox(rpcIds: [requestId])
