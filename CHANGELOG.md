@@ -30,5 +30,5 @@
 - 配套 DSH 插件：`dsh-pocket`（连接基础）与 `dsh-pocket-ios`（iPhone 使用引导与下载二维码）。
 - 支持局域网与 Cloudflare Tunnel 公网两种连接方式。
 
-[1.0.3]: https://github.com/jqlong17/dsh-pocket-ios/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/jqlong17/dsh-pocket-ios/releases/tag/v1.0.0
+[1.0.3]: https://github.com/jqlong17/dsh-pocket-ios/releases
+[1.0.0]: https://github.com/jqlong17/dsh-pocket-ios/releases
