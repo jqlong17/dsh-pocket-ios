@@ -49,6 +49,11 @@ final class ConversationState {
     var coordinator: SessionSyncCoordinator?
     var coordinatorTask: Task<Void, Never>?
     var coordinatorStarted = false
+    /// 历史分页：是否还有更早消息、是否正在加载、加载前的滚动锚点。
+    var hasMoreOlder = false
+    var isLoadingOlder = false
+    var olderAnchorID: String?
+    var olderLoadTick = 0
     var conversationToken = UUID()
     var turnStarts: [Int] = []
     var turnEnds: [Int] = []
@@ -125,6 +130,22 @@ final class ConnectionModel {
     var lastLiveFrameAt: Date {
         get { activeConversation?.lastLiveFrameAt ?? Date() }
         set { activeConversation?.lastLiveFrameAt = newValue }
+    }
+    var hasMoreOlder: Bool {
+        get { activeConversation?.hasMoreOlder ?? false }
+        set { activeConversation?.hasMoreOlder = newValue }
+    }
+    var isLoadingOlder: Bool {
+        get { activeConversation?.isLoadingOlder ?? false }
+        set { activeConversation?.isLoadingOlder = newValue }
+    }
+    var olderAnchorID: String? {
+        get { activeConversation?.olderAnchorID }
+        set { activeConversation?.olderAnchorID = newValue }
+    }
+    var olderLoadTick: Int {
+        get { activeConversation?.olderLoadTick ?? 0 }
+        set { activeConversation?.olderLoadTick = newValue }
     }
     /// 实时连接状态机（替代原来的字符串状态）。
     enum LiveConnectionState: Equatable {
@@ -669,6 +690,7 @@ final class ConnectionModel {
         turnStartedAt = session.running ? Date().addingTimeInterval(-37) : nil
         isLoadingConversation = false
         conversationError = nil
+        hasMoreOlder = false
         draft = ""
         draftImages = []
         liveConnection = .demo
@@ -939,6 +961,9 @@ final class ConnectionModel {
         conversation.conversationError = nil
         conversation.isTurnRunning = false
         conversation.turnStartedAt = nil
+        conversation.hasMoreOlder = false
+        conversation.isLoadingOlder = false
+        conversation.olderAnchorID = nil
         if isNewConversation {
             conversation.messages = []
             conversation.steps = []
@@ -956,6 +981,14 @@ final class ConnectionModel {
         conversation.isLoadingConversation = true
         if let client = syncClient {
             startCoordinator(for: conversation, session: session, client: client)
+#if DEBUG
+            if DebugLaunch.loadOlder {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    self?.loadOlderMessages()
+                }
+            }
+#endif
         } else {
             // 地址异常时保留旧路径兜底。
             liveTask = Task { await loadConversation(session) }
@@ -1622,6 +1655,18 @@ final class ConnectionModel {
         Task { await coordinator.start() }
     }
 
+    /// 请求更早一页历史（滚动到顶部附近时调用）。
+    @MainActor
+    func loadOlderMessages() {
+        guard !isDemoMode, !isLoadingOlder, hasMoreOlder,
+              let coordinator = activeConversation?.coordinator,
+              let oldest = messages.min(by: { $0.sequence < $1.sequence }) else { return }
+        isLoadingOlder = true
+        olderAnchorID = oldest.id
+        recordDiagnostic("请求更早历史：beforeSeq=\(oldest.sequence)")
+        Task { await coordinator.loadOlder() }
+    }
+
     @MainActor
     private func applyCoordinatorUpdate(_ update: SessionUpdate, conversation: ConversationState) async {
         guard activeConversation === conversation else { return }
@@ -1629,13 +1674,25 @@ final class ConnectionModel {
         case .connection(let state):
             liveConnection = Self.appConnectionState(from: state)
             if case .connected = state { conversationError = nil }
-        case .snapshot(let dshMessages, let dshSteps, _):
+        case .snapshot(let dshMessages, let dshSteps, let hasMore):
             mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
             for step in dshSteps { applyDSHStep(step) }
+            hasMoreOlder = hasMore
             isLoadingConversation = false
         case .messages(let dshMessages):
             mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
             isLoadingConversation = false
+            if isLoadingOlder {
+                isLoadingOlder = false
+                olderLoadTick += 1
+            }
+        case .hasMore(let more):
+            hasMoreOlder = more
+            if isLoadingOlder {
+                isLoadingOlder = false
+                olderLoadTick += 1
+            }
+            recordDiagnostic("历史分页：\(more ? "还有更早消息" : "已到最早")")
         case .step(let step):
             applyDSHStep(step)
         case .title(_, let title):
@@ -2161,6 +2218,7 @@ enum DebugLaunch {
     static var pin: String? { environment["DSH_PIN"] ?? value(for: "--dsh-pin") }
     static var sessionId: String? { environment["DSH_OPEN"] ?? value(for: "--dsh-open") }
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
+    static var loadOlder: Bool { environment["DSH_LOAD_OLDER"] == "1" }
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
     static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
     static var demoMode: Bool { environment["DSH_DEMO"] == "1" }
@@ -2619,6 +2677,8 @@ struct ConversationView: View {
     @State private var scrollGeneration = 0
     @State private var didAutoSend = false
     @State private var expandedTurns: Set<Int> = []
+    /// 分页加载冷却，避免滚动到顶部时连续翻页。
+    @State private var olderCooldownUntil = Date.distantPast
     @State private var showingCamera = false
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var composerFocused: Bool
@@ -2698,6 +2758,14 @@ struct ConversationView: View {
                     // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
                     // LazyVStack 会缓存旧高度导致行重叠；会话窗口只有 30 条消息，直接布局代价可忽略。
                     VStack(spacing: 14) {
+                        if model.isLoadingOlder {
+                            HStack(spacing: 6) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("加载更早消息…").font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 2)
+                        }
                         if model.isLoadingConversation && model.messages.isEmpty && model.steps.isEmpty {
                             ProgressView().padding(.top, 36)
                         }
@@ -2764,6 +2832,24 @@ struct ConversationView: View {
                 .onChange(of: model.steps.count) { oldCount, newCount in
                     guard newCount != oldCount else { return }
                     if isAtBottom || isSettlingScroll { scrollToBottom(proxy: proxy) }
+                }
+                .onChange(of: model.olderLoadTick) { _, _ in
+                    olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    guard let anchor = model.olderAnchorID else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, topOffset in
+                    guard topOffset < 80,
+                          model.hasMoreOlder,
+                          !model.isLoadingOlder,
+                          !model.messages.isEmpty,
+                          Date() >= olderCooldownUntil else { return }
+                    olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    model.loadOlderMessages()
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y

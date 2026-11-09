@@ -28,6 +28,7 @@ public actor SessionSyncCoordinator {
     /// 仅"本轮生成中"才启用看门狗：空闲会话不主动重连。
     private var expectingActivity = false
     private var olderPageRequests = 0
+    private var hasMoreOlder = false
 
     public init(sessionId: String,
                 transport: SyncTransport,
@@ -74,9 +75,12 @@ public actor SessionSyncCoordinator {
             let page = try await transport.olderPage(sessionId: sessionId,
                                                     beforeSeq: oldest,
                                                     maxMessages: config.maxMessages)
+            hasMoreOlder = page.hasMore
             applyPage(page, emitSnapshot: false)
+            emit(.hasMore(page.hasMore))
         } catch {
             // 分页失败不改变连接状态，等待下一次触发。
+            emit(.hasMore(true))
         }
     }
 
@@ -89,6 +93,7 @@ public actor SessionSyncCoordinator {
     public func currentMessages() -> [DSHMessage] { messages }
     public func currentSteps() -> [DSHStepEvent] { steps }
     public func olderPageRequestCount() -> Int { olderPageRequests }
+    public func currentHasMoreOlder() -> Bool { hasMoreOlder }
 
     // MARK: - Loop
 
@@ -188,6 +193,7 @@ public actor SessionSyncCoordinator {
         }
         if emitSnapshot {
             emittedSnapshot = true
+            hasMoreOlder = page.hasMore
             emit(.snapshot(messages: messages.sorted { $0.sequence < $1.sequence },
                            steps: steps,
                            hasMore: page.hasMore))

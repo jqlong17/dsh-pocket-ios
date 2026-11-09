@@ -16,8 +16,8 @@ extension DSHClient: SyncTransport {
         return connection
     }
 
-    /// 历史分页：当前 DSH 版本的分页游标语义待确认，先用同一页接口兜底（去重合并保证幂等）。
+    /// 更早一页：beforeSeq 是排他上界，返回 hasMore 标识是否还有更早消息。
     public func olderPage(sessionId: String, beforeSeq: Int, maxMessages: Int) async throws -> DSHSessionPage {
-        try await page(sessionId: sessionId, maxMessages: maxMessages)
+        try await page(sessionId: sessionId, maxMessages: maxMessages, beforeSeq: beforeSeq)
     }
 }

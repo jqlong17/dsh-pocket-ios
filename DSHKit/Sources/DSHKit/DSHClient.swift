@@ -68,13 +68,16 @@ public final class DSHClient: @unchecked Sendable {
         return items.compactMap(DSHDecoding.session(fromJSON:))
     }
 
-    public func page(sessionId: String, maxMessages: Int) async throws -> DSHSessionPage {
-        let value = try await rpc(method: "session/page", args: [
-            "request": [
-                "address": ["kind": "session", "sessionId": sessionId],
-                "maxMessages": maxMessages
-            ]
-        ])
+    public func page(sessionId: String, maxMessages: Int,
+                     beforeSeq: Int? = nil, throughSeq: Int? = nil) async throws -> DSHSessionPage {
+        var request: [String: Any] = [
+            "address": ["kind": "session", "sessionId": sessionId],
+            "maxMessages": maxMessages
+        ]
+        // 分页游标：beforeSeq 是"更早一页"的排他上界（DSH SessionPageRequest）。
+        if let beforeSeq { request["beforeSeq"] = beforeSeq }
+        if let throughSeq { request["throughSeq"] = throughSeq }
+        let value = try await rpc(method: "session/page", args: ["request": request])
         return DSHDecoding.page(fromValue: value)
     }
 }

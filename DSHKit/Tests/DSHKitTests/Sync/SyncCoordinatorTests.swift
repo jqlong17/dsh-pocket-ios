@@ -284,6 +284,48 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertEqual(older.records.count, 10)
     }
 
+
+    // 分页：olderPage 必须带 beforeSeq 游标（DSH SessionPageRequest.beforeSeq）
+    func testOlderPageSendsBeforeSeqCursor() async throws {
+        let fixture = try JSONSerialization.data(withJSONObject: ["result": ["value": try fixtureJSON("session_page")]])
+        let transport = MockHTTPTransport { _ in .init(status: 200, body: fixture, headers: [:]) }
+        let client = DSHClient(baseURL: try XCTUnwrap(DSHURL.normalizedBase("http://host:3081")), http: transport)
+        _ = try await client.olderPage(sessionId: "s", beforeSeq: 42, maxMessages: 30)
+        let request = try XCTUnwrap(transport.requests.last)
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let requestArgs = try XCTUnwrap((json["payload"] as? [String: Any])?["args"] as? [String: Any])
+        let pageRequest = try XCTUnwrap(requestArgs["request"] as? [String: Any])
+        XCTAssertEqual(pageRequest["beforeSeq"] as? Int, 42)
+        XCTAssertEqual(pageRequest["maxMessages"] as? Int, 30)
+    }
+
+    // 分页：loadOlder 合并更早消息并更新 hasMore
+    func testLoadOlderMergesOlderMessagesAndUpdatesHasMore() async throws {
+        let initial = DSHDecoding.page(fromValue: ["records": [[
+            "event": ["type": "user/message", "seq": 100,
+                      "data": ["content": [["type": "text", "text": "新"]], "source": ["kind": "user"]]]
+        ]], "hasMore": true])
+        let older = DSHDecoding.page(fromValue: ["records": [[
+            "event": ["type": "user/message", "seq": 50,
+                      "data": ["content": [["type": "text", "text": "旧"]], "source": ["kind": "user"]]]
+        ]], "hasMore": false])
+        let transport = MockSyncTransport(connections: [MockSyncConnection()],
+                                          snapshotPage: { _ in initial },
+                                          olderPages: [older])
+        let coordinator = SessionSyncCoordinator(sessionId: "s", transport: transport,
+                                                 clock: FakeSyncClock(mode: .never))
+        await coordinator.start()
+        await waitUntil("initial") { await coordinator.currentMessages().count == 1 }
+        await coordinator.loadOlder()
+        await waitUntil("older merged") { await coordinator.currentMessages().count == 2 }
+        let messages = await coordinator.currentMessages()
+        XCTAssertEqual(messages.map(\.sequence), [50, 100])
+        let hasMore = await coordinator.currentHasMoreOlder()
+        XCTAssertFalse(hasMore)
+        await coordinator.stop()
+    }
+
     // S41：无消息时 loadOlder 不请求
     func testLoadOlderWithoutMessagesDoesNothing() async throws {
         let transport = MockSyncTransport(connections: [MockSyncConnection()],

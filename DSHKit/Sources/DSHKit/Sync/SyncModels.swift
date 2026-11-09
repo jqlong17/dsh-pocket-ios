@@ -19,6 +19,8 @@ public enum SessionUpdate: Equatable, Sendable {
     case title(seq: Int, title: String)
     case assistantDelta(attemptId: String, text: String)
     case connection(SyncConnectionState)
+    /// 更早历史是否还有（true = 还能继续 loadOlder）。
+    case hasMore(Bool)
 }
 
 public struct SyncConfig: Sendable {
