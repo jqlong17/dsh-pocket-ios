@@ -61,6 +61,9 @@ final class ConversationState {
 @Observable
 final class ConnectionModel {
     private static let savedServerAddressKey = "dsh-pocket.server-address"
+    private static let savedEndpointsKey = "dsh-pocket.saved-endpoints"
+    /// 记住的地址列表（局域网 + 公网各一份），启动时优先局域网。
+    var savedEndpoints: [SavedEndpoint] = []
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     private static let conversationMessageLimit = 30
     var serverAddress = UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
@@ -276,6 +279,7 @@ final class ConnectionModel {
             sessions = try await fetchSessions()
             isConnected = true
             UserDefaults.standard.set(serverAddress, forKey: Self.savedServerAddressKey)
+            recordEndpoint(serverAddress)
             pin = ""
             recordDiagnostic("连接成功：会话 \(sessions.count) 个")
         } catch {
@@ -335,6 +339,88 @@ final class ConnectionModel {
         DSHURL.webSocketURL(from: base, path: path)
     }
 
+    init() {
+        loadSavedEndpoints()
+    }
+
+    // MARK: - 地址记忆与自动切换（局域网优先）
+
+    private static func endpointKind(of address: String) -> SavedEndpoint.Kind {
+        guard let url = URL(string: address), let host = url.host?.lowercased() else { return .custom }
+        if host == "localhost" || host.hasSuffix(".local") { return .lan }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        if parts.count == 4 {
+            let a = parts[0], b = parts[1]
+            if a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && (16...31).contains(b)) {
+                return .lan
+            }
+        }
+        if host.contains("trycloudflare.com") || url.scheme == "https" { return .publicNetwork }
+        return .custom
+    }
+
+    private func loadSavedEndpoints() {
+        guard let data = UserDefaults.standard.data(forKey: Self.savedEndpointsKey),
+              let list = try? JSONDecoder().decode([SavedEndpoint].self, from: data) else { return }
+        savedEndpoints = list
+    }
+
+    /// 连接成功后记录地址；同一地址只保留一条。
+    func recordEndpoint(_ address: String) {
+        guard let url = try? Self.serverURL(from: address) else { return }
+        let normalized = url.absoluteString
+        var list = savedEndpoints.filter { $0.address != normalized }
+        list.append(SavedEndpoint(address: normalized,
+                                  kind: Self.endpointKind(of: normalized),
+                                  lastUsedAt: Date().timeIntervalSince1970))
+        list.sort { $0.lastUsedAt > $1.lastUsedAt }
+        savedEndpoints = Array(list.prefix(6))
+        if let data = try? JSONEncoder().encode(savedEndpoints) {
+            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        }
+    }
+
+    /// 轻量探测：能正常返回 session/list 才认为该地址可用（cookie 失效会返回 401）。
+    @MainActor
+    private func probeEndpoint(_ address: String, timeout: TimeInterval = 2) async -> Bool {
+        guard let root = try? Self.serverURL(from: address) else { return false }
+        var request = URLRequest(url: root.appending(path: "api/session/list"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.httpShouldHandleCookies = true
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "type": "client-request",
+            "rpcId": UUID().uuidString,
+            "method": "session/list",
+            "payload": ["args": ["_request": ["excludeArchived": true]]]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
+        request.httpBody = data
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
+    /// 手动切换到某个已保存地址（失败时回滚，保持原连接）。
+    @MainActor
+    func switchToEndpoint(_ endpoint: SavedEndpoint) async {
+        guard !isDemoMode else { return }
+        let previous = serverAddress
+        serverAddress = endpoint.address
+        errorMessage = nil
+        do {
+            sessions = try await fetchSessions()
+            isConnected = true
+            recordEndpoint(endpoint.address)
+            recordDiagnostic("切换连接：\(endpoint.kind.label) \(endpoint.address)")
+        } catch {
+            serverAddress = previous
+            applyConnectError(error)
+            if isConnected { recordDiagnostic("切换连接失败，已回滚：\(error.localizedDescription)") }
+        }
+    }
+
     @MainActor
     func restoreConnection() async {
         if isDemoMode { return }
@@ -349,6 +435,29 @@ final class ConnectionModel {
             return
         }
 #endif
+        // 有多个已保存地址时：优先局域网（最近用过的在前），失败再回公网。
+        if !savedEndpoints.isEmpty {
+            let ordered = savedEndpoints.sorted { lhs, rhs in
+                if lhs.kind == .lan, rhs.kind != .lan { return true }
+                if rhs.kind == .lan, lhs.kind != .lan { return false }
+                return lhs.lastUsedAt > rhs.lastUsedAt
+            }
+            for endpoint in ordered {
+                guard await probeEndpoint(endpoint.address) else { continue }
+                serverAddress = endpoint.address
+                do {
+                    sessions = try await fetchSessions()
+                    isConnected = true
+                    errorMessage = nil
+                    addressNeedsRescan = false
+                    recordEndpoint(endpoint.address)
+                    recordDiagnostic("自动连接：\(endpoint.kind.label) \(endpoint.address)")
+                    return
+                } catch {
+                    continue
+                }
+            }
+        }
         guard UserDefaults.standard.string(forKey: Self.savedServerAddressKey) != nil,
               (try? Self.serverURL(from: serverAddress)) != nil else { return }
         do {
@@ -1610,6 +1719,29 @@ final class ConnectionModel {
     }
 }
 
+/// 记住连接过的地址：启动时优先局域网，连不上自动回公网，避免每次扫码。
+struct SavedEndpoint: Codable, Identifiable, Hashable {
+    enum Kind: String, Codable {
+        case lan
+        case publicNetwork
+        case custom
+
+        var label: String {
+            switch self {
+            case .lan: return "局域网"
+            case .publicNetwork: return "公网"
+            case .custom: return "自定义"
+            }
+        }
+    }
+
+    let address: String
+    let kind: Kind
+    var lastUsedAt: Double
+
+    var id: String { address }
+}
+
 struct PocketSession: Identifiable, Hashable {
     let sessionId: String
     let updatedAt: TimeInterval
@@ -1975,25 +2107,57 @@ struct ConnectView: View {
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 14) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 28, weight: .medium)).foregroundStyle(.green).frame(width: 48, height: 48).background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(.green)
+                        .frame(width: 42, height: 42)
+                        .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("连接你的 DSH").font(.headline)
-                        Text("输入电脑上的 DSH Pocket 地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
+                        Text("输入电脑地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
                     }
-                }.padding(.vertical, 8).listRowBackground(Color.clear)
-                Link(destination: Self.usageDocURL) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "book").foregroundStyle(.green)
-                        Text("使用说明")
-                        Spacer()
-                        Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(.secondary)
-                    }.font(.subheadline)
+                    Spacer(minLength: 8)
+                    Link(destination: Self.usageDocURL) {
+                        Label("使用说明", systemImage: "book")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.green)
+                    }
+                    .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
                 }
-                .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
+                .padding(.vertical, 2)
                 .listRowBackground(Color.clear)
             }
-            Section("主机") {
+            if !model.savedEndpoints.isEmpty {
+                Section {
+                    ForEach(model.savedEndpoints) { endpoint in
+                        Button {
+                            model.serverAddress = endpoint.address
+                            model.errorMessage = nil
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
+                                    .foregroundStyle(.green)
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(endpoint.kind.label).font(.caption).foregroundStyle(.secondary)
+                                    Text(endpoint.address).font(.footnote).lineLimit(1)
+                                }
+                                Spacer()
+                                if model.serverAddress == endpoint.address {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("已保存的连接")
+                } footer: {
+                    Text("启动时会优先尝试局域网，连不上再自动切到公网；也可以在会话页右上角手动切换。")
+                }
+            }
+            Section {
                 HStack(spacing: 10) {
                     TextField("http://192.168.1.10:3081", text: $model.serverAddress).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.URL)
                     Button { showingScanner = true } label: { Image(systemName: "qrcode.viewfinder").font(.system(size: 20, weight: .medium)).frame(width: 44, height: 44) }.buttonStyle(.bordered).accessibilityLabel("扫描 Pocket 二维码")
@@ -2024,6 +2188,9 @@ struct ConnectView: View {
                 Text("演示模式使用内置示例数据，不会连接或发送任何内容。")
             }
         }
+        .listSectionSpacing(12)
+        .contentMargins(.top, 4, for: .scrollContent)
+        .contentMargins(.bottom, 8, for: .scrollContent)
         .onAppear { model.errorMessage = nil }
         .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
         .sheet(isPresented: $showingScanner) {
@@ -2123,7 +2290,24 @@ struct ConnectedView: View {
                     Button { model.disconnect() } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }.accessibilityLabel("断开连接")
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) { Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话") }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !model.savedEndpoints.isEmpty {
+                    Menu {
+                        ForEach(model.savedEndpoints) { endpoint in
+                            Button {
+                                Task { await model.switchToEndpoint(endpoint) }
+                            } label: {
+                                Label("\(endpoint.kind.label)：\(endpoint.address)",
+                                      systemImage: model.serverAddress == endpoint.address ? "checkmark" : "network")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "network")
+                    }
+                    .accessibilityLabel("切换连接")
+                }
+                Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话")
+            }
         }
         .navigationTitle("会话")
         .navigationDestination(for: PocketSession.self) { session in
