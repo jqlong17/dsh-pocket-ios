@@ -122,6 +122,8 @@ final class ConnectionModel {
     var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
+    /// 当前屏幕上真正可见的会话（返回列表后会清空；不能用 selectedSession 判断，它不会清）。
+    var visibleSessionId: String?
     /// session/list 的 running 状态机，用于识别"运行中 → 已结束"。
     private var completionTracker = SessionCompletionTracker(
         previous: (UserDefaults.standard.dictionary(forKey: ConnectionModel.runningSnapshotKey) as? [String: Bool]) ?? [:]
@@ -468,6 +470,9 @@ final class ConnectionModel {
 #endif
         loadSavedEndpoints()
         CompletionNotifier.shared.configure()
+        if completionAlertsEnabled {
+            CompletionNotifier.shared.requestPermission()
+        }
     }
 
     // MARK: - 地址记忆与自动切换（局域网优先）
@@ -815,6 +820,8 @@ final class ConnectionModel {
         case "demo-1":
             return [
                 PocketMessage(demoText: "帮我把这次发布整理成 Release Notes，顺便标一下风险。", isUser: true, sequence: 1),
+                // 中间过程：助手先说一句，再走工具调用，最后给出正式答案——用于演示"过程"插在正确位置。
+                PocketMessage(demoText: "我先拉一下最近的提交记录和变更，再整理成发布说明。", isUser: false, sequence: 2),
                 PocketMessage(demoText: """
                 ## v1.0.2 发布说明
 
@@ -838,7 +845,7 @@ final class ConnectionModel {
                 ```
 
                 风险中等的「实时同步」迁移已在下面展开。
-                """, isUser: false, sequence: 4)
+                """, isUser: false, sequence: 5)
             ]
         case "demo-2":
             return [
@@ -908,11 +915,11 @@ final class ConnectionModel {
     private static func demoSteps(for sessionId: String) -> [PocketStep] {
         guard sessionId == "demo-1" else { return [] }
         return [
-            PocketStep(id: "demo-step-1", sequence: 2, turn: 1, number: 1,
+            PocketStep(id: "demo-step-1", sequence: 3, turn: 1, number: 1,
                        name: "bash", detail: "ls -la",
                        resultText: "drwxr-xr-x  12 ruska  staff  384  src\n-rw-r--r--   1 ruska  staff  512  package.json",
                        finished: true),
-            PocketStep(id: "demo-step-2", sequence: 3, turn: 1, number: 2,
+            PocketStep(id: "demo-step-2", sequence: 4, turn: 1, number: 2,
                        name: "read", detail: "src/router.ts",
                        resultText: "export const routes = [ ... ]", finished: true)
         ]
@@ -926,6 +933,7 @@ final class ConnectionModel {
         let latest = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0.running) })
         let completed = completionTracker.update(latest: latest)
         UserDefaults.standard.set(latest, forKey: Self.runningSnapshotKey)
+        recordDiagnostic("可用会话刷新：\(latest.count) 个，完成事件 \(completed.count) 个")
 
         // 重新开始运行的会话不再算"等待回复"。
         for session in sessions where session.running {
@@ -935,7 +943,7 @@ final class ConnectionModel {
         guard !completed.isEmpty else { return }
         for sessionId in completed {
             guard let session = sessions.first(where: { $0.sessionId == sessionId }) else { continue }
-            let viewing = selectedSession?.sessionId == sessionId && isAppActive
+            let viewing = visibleSessionId == sessionId && isAppActive
             if viewing {
                 finishedAwaitingSessionIds.remove(sessionId)
             } else {
@@ -3084,7 +3092,15 @@ struct ConnectedView: View {
             ConversationView(model: model, session: session)
                 // onAppear 在部分 iOS 版本上不会对同一目的地类型重复触发，
                 // 用 task(id:) 确保进入/切换会话时一定重新打开对应会话。
-                .task(id: session.sessionId) { model.open(session) }
+                .task(id: session.sessionId) {
+                    model.visibleSessionId = session.sessionId
+                    model.open(session)
+                }
+                .onDisappear {
+                    if model.visibleSessionId == session.sessionId {
+                        model.visibleSessionId = nil
+                    }
+                }
         }
         .task {
             await model.loadSessions(silently: !model.sessions.isEmpty)
