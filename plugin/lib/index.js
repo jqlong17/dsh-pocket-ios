@@ -48,29 +48,62 @@ async function readPin() {
   return null
 }
 
+/** 读取配置文件里的 Tailscale 地址（DSH 宿主进程往往访问不到 Tailscale GUI 的 IPC，
+ *  CLI 探测会报 "The Tailscale GUI failed to start"，因此配置文件是首选的可靠来源）。
+ * 文件：~/.dsh/dsh-pocket-ios/tailscale.json，内容 {"url":"https://<机器>.<tailnet>.ts.net"}
+ */
+async function readConfiguredUrl() {
+  try {
+    const raw = await readFile(join(LOG_DIR, 'tailscale.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    const url = typeof parsed?.url === 'string' ? parsed.url.trim().replace(/\/$/, '') : ''
+    if (/^https:\/\//.test(url)) return url
+  } catch { /* 没有配置文件时回退到 CLI */ }
+  return null
+}
+
 /** 供 RPC 与单测使用：返回 Tailscale 连接信息与带访问密码的二维码。 */
 export async function tailscaleStatus() {
   let dnsName = null
   let httpsUrl = null
   let serveRaw = null
-  try {
-    const json = JSON.parse(await tailscale(['status', '--json']))
-    dnsName = json?.Self?.DNSName ? String(json.Self.DNSName).replace(/\.$/, '') : null
-  } catch { /* Tailscale 未安装/未登录 */ }
-  try {
-    const out = await tailscale(['serve', 'status'])
-    serveRaw = out
-    const match = out.match(/https:\/\/[^\s)]+/)
-    if (match) httpsUrl = match[0].replace(/\/$/, '')
-    else await logLine(`serve status 无 https 匹配: ${JSON.stringify(out.slice(0, 200))}`)
-  } catch (error) {
-    await logLine(`serve status 异常: ${error?.message ?? error}`)
+  let source = null
+
+  const configuredUrl = await readConfiguredUrl()
+  if (configuredUrl) {
+    httpsUrl = configuredUrl
+    source = 'config'
+    try {
+      const json = JSON.parse(await tailscale(['status', '--json']))
+      dnsName = json?.Self?.DNSName ? String(json.Self.DNSName).replace(/\.$/, '') : null
+    } catch { /* 只用于展示；配置了 URL 就够用 */ }
+    if (!dnsName) dnsName = new URL(configuredUrl).hostname
+  }
+
+  if (!httpsUrl) {
+    try {
+      const json = JSON.parse(await tailscale(['status', '--json']))
+      dnsName = json?.Self?.DNSName ? String(json.Self.DNSName).replace(/\.$/, '') : null
+    } catch { /* Tailscale 未安装/未登录 */ }
+    try {
+      const out = await tailscale(['serve', 'status'])
+      serveRaw = out
+      const match = out.match(/https:\/\/[^\s)]+/)
+      if (match) {
+        httpsUrl = match[0].replace(/\/$/, '')
+        source = 'cli'
+      } else {
+        await logLine(`serve status 无 https 匹配: ${JSON.stringify(out.slice(0, 200))}`)
+      }
+    } catch (error) {
+      await logLine(`serve status 异常: ${error?.message ?? error}`)
+    }
   }
 
   const pin = await readPin()
   const qrUrl = httpsUrl && pin ? `${httpsUrl}?pin=${encodeURIComponent(pin)}` : httpsUrl
   const qr = qrUrl ? await QRCode.toDataURL(qrUrl, { margin: 1, width: 360 }) : null
-  return { available: Boolean(dnsName), dnsName, httpsUrl, pinSet: Boolean(pin), qrUrl, qr, serveRaw }
+  return { available: Boolean(dnsName) || Boolean(httpsUrl), dnsName, httpsUrl, pinSet: Boolean(pin), qrUrl, qr, serveRaw, source }
 }
 
 function endpointFromPath(pathname) {

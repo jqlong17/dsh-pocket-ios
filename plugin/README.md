@@ -45,3 +45,14 @@ GPL-2.0（与上游 dsh-pocket 一致），见 [LICENSE](LICENSE)。
 ## Tailscale 连接卡片（0.1.5+）
 
 设置页「iOS 客户端」会检测本机 Tailscale：若已开启 `tailscale serve` HTTPS，卡片会显示固定地址与**带访问密码的二维码**，手机扫码即可自动填写地址+密码并连接。未安装 Tailscale 时不影响局域网/公网二维码。
+
+### 配置文件（CLI 探测失败时的兜底）
+
+DSH 宿主进程可能访问不到 Tailscale GUI 的 IPC，导致 `tailscale serve status` 报 `The Tailscale GUI failed to start`。这时写一个配置文件即可（插件读取优先于 CLI）：
+
+```bash
+mkdir -p ~/.dsh/dsh-pocket-ios
+echo '{"url":"https://你的机器名.你的tailnet.ts.net"}' > ~/.dsh/dsh-pocket-ios/tailscale.json
+```
+
+设置页「手机访问」卡片会在刷新后显示带访问密码的二维码。
