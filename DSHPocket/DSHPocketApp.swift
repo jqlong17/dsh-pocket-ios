@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 import Textual
 import DSHKit
 import VisionKit
@@ -18,26 +19,56 @@ private func timingLog(_ message: String) {
     NSLog("%@", line)
 }
 
-/// 会话完成提醒：本地通知（前台也会弹 banner + 声音）。
+/// 会话完成提醒：本地通知（前台也会弹 banner + 声音），支持在通知/Apple Watch 上直接文字回复。
 final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = CompletionNotifier()
+
+    static let replyCategoryID = "DSH_REPLY"
+    static let replyActionID = "DSH_REPLY_ACTION"
+    static let sessionIdKey = "sessionId"
+
+    /// 由 ConnectionModel 注入：收到通知回复时把文本发回对应会话。
+    var onReply: ((String, String) async -> Void)?
+    /// 由 ConnectionModel 注入：点击通知打开对应会话。
+    var onOpenSession: ((String) -> Void)?
+
     private var configured = false
 
     func configure() {
         guard !configured else { return }
         configured = true
-        UNUserNotificationCenter.current().delegate = self
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+
+        // 通知展开/Apple Watch 上会出现「回复」输入框。
+        let reply = UNTextInputNotificationAction(
+            identifier: Self.replyActionID,
+            title: "回复",
+            options: [],
+            textInputButtonTitle: "发送",
+            textInputPlaceholder: "回复 DSH…"
+        )
+        let category = UNNotificationCategory(
+            identifier: Self.replyCategoryID,
+            actions: [reply],
+            intentIdentifiers: [],
+            options: []
+        )
+        center.setNotificationCategories([category])
     }
 
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func notify(title: String) {
+    func notify(sessionId: String, title: String) {
         let content = UNMutableNotificationContent()
         content.title = "对话已完成"
         content.body = title.isEmpty ? "等待你的回复" : "「\(title)」等待你的回复"
         content.sound = .default
+        content.categoryIdentifier = Self.replyCategoryID
+        content.threadIdentifier = sessionId
+        content.userInfo = [Self.sessionIdKey: sessionId, "title": title]
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
@@ -46,10 +77,104 @@ final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+           let sessionId = response.notification.request.content.userInfo[Self.sessionIdKey] as? String,
+           !sessionId.isEmpty {
+            onOpenSession?(sessionId)
+            completionHandler()
+            return
+        }
+        guard response.actionIdentifier == Self.replyActionID,
+              let textResponse = response as? UNTextInputNotificationResponse else {
+            completionHandler()
+            return
+        }
+        let text = textResponse.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              let sessionId = response.notification.request.content.userInfo[Self.sessionIdKey] as? String,
+              !sessionId.isEmpty else {
+            completionHandler()
+            return
+        }
+        Task { @MainActor in
+            await self.onReply?(sessionId, text)
+            completionHandler()
+        }
+    }
+}
+
+extension Notification.Name {
+    static let dshPushTokenUpdated = Notification.Name("dsh-pocket.push-token-updated")
+}
+
+/// APNs device token 回调（SwiftUI 生命周期下用 delegate adaptor 接收）。
+final class PushDelegate: NSObject, UIApplicationDelegate {
+    static let tokenDefaultsKey = "dsh-pocket.apns-token"
+
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(token, forKey: Self.tokenDefaultsKey)
+        NotificationCenter.default.post(name: .dshPushTokenUpdated, object: token)
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NSLog("DSH_PUSH register failed: %@", error.localizedDescription)
+    }
+}
+
+/// 访问密码存 Keychain：通知回复在后台/冷启动时需要自动重连。
+enum PinKeychain {
+    private static let service = "com.ruska.dsh-pocket-ios.pin"
+    private static let account = "access-pin"
+
+    static func save(_ pin: String) {
+        guard !pin.isEmpty else { clear(); return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        var attributes = query
+        attributes[kSecValueData as String] = Data(pin.utf8)
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    static func load() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let pin = String(data: data, encoding: .utf8) else { return nil }
+        return pin
+    }
+
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
 }
 
 @main
 struct DSHPocketApp: App {
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @State private var model = ConnectionModel()
 
     var body: some Scene {
@@ -372,6 +497,8 @@ final class ConnectionModel {
                 sessions = try await fetchSessions()
                 isConnected = true
                 errorMessage = nil
+                PinKeychain.save(pin)
+                await syncPushRegistration()
                 recordDiagnostic("token 登录成功：会话 \(sessions.count) 个")
                 return
             } catch {
@@ -518,7 +645,20 @@ final class ConnectionModel {
         DSHURL.webSocketURL(from: base, path: path)
     }
 
+    /// APNs device token：登录成功后注册到插件，用于后台完成推送。
+    var pushToken: String? = UserDefaults.standard.string(forKey: PushDelegate.tokenDefaultsKey)
+    private var pushTokenObserver: NSObjectProtocol?
+
     init() {
+        pushTokenObserver = NotificationCenter.default.addObserver(
+            forName: .dshPushTokenUpdated, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let token = note.object as? String else { return }
+            Task { @MainActor in
+                self?.pushToken = token
+                await self?.syncPushRegistration()
+            }
+        }
 #if DEBUG
         if ProcessInfo.processInfo.environment["DSH_RESET"] == "1" {
             // UI 测试用：每次启动清空持久化状态，保证用例可重复。
@@ -528,7 +668,14 @@ final class ConnectionModel {
         }
 #endif
         loadSavedEndpoints()
+        if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
         CompletionNotifier.shared.configure()
+        CompletionNotifier.shared.onReply = { [weak self] sessionId, text in
+            await self?.sendNotificationReply(sessionId: sessionId, text: text)
+        }
+        CompletionNotifier.shared.onOpenSession = { [weak self] sessionId in
+            Task { @MainActor in await self?.openSessionFromNotification(sessionId: sessionId) }
+        }
         if completionAlertsEnabled,
            ProcessInfo.processInfo.environment["DSH_NO_NOTIF_PROMPT"] != "1" {
             CompletionNotifier.shared.requestPermission()
@@ -1028,13 +1175,16 @@ final class ConnectionModel {
         if completionAlertsEnabled,
            ProcessInfo.processInfo.environment["DSH_NO_NOTIF_PROMPT"] != "1" {
             CompletionNotifier.shared.requestPermission()
+            Task { await syncPushRegistration() }
+        } else if let token = pushToken {
+            Task { _ = try? await rpc("push.unregister", args: ["token": token]) }
         }
         recordDiagnostic("完成提醒：\(completionAlertsEnabled ? "开启" : "关闭")")
     }
 
     @MainActor
     private func playCompletionFeedback(for session: PocketSession) {
-        CompletionNotifier.shared.notify(title: session.displayTitle)
+        CompletionNotifier.shared.notify(sessionId: session.sessionId, title: session.displayTitle)
         // 通知被关闭时也有声音兜底。
         AudioServicesPlaySystemSound(1007)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -2182,6 +2332,96 @@ final class ConnectionModel {
             recordDiagnostic("已请求停止当前生成")
         } catch {
             conversationError = "停止失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 点击完成通知：连接后打开对应会话（找不到则落到会话列表）。
+    @MainActor
+    func openSessionFromNotification(sessionId: String) async {
+        if !isConnected {
+            if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
+            if pin.isEmpty, let saved = UserDefaults.standard.string(forKey: Self.savedServerAddressKey), !saved.isEmpty {
+                serverAddress = saved
+            }
+            await connect()
+        }
+        guard let session = sessions.first(where: { $0.sessionId == sessionId }) else {
+            recordDiagnostic("通知打开会话失败：找不到 \(sessionId)")
+            return
+        }
+        finishedAwaitingSessionIds.remove(sessionId)
+        persistFinishedAwaiting()
+        navigationPath = [session]
+    }
+
+    /// 登录成功后把 APNs token 注册到插件；通知权限未开启时先请求权限。
+    @MainActor
+    func syncPushRegistration() async {
+        guard completionAlertsEnabled else {
+            if let token = pushToken {
+                _ = try? await rpc("push.unregister", args: ["token": token])
+            }
+            return
+        }
+        UIApplication.shared.registerForRemoteNotifications()
+        guard let token = pushToken, isConnected else { return }
+        do {
+            _ = try await rpc("push.register", args: [
+                "token": token,
+                "environment": "sandbox",
+                "bundleId": Bundle.main.bundleIdentifier ?? "",
+                "deviceName": UIDevice.current.name
+            ])
+            recordDiagnostic("APNs token 已注册（\(token.suffix(6))）")
+        } catch {
+            recordDiagnostic("APNs token 注册失败：\(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    /// 通知 / Apple Watch 直接回复：把文本作为 prompt 发回指定会话。
+    /// 冷启动时用 Keychain 里的密码自动重连；失败只记录诊断，不打断前台。
+    func sendNotificationReply(sessionId: String, text: String) async {
+        guard !text.isEmpty else { return }
+        recordDiagnostic("通知回复：会话 \(sessionId)，\(text.count) 字")
+        let background = UIApplication.shared.beginBackgroundTask(withName: "dsh-notification-reply")
+        defer {
+            if background != .invalid { UIApplication.shared.endBackgroundTask(background) }
+        }
+
+        if !isConnected {
+            if let saved = UserDefaults.standard.string(forKey: Self.savedServerAddressKey), !saved.isEmpty {
+                serverAddress = saved
+            }
+            if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
+            if pin.isEmpty {
+                recordDiagnostic("通知回复失败：未连接且没有可用密码")
+                return
+            }
+            await connect()
+            guard isConnected else {
+                recordDiagnostic("通知回复失败：自动重连未成功")
+                return
+            }
+        }
+
+        let running = sessions.first(where: { $0.sessionId == sessionId })?.running ?? false
+        let mode = running ? "steer" : "queue"
+        let requestId = UUID().uuidString.lowercased()
+        do {
+            _ = try await rpcWithRetry("session/prompt", args: ["request": [
+                "requestId": requestId,
+                "sessionId": sessionId,
+                "mode": mode,
+                "content": [["type": "text", "text": text]],
+                "clientTimeZone": TimeZone.current.identifier
+            ]])
+            ackedSendRpcIds.insert(requestId)
+            addOutbox(sessionId: sessionId, rpcId: requestId, text: text)
+            if finishedAwaitingSessionIds.remove(sessionId) != nil { persistFinishedAwaiting() }
+            recordDiagnostic("通知回复已发送（模式 \(mode)）")
+        } catch {
+            recordDiagnostic("通知回复发送失败：\(error.localizedDescription)")
         }
     }
 

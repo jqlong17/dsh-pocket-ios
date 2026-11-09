@@ -36,6 +36,25 @@ App：<https://apps.apple.com/app/id6832288744>（DSH Pocket iOS）。
 > echo '{"url":"https://你的机器名.你的tailnet.ts.net"}' > ~/.dsh/dsh-pocket-ios/tailscale.json
 > ```
 
+## APNs 后台完成推送（可选）
+
+1. Apple 开发者后台 → Keys → 新建 **APNs** Key，记录 **Key ID**，下载 `.p8`（只能下载一次），放到 `~/.appstoreconnect/private_keys/AuthKey_<KEYID>.p8`；
+2. 确认 App ID 已开启 **Push Notifications** capability；
+3. 写配置（权限 600）：
+
+   ```bash
+   cat > ~/.dsh/dsh-pocket-ios/apns.json <<'JSON'
+   { "keyId": "<KEYID>", "teamId": "<TEAMID>", "environment": "sandbox" }
+   JSON
+   chmod 600 ~/.dsh/dsh-pocket-ios/apns.json
+   ```
+
+   Debug 构建用 `sandbox`，App Store 版本用 `production`；
+4. 重启 DSH：插件每 5 秒检测会话 `turn/start → turn/end`，向已注册设备推送「对话已完成」；
+5. 通知支持直接回复（含 Apple Watch），回复会作为 prompt 发回对应会话。
+
+推送日志：`~/.dsh/dsh-pocket-ios/tailscale.log`（只记 sessionId、token 尾号、HTTP 状态）；设备 token 存 `push.json`。
+
 ## 端口说明
 
 稳定入口默认 **3081**，与 `dsh-pocket` 的代理端口相同，两者不能同时启用。需要共存时：
