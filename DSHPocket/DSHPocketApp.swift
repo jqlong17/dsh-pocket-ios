@@ -3953,6 +3953,10 @@ struct UIKitMessageList: UIViewRepresentable {
                 return AnyView(
                     MessageRow(message: message, model: parent.model)
                         .id(item.id)
+                        .transaction { transaction in
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 4)
                 )
@@ -3966,6 +3970,10 @@ struct UIKitMessageList: UIViewRepresentable {
                         self?.toggleExpanded(turn)
                     }
                     .id(item.id)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 4)
                 )
