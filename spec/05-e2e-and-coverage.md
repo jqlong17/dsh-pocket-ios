@@ -65,8 +65,12 @@
 - ✅ E01–E12 中可由包内 Mock 覆盖的 9 条集成用例全绿（登录/错误 PIN/列表过滤/同步+重连/
   发送生命周期+发件箱恢复/steer/失败重发/loadOlder/A-B 隔离/HTTP 兜底）
 - ✅ DSHKit 总测试 **115 条**，行覆盖率 **92.73%**
-- ⏭ XCUITest（E20–E24）需要新增 iOS UI Test target 与 Demo 模式 UI 自动化，作为 05b 待办；
-  真机/局域网手工冒烟维持在每次发版前执行
+- ✅ 05b：已新增 `DSHPocketUITests` target 并通过：
+  - `testSendMessageFromComposer`（Demo 发送链路）
+  - `testBackToBottomThenScrollUpDoesNotSnapBack`（回到底部后立刻上滑不被抢回）
+  - `testSendWhileTurnRunningUsesSteer`（真实会话：生成中发送 steer，UI 断言消息出现）
+  - 运行命令：`xcodebuild test -scheme DSHPocket -destination ... ARCHS=arm64`；
+    真实用例通过 `TEST_RUNNER_LIVE_SESSION_ID` 传入会话 id，否则自动跳过
 
 ## 最终验收标准
 

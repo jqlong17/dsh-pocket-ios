@@ -54,7 +54,7 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 | 02 Sync | ✅ 已验收（包内，tag `module-02-accepted`；App 接入在 02b） | 18 条全绿 | 整体 **92.7%** |
 | 03 消息生命周期 | ✅ 已验收（包内，tag `module-03-accepted`） | 25 条全绿 | Store 各文件 92–100% |
 | 04 Conversation UI | ✅ 已验收（包内纯逻辑，tag `module-04-accepted`） | 13 条全绿 | UI 93.7% |
-| 05 E2E | ✅ 已验收（包内 Mock 集成，tag `module-05-accepted`） | 9 条全绿 | 覆盖 92.7% |
+| 05 E2E | ✅ 已验收（包内 Mock 集成 + Demo/真实会话 XCUITest，tag `module-05-accepted`） | 9 + 3 条全绿 | 覆盖 92.7% |
 | 05 E2E | ⏳ 待开始 | — | — |
 
 > 模块 01/02 目前范围是独立 SPM 包（`DSHKit/`）：包内已可单测验收；

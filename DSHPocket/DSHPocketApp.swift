@@ -2278,6 +2278,7 @@ struct ConversationView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(unreadWhileScrolled > 0 ? "\(unreadWhileScrolled) 条未读，滚到底部" : "滚到底部")
+                        .accessibilityIdentifier("back-to-bottom")
                         .padding(.trailing, 16)
                         .padding(.bottom, 12)
                     }
@@ -2384,18 +2385,19 @@ struct ConversationView: View {
                     .focused($composerFocused)
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
+                    .accessibilityIdentifier("composer-field")
                 if model.isSending {
                     Button { model.cancelSend() } label: {
                         Image(systemName: "xmark").font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white).frame(width: 44, height: 44)
                             .background(Color.red.opacity(0.85), in: Circle())
-                    }.accessibilityLabel("取消发送")
+                    }.accessibilityLabel("取消发送").accessibilityIdentifier("cancel-send")
                 } else {
                     Button { model.sendMessage(in: session) } label: {
                         Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white).frame(width: 44, height: 44)
                             .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
-                    }.disabled(!canSend).accessibilityLabel("发送消息")
+                    }.disabled(!canSend).accessibilityLabel("发送消息").accessibilityIdentifier("send-button")
                 }
             }.padding(.horizontal).padding(.vertical, 10)
             .frame(maxWidth: 720)
@@ -2419,14 +2421,19 @@ struct ConversationView: View {
         // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
         if !force && !isAtBottom && !isSettlingScroll { return }
         let generation = scrollGeneration
-        // 仅首屏稳定期/强制贴底做多段补滚；日常新消息只滚一次，避免持续抢滚动。
-        let delays: [Double] = (force || isSettlingScroll)
-            ? [0, 0.1, 0.3, 0.7, 1.2, 2.0]
-            : [0]
+        // 点"回到底部"只补滚两帧：用户随后立刻上滑，必须立即失效（不能强制抢回底部）。
+        let delays: [Double]
+        if force {
+            delays = [0, 0.15]
+        } else if isSettlingScroll {
+            delays = [0, 0.1, 0.3, 0.7, 1.2, 2.0]
+        } else {
+            delays = [0]
+        }
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                // 用户已上滑或会话已切换：放弃这次补滚。
-                guard force || generation == scrollGeneration else { return }
+                // 用户已上滑（generation 递增）或会话已切换：放弃这次补滚。
+                guard generation == scrollGeneration else { return }
                 guard force || isSettlingScroll || isAtBottom else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }

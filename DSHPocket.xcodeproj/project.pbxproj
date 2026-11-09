@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C10000000000000000000001 /* DemoFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000002 /* DemoFlowUITests.swift */; };
 		A10000000000000000000001 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* DSHPocketApp.swift */; };
 		A10000000000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Assets.xcassets */; };
 		A10000000000000000000015 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* PrivacyInfo.xcprivacy */; };
@@ -20,9 +21,18 @@
 		A10000000000000000000004 /* DSHPocket.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DSHPocket.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000016 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C10000000000000000000002 /* DemoFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoFlowUITests.swift; sourceTree = "<group>"; };
+		C1000000000000000000000D /* DSHPocketUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DSHPocketUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C10000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A1000000000000000000000B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -45,10 +55,19 @@
 			path = DSHPocket;
 			sourceTree = "<group>";
 		};
+		C10000000000000000000003 /* DSHPocketUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000002 /* DemoFlowUITests.swift */,
+			);
+			path = DSHPocketUITests;
+			sourceTree = "<group>";
+		};
 		A10000000000000000000006 = {
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000005 /* DSHPocket */,
+				C10000000000000000000003 /* DSHPocketUITests */,
 				A10000000000000000000003 /* Info.plist */,
 				A10000000000000000000007 /* Products */,
 			);
@@ -58,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000004 /* DSHPocket.app */,
+				C1000000000000000000000D /* DSHPocketUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -86,7 +106,43 @@
 			productReference = A10000000000000000000004 /* DSHPocket.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C10000000000000000000004 /* DSHPocketUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C10000000000000000000008 /* Build configuration list for PBXNativeTarget "DSHPocketUITests" */;
+			buildPhases = (
+				C10000000000000000000005 /* Sources */,
+				C10000000000000000000006 /* Frameworks */,
+				C10000000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C1000000000000000000000B /* PBXTargetDependency */,
+			);
+			name = DSHPocketUITests;
+			productName = DSHPocketUITests;
+			productReference = C1000000000000000000000D /* DSHPocketUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		C1000000000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1000000000000000000000D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000008;
+			remoteInfo = DSHPocket;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		C1000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000008 /* DSHPocket */;
+			targetProxy = C1000000000000000000000C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		A1000000000000000000000D /* Project object */ = {
@@ -97,6 +153,10 @@
 				TargetAttributes = {
 					A10000000000000000000008 = {
 						CreatedOnToolsVersion = 27.2;
+					};
+					C10000000000000000000004 = {
+						CreatedOnToolsVersion = 27.2;
+						TestTargetID = A10000000000000000000008;
 					};
 				};
 			};
@@ -118,6 +178,7 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000008 /* DSHPocket */,
+				C10000000000000000000004 /* DSHPocketUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -154,6 +215,13 @@
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C10000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A1000000000000000000000C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -166,6 +234,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C10000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000000000000000000001 /* DemoFlowUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A1000000000000000000000A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -229,6 +305,36 @@
 			};
 			name = Release;
 		};
+		C10000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ruska.dsh-pocket-ios.uitests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DSHPocket;
+			};
+			name = Debug;
+		};
+		C1000000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ruska.dsh-pocket-ios.uitests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = DSHPocket;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -246,6 +352,15 @@
 			buildConfigurations = (
 				A1000000000000000000000F /* Debug */,
 				A10000000000000000000010 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C10000000000000000000008 /* Build configuration list for PBXNativeTarget "DSHPocketUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10000000000000000000009 /* Debug */,
+				C1000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
