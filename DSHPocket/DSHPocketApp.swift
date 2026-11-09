@@ -648,6 +648,15 @@ final class ConnectionModel {
     /// 引用一条消息后递增，用于让输入框自动聚焦。
     var focusComposerTick = 0
 
+    /// 点击空白处时递增：Textual 没有公开的清除选区 API，
+    /// 通过重建 Markdown 视图让选区自然消失。
+    var textSelectionResetTick = 0
+
+    @MainActor
+    func clearTextSelection() {
+        textSelectionResetTick &+= 1
+    }
+
     struct PendingQuote: Identifiable, Equatable {
         let id: String
         let sequence: Int
@@ -3935,7 +3944,10 @@ struct ConversationView: View {
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
-                .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+                .simultaneousGesture(TapGesture().onEnded {
+                    composerFocused = false
+                    model.clearTextSelection()
+                })
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 6)
                         .onChanged { value in
@@ -4352,6 +4364,7 @@ struct MessageRow: View {
                 }
             }
         }
+        .id(model.textSelectionResetTick)
     }
 
     @ViewBuilder
@@ -4439,7 +4452,7 @@ struct MessageRow: View {
                     if message.isUser, hasUserImages {
                         // 用户发送的图片：作为小缩略图放在气泡内的左下角。
                         VStack(alignment: .leading, spacing: 8) {
-                            if !message.text.isEmpty { markdownContent }
+                            if !message.text.isEmpty { markdownContent.id(model.textSelectionResetTick) }
                             userImageThumbnails
                         }
                         .padding(.horizontal, 14).padding(.vertical, 11)
@@ -4463,6 +4476,7 @@ struct MessageRow: View {
                         }
                         if !message.text.isEmpty {
                             markdownContent
+                                .id(model.textSelectionResetTick)
                                 .padding(.horizontal, 14).padding(.vertical, 11)
                                 .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                                 .foregroundStyle(message.isUser ? .white : .primary)
