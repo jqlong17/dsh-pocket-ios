@@ -1970,6 +1970,8 @@ struct RootView: View {
 struct ConnectView: View {
     @Bindable var model: ConnectionModel
     @State private var showingScanner = false
+    /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
+    private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
     var body: some View {
         Form {
             Section {
@@ -1980,6 +1982,16 @@ struct ConnectView: View {
                         Text("输入电脑上的 DSH Pocket 地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
                     }
                 }.padding(.vertical, 8).listRowBackground(Color.clear)
+                Link(destination: Self.usageDocURL) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "book").foregroundStyle(.green)
+                        Text("使用说明")
+                        Spacer()
+                        Image(systemName: "arrow.up.right").font(.footnote).foregroundStyle(.secondary)
+                    }.font(.subheadline)
+                }
+                .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
+                .listRowBackground(Color.clear)
             }
             Section("主机") {
                 HStack(spacing: 10) {
