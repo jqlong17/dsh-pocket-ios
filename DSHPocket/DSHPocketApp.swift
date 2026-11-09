@@ -3037,19 +3037,6 @@ struct ConversationView: View {
                             .font(.caption2.weight(.semibold))
                     }
                     Spacer()
-                    if model.isTurnRunning {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            HStack(spacing: 5) {
-                                ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
-                                Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
-                                    .font(.caption).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                                Button { Task { await model.cancelTurn() } } label: {
-                                    Image(systemName: "stop.circle.fill").font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }.accessibilityLabel("停止生成")
-                            }
-                        }
-                    }
                 }
             }.padding(.horizontal).padding(.vertical, 6)
 
@@ -3201,6 +3188,34 @@ struct ConversationView: View {
             if let question = model.pendingQuestion {
                 UserQuestionCard(request: question, model: model)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if model.isTurnRunning {
+                // 生成状态放在输入栏上方左侧：等待时视线就在这里。
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
+                            .font(.caption)
+                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                            .monospacedDigit()
+                    }
+                    Spacer()
+                    Button { Task { await model.cancelTurn() } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.circle.fill")
+                            Text("停止")
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("停止生成")
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .background(.background)
             }
             Divider()
             inputBar
