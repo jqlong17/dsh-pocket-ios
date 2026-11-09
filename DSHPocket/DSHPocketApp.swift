@@ -3020,8 +3020,9 @@ struct ConversationView: View {
 
     private static var useUIKitList: Bool {
 #if DEBUG
-        // 测试分支：Debug 默认走 UIKit 列表；DSH_LIST=swiftui 可切回旧实现对比。
-        ProcessInfo.processInfo.environment["DSH_LIST"] != "swiftui"
+        // 实验开关：默认仍用 SwiftUI 列表（文字渲染最稳）。
+        // 置 DSH_LIST=uikit 才切到 UIKit 列表做实验对比。
+        ProcessInfo.processInfo.environment["DSH_LIST"] == "uikit"
 #else
         false
 #endif
