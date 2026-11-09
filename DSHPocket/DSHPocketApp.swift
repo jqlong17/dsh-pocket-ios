@@ -1959,6 +1959,18 @@ final class ConnectionModel {
                     usedHistoryFallback = true
                     await loadHistory(session)
                 }
+                // 重连多次仍失败时探测登录态：DSH 重启后 browser-auth cookie 会失效，
+                // WS 只会一直重连，必须回到连接页重新输入密码。
+                if retryCount >= 1 {
+                    do {
+                        _ = try await fetchSessions()
+                    } catch let authError as ConnectionError {
+                        if case .server(401) = authError {
+                            handleAuthExpired()
+                            return
+                        }
+                    } catch { /* 其他网络错误继续重连 */ }
+                }
                 do { try await Task.sleep(for: retryDelay) } catch { break }
                 retryDelay = min(retryDelay * 2, .seconds(15))
                 retryCount += 1
@@ -2000,6 +2012,21 @@ final class ConnectionModel {
                 timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
                 recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字")
             } else {
+                // steer 消息先进 agent inbox（spliced），这里也视为已送达，避免误报失败。
+                if event["type"] as? String == "agent/inbox/spliced",
+                   let data = event["data"] as? [String: Any],
+                   let inserted = data["inserted"] as? [[String: Any]] {
+                    let ids = Set(inserted.compactMap {
+                        ($0["source"] as? [String: Any])?["rpcId"] as? String
+                    }.map { $0.lowercased() })
+                    if !ids.isEmpty {
+                        confirmOutbox(rpcIds: ids)
+                        ackedSendRpcIds.subtract(ids)
+                        failedSendRpcIds.subtract(ids)
+                        conversationError = nil
+                        recordDiagnostic("steer 已进入收件箱（\(ids.count) 条），等待注入")
+                    }
+                }
                 // 工具步骤、turn 起止等过程事件
                 applyStepEvent(event)
                 let eventType = event["type"] as? String
@@ -2021,6 +2048,21 @@ final class ConnectionModel {
                 else { continuation.resume() }
             }
         }
+    }
+
+    /// 登录失效（DSH 重启导致 cookie 失效 / 密码被改）：回到连接页并要求重新输入密码。
+    @MainActor
+    func handleAuthExpired() {
+        guard !isDemoMode else { return }
+        recordDiagnostic("登录已过期或密码已变更：返回连接页")
+        isConnected = false
+        pin = ""
+        PinKeychain.clear()
+        selectedSession = nil
+        navigationPath = []
+        activeConversation?.liveTask?.cancel()
+        liveConnection = .disconnected(reason: "auth")
+        errorMessage = "登录已过期或访问密码已变更，请重新输入密码连接。"
     }
 
     /// 发送按钮入口：先确认当前打开的就是这个会话，避免消息发到别的 session。
@@ -2496,7 +2538,20 @@ final class ConnectionModel {
             await pollForReply(session, after: text, afterSequence: lastSequence)
             // 服务端 ACK 后如果还没收到确认，先主动核验一次（网络抖动时 WS/轮询可能错过确认），
             // 核验不到再标记失败，避免误报吓人。
-            if ackedSendRpcIds.contains(requestId) {
+            if ackedSendRpcIds.contains(requestId) && promptMode == "steer" {
+                // steer 进入 agent inbox，后续会被注入成 user/message；
+                // 此阶段核验不到是正常现象，绝不能标失败（显示"已送达，排队等待处理"）。
+                if case .landed = await verifySendLanded(session: session, requestId: requestId) {
+                    confirmOutbox(rpcIds: [requestId])
+                    ackedSendRpcIds.remove(requestId)
+                    failedSendRpcIds.remove(requestId)
+                    conversationError = nil
+                    recordDiagnostic("steer 已落库确认：\(requestId)")
+                } else {
+                    conversationError = nil
+                    recordDiagnostic("steer 已 ACK，等待注入为 user/message：\(requestId)")
+                }
+            } else if ackedSendRpcIds.contains(requestId) {
                 switch await verifySendLanded(session: session, requestId: requestId) {
                 case .landed:
                     confirmOutbox(rpcIds: [requestId])
@@ -2518,6 +2573,12 @@ final class ConnectionModel {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled {
                 removeOutbox(rpcIds: [requestId])
                 messages.removeAll { $0.id == pending.id }
+                return
+            }
+            if let authError = error as? ConnectionError, case .server(401) = authError {
+                removeOutbox(rpcIds: [requestId])
+                messages.removeAll { $0.id == pending.id }
+                handleAuthExpired()
                 return
             }
             // 保留气泡并标记失败，用户可直接重发（不再把文字塞回输入框）。
@@ -2577,11 +2638,24 @@ final class ConnectionModel {
             let records = value["records"] as? [[String: Any]] ?? []
             for record in records {
                 guard let event = record["event"] as? [String: Any],
-                      event["type"] as? String == "user/message",
-                      let data = event["data"] as? [String: Any],
-                      let source = data["source"] as? [String: Any],
-                      let rpcId = source["rpcId"] as? String else { continue }
-                if RPCId.matches(rpcId, requestId) { return .landed }
+                      let data = event["data"] as? [String: Any] else { continue }
+                // 正常落库：user/message 带 rpcId
+                if event["type"] as? String == "user/message",
+                   let source = data["source"] as? [String: Any],
+                   let rpcId = source["rpcId"] as? String,
+                   RPCId.matches(rpcId, requestId) {
+                    return .landed
+                }
+                // 生成中 steer：先进入 agent inbox（agent/inbox/spliced），
+                // 不会立刻变成 user/message；这里也视为"已送达，排队等待处理"。
+                if event["type"] as? String == "agent/inbox/spliced",
+                   let inserted = data["inserted"] as? [[String: Any]] {
+                    for item in inserted {
+                        guard let source = item["source"] as? [String: Any],
+                              let rpcId = source["rpcId"] as? String else { continue }
+                        if RPCId.matches(rpcId, requestId) { return .landed }
+                    }
+                }
             }
         }
         return sawReachableResponse ? .absent : .unreachable
@@ -2985,7 +3059,7 @@ enum ConnectionError: LocalizedError {
     case invalidPin, unexpectedResponse, invalidPayload, invalidURL(String), server(Int), rateLimited(Int), remote(String)
     var errorDescription: String? {
         switch self {
-        case .invalidPin: "密码不正确，请检查后重试。"
+        case .invalidPin: "密码不正确或已变更，请重新输入访问密码。"
         case .unexpectedResponse: "服务器返回了无法识别的响应。"
         case .invalidPayload: "服务器响应格式无效。"
         case .invalidURL(let raw): "地址格式无效：\(raw.debugDescription)。请输入 http://192.0.2.10:3081 这样的地址。"
