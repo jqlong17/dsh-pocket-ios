@@ -2979,6 +2979,8 @@ struct ConversationView: View {
     @State private var expandedTurns: Set<Int> = []
     /// 分页加载冷却，避免滚动到顶部时连续翻页。
     @State private var olderCooldownUntil = Date.distantPast
+    /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
+    @State private var olderLoadWasAtTop = false
     @State private var showingCamera = false
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var composerFocused: Bool
@@ -3122,6 +3124,12 @@ struct ConversationView: View {
                 }
                 .onChange(of: model.olderLoadTick) { _, _ in
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    // 已经在最顶部时：让新加载的一页直接出现在顶部（用户继续上滑即可看到更早内容）。
+                    // 只有用户停在中间时，才把原来的首条消息锚回顶部，避免内容跳动。
+                    if olderLoadWasAtTop {
+                        olderLoadWasAtTop = false
+                        return
+                    }
                     guard let anchor = model.olderAnchorID else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         proxy.scrollTo(anchor, anchor: .top)
@@ -3136,6 +3144,7 @@ struct ConversationView: View {
                           !model.messages.isEmpty,
                           Date() >= olderCooldownUntil else { return }
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    olderLoadWasAtTop = topOffset <= 2
                     model.loadOlderMessages()
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
