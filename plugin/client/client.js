@@ -38,6 +38,9 @@ window.__ModuleLoader__.load({
       var state = React.useState({ loading: true, error: null, status: null });
       var value = state[0];
       var setValue = state[1];
+      var pinState = React.useState(false);
+      var showPin = pinState[0];
+      var setShowPin = pinState[1];
       React.useEffect(function () {
         var alive = true;
         if (!props.rpcCall) {
@@ -72,9 +75,6 @@ window.__ModuleLoader__.load({
             status.available ? "，刷新本页即可生成二维码。" : ""));
       }
       var copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) {} };
-      var pinState = React.useState(false);
-      var showPin = pinState[0];
-      var setShowPin = pinState[1];
       return React.createElement("div", { style: { padding: 18, borderRadius: 14, border: "1px solid rgba(0,0,0,.08)" } },
         React.createElement("div", { style: { fontWeight: 600, fontSize: 16, marginBottom: 8 } }, "Tailscale 连接（推荐，地址固定且更稳定）"),
         React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.65, marginBottom: 12 } },
