@@ -3636,7 +3636,7 @@ struct ConversationView: View {
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
     @State private var olderLoadWasAtTop = false
     @State private var showingCamera = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
     @FocusState private var composerFocused: Bool
     @State private var copiedLogPath: String?
 
@@ -3924,13 +3924,16 @@ struct ConversationView: View {
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
         }
-        .onChange(of: photoItem) { _, item in
-            guard let item else { return }
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-                    model.addDraftImage(image)
+                // 支持一次多选多张：按选择顺序逐张加载，全部加入草稿后清空选择状态。
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                        model.addDraftImage(image)
+                    }
                 }
-                photoItem = nil
+                photoItems = []
             }
         }
         .task {
@@ -3973,12 +3976,12 @@ struct ConversationView: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                PhotosPicker(selection: $photoItems, maxSelectionCount: 9, selectionBehavior: .ordered, matching: .images, photoLibrary: .shared()) {
                     Image(systemName: "photo").font(.system(size: 20))
                         .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                         .frame(width: 38, height: 38)
                 }
-                .accessibilityLabel("从相册选择图片")
+                .accessibilityLabel("从相册选择图片，可多选")
                 Button { showingCamera = true } label: {
                     Image(systemName: "camera").font(.system(size: 20))
                         .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
