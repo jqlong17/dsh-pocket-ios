@@ -33,6 +33,9 @@ struct DSHPocketApp: App {
 @Observable
 final class ConversationState {
     let sessionId: String
+    /// 该会话自己的输入框草稿（切换会话/退出后恢复）。
+    var draft: String = ""
+    var draftImages: [PocketDraftImage] = []
     var messages: [PocketMessage] = []
     var steps: [PocketStep] = []
     var isLoadingConversation = false
@@ -51,6 +54,8 @@ final class ConversationState {
     /// 历史分页：是否还有更早消息、是否正在加载、加载前的滚动锚点。
     var hasMoreOlder = false
     var isLoadingOlder = false
+    /// 打开会话后是否收到过实时 turn/start、turn/end（用于区分历史快照与实时状态）。
+    var liveTurnEventsSeen = false
     var olderAnchorID: String?
     var olderLoadTick = 0
     var conversationToken = UUID()
@@ -60,7 +65,10 @@ final class ConversationState {
     var failedRpcIds: Set<String> = []
     var steeredRpcIds: Set<String> = []
 
-    init(sessionId: String) { self.sessionId = sessionId }
+    init(sessionId: String) {
+        self.sessionId = sessionId
+        self.draft = DraftStore.draft(for: sessionId)
+    }
 }
 
 @Observable
@@ -84,11 +92,24 @@ final class ConnectionModel {
     var archivedSessionIds: Set<String> = []
     var isLoadingSessions = false
     var selectedSession: PocketSession?
-    var draft = ""
-    var draftImages: [PocketDraftImage] = []
     var navigationPath: [PocketSession] = []
     private static var imageCache: [String: UIImage] = [:]
     var isSending = false
+
+    /// 输入框草稿按会话隔离（转发到 activeConversation，并持久化到本地）。
+    var draft: String {
+        get { activeConversation?.draft ?? "" }
+        set {
+            activeConversation?.draft = newValue
+            if let sessionId = activeConversation?.sessionId {
+                DraftStore.save(newValue, for: sessionId)
+            }
+        }
+    }
+    var draftImages: [PocketDraftImage] {
+        get { activeConversation?.draftImages ?? [] }
+        set { activeConversation?.draftImages = newValue }
+    }
 
     // MARK: 会话级状态（按 sessionId 独立存放，切换会话即切换实例）
 
@@ -142,6 +163,10 @@ final class ConnectionModel {
     var olderLoadTick: Int {
         get { activeConversation?.olderLoadTick ?? 0 }
         set { activeConversation?.olderLoadTick = newValue }
+    }
+    var liveTurnEventsSeen: Bool {
+        get { activeConversation?.liveTurnEventsSeen ?? false }
+        set { activeConversation?.liveTurnEventsSeen = newValue }
     }
     /// 实时连接状态机（替代原来的字符串状态）。
     enum LiveConnectionState: Equatable {
@@ -405,13 +430,28 @@ final class ConnectionModel {
         savedEndpoints = Self.dedupEndpoints(list)
     }
 
-    /// 每种类型只保留最近使用的一个（公网地址很容易失效，没必要存很多）。
+    /// 去重 + 配额：局域网最多 3 个（可分别命名「公司」「家」），公网 1 个，自定义 1 个。
+    /// 公网地址很容易失效，没必要存很多。
     private static func dedupEndpoints(_ list: [SavedEndpoint]) -> [SavedEndpoint] {
         var kept: [SavedEndpoint] = []
-        var seen = Set<SavedEndpoint.Kind>()
+        var seenAddresses = Set<String>()
+        var lanCount = 0
+        var publicCount = 0
+        var customCount = 0
         for endpoint in list.sorted(by: { $0.lastUsedAt > $1.lastUsedAt }) {
-            guard !seen.contains(endpoint.kind) else { continue }
-            seen.insert(endpoint.kind)
+            guard !seenAddresses.contains(endpoint.address) else { continue }
+            switch endpoint.kind {
+            case .lan:
+                guard lanCount < 3 else { continue }
+                lanCount += 1
+            case .publicNetwork:
+                guard publicCount < 1 else { continue }
+                publicCount += 1
+            case .custom:
+                guard customCount < 1 else { continue }
+                customCount += 1
+            }
+            seenAddresses.insert(endpoint.address)
             kept.append(endpoint)
         }
         return kept
@@ -421,11 +461,45 @@ final class ConnectionModel {
     func recordEndpoint(_ address: String) {
         guard let url = try? Self.serverURL(from: address) else { return }
         let normalized = url.absoluteString
+        let existingLabel = savedEndpoints.first(where: { $0.address == normalized })?.label
         var list = savedEndpoints.filter { $0.address != normalized }
         list.append(SavedEndpoint(address: normalized,
                                   kind: Self.endpointKind(of: normalized),
-                                  lastUsedAt: Date().timeIntervalSince1970))
+                                  lastUsedAt: Date().timeIntervalSince1970,
+                                  label: existingLabel))
         savedEndpoints = Self.dedupEndpoints(list)
+        if let data = try? JSONEncoder().encode(savedEndpoints) {
+            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        }
+    }
+
+    /// 用 session/list 的最新 running 校验一次（只在没有实时 turn 事件时生效）。
+    @MainActor
+    private func refreshRunningState(for sessionId: String) async {
+        guard activeConversation?.sessionId == sessionId,
+              activeConversation?.liveTurnEventsSeen == false,
+              let fresh = try? await fetchSessions(),
+              let latest = fresh.first(where: { $0.sessionId == sessionId }) else { return }
+        if !latest.running {
+            isTurnRunning = false
+            turnStartedAt = nil
+            recordDiagnostic("运行状态校验：会话已结束")
+        } else {
+            recordDiagnostic("运行状态校验：仍在运行")
+        }
+    }
+
+    /// 会话列表的 updatedAt 可能是毫秒或秒，统一成 Date。
+    private static func dateFromSessionUpdatedAt(_ value: TimeInterval) -> Date {
+        let seconds = value > 10_000_000_000 ? value / 1000 : value
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    /// 给已保存地址设置/清除自定义标签（如「公司」「家」）。
+    func renameEndpoint(_ address: String, label: String?) {
+        guard let index = savedEndpoints.firstIndex(where: { $0.address == address }) else { return }
+        let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        savedEndpoints[index].label = (trimmed?.isEmpty == false) ? trimmed : nil
         if let data = try? JSONEncoder().encode(savedEndpoints) {
             UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
         }
@@ -577,7 +651,6 @@ final class ConnectionModel {
         isLoadingConversation = false
         conversationError = nil
         hasMoreOlder = false
-        draft = ""
         draftImages = []
         liveConnection = .demo
     }
@@ -845,11 +918,15 @@ final class ConnectionModel {
         conversation.turnEnds.removeAll()
         conversation.isLoadingConversation = false
         conversation.conversationError = nil
-        conversation.isTurnRunning = false
-        conversation.turnStartedAt = nil
+        // 打开时先用会话列表里的 running 状态（快照窗口可能不包含 turn/start 边界）。
+        conversation.isTurnRunning = session.running
+        conversation.turnStartedAt = session.running
+            ? Self.dateFromSessionUpdatedAt(session.updatedAt)
+            : nil
         conversation.hasMoreOlder = false
         conversation.isLoadingOlder = false
         conversation.olderAnchorID = nil
+        conversation.liveTurnEventsSeen = false
         if isNewConversation {
             conversation.messages = []
             conversation.steps = []
@@ -867,6 +944,13 @@ final class ConnectionModel {
         conversation.isLoadingConversation = true
         if let client = syncClient {
             startCoordinator(for: conversation, session: session, client: client)
+            // 列表里的 running 可能滞后：4 秒后（且期间没有实时 turn 事件）再核实一次。
+            if session.running {
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(4))
+                    await self?.refreshRunningState(for: session.sessionId)
+                }
+            }
 #if DEBUG
             if DebugLaunch.loadOlder {
                 Task { [weak self] in
@@ -1562,7 +1646,7 @@ final class ConnectionModel {
             if case .connected = state { conversationError = nil }
         case .snapshot(let dshMessages, let dshSteps, let hasMore):
             mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
-            for step in dshSteps { applyDSHStep(step) }
+            for step in dshSteps { applyDSHStep(step, historical: true) }
             hasMoreOlder = hasMore
             isLoadingConversation = false
         case .messages(let dshMessages):
@@ -1589,7 +1673,7 @@ final class ConnectionModel {
     }
 
     @MainActor
-    private func applyDSHStep(_ step: DSHStepEvent) {
+    private func applyDSHStep(_ step: DSHStepEvent, historical: Bool = false) {
         switch step {
         case .toolCall(let sequence, let turn, let callId, let name, let detail):
             guard !steps.contains(where: { $0.id == callId }) else { return }
@@ -1605,7 +1689,7 @@ final class ConnectionModel {
         case .turnStart(let sequence, _):
             if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
             isTurnRunning = true
-            turnStartedAt = Date()
+            if turnStartedAt == nil { turnStartedAt = Date() }
             Task { await activeConversation?.coordinator?.setExpectingActivity(true) }
         case .turnEnd(let sequence, _):
             if !turnEnds.contains(sequence) { turnEnds.append(sequence) }
@@ -1765,6 +1849,33 @@ final class ConnectionModel {
     }
 }
 
+/// 按会话保存输入框草稿（退出/切换会话后回来还能接着写）。
+enum DraftStore {
+    private static let key = "dsh-pocket.drafts"
+
+    private static func loadAll() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+    }
+
+    static func draft(for sessionId: String) -> String {
+        loadAll()[sessionId] ?? ""
+    }
+
+    static func save(_ draft: String, for sessionId: String) {
+        var all = loadAll()
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            all.removeValue(forKey: sessionId)
+        } else {
+            all[sessionId] = draft
+            // 控制数量，避免无限增长。
+            if all.count > 50 {
+                all = Dictionary(all.sorted { $0.key < $1.key }.suffix(50), uniquingKeysWith: { a, _ in a })
+            }
+        }
+        UserDefaults.standard.set(all, forKey: key)
+    }
+}
+
 /// 记住连接过的地址（局域网/公网），供用户手动切换，避免每次重新扫码。
 struct SavedEndpoint: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
@@ -1784,8 +1895,11 @@ struct SavedEndpoint: Codable, Identifiable, Hashable {
     let address: String
     let kind: Kind
     var lastUsedAt: Double
+    /// 用户自定义标签，例如「公司」「家」；为空时显示 kind.label。
+    var label: String?
 
     var id: String { address }
+    var displayName: String { label ?? kind.label }
 }
 
 struct PocketSession: Identifiable, Hashable {
@@ -2149,6 +2263,8 @@ struct RootView: View {
 struct ConnectView: View {
     @Bindable var model: ConnectionModel
     @State private var showingScanner = false
+    @State private var renamingEndpoint: SavedEndpoint?
+    @State private var renameText = ""
 
     /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
     private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
@@ -2191,6 +2307,27 @@ struct ConnectView: View {
         }
         .onAppear { model.errorMessage = nil }
         .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
+        .alert("命名连接地址", isPresented: Binding(
+            get: { renamingEndpoint != nil },
+            set: { if !$0 { renamingEndpoint = nil } }
+        )) {
+            TextField("例如：公司 / 家", text: $renameText)
+            Button("保存") {
+                if let endpoint = renamingEndpoint {
+                    model.renameEndpoint(endpoint.address, label: renameText)
+                }
+                renamingEndpoint = nil
+            }
+            Button("清除", role: .destructive) {
+                if let endpoint = renamingEndpoint {
+                    model.renameEndpoint(endpoint.address, label: nil)
+                }
+                renamingEndpoint = nil
+            }
+            Button("取消", role: .cancel) { renamingEndpoint = nil }
+        } message: {
+            Text("给这个地址起一个有辨识度的名字，例如「公司」或「家」。")
+        }
     }
 
     private var header: some View {
@@ -2251,15 +2388,37 @@ struct ConnectView: View {
                             .frame(width: 26, height: 26)
                             .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(endpoint.kind.label)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 5) {
+                                if endpoint.label != nil {
+                                    Text(endpoint.displayName)
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(endpoint.kind.label)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text(endpoint.kind.label)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             Text(endpoint.address)
                                 .font(.footnote)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
                         Spacer(minLength: 8)
+                        Button {
+                            renamingEndpoint = endpoint
+                            renameText = endpoint.label ?? ""
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("重命名\(endpoint.kind.label)地址")
                         if model.serverAddress == endpoint.address {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
                         }
@@ -2271,7 +2430,7 @@ struct ConnectView: View {
                 .buttonStyle(.plain)
             }
 
-            Text("每种类型只保留最近使用的一个地址；公网地址变化后需要重新扫码更新。")
+            Text("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2478,7 +2637,7 @@ struct ConnectedView: View {
                             Button {
                                 Task { await model.switchToEndpoint(endpoint) }
                             } label: {
-                                Label("\(endpoint.kind.label)：\(endpoint.address)",
+                                Label("\(endpoint.displayName)：\(endpoint.address)",
                                       systemImage: model.serverAddress == endpoint.address ? "checkmark" : "network")
                             }
                         }

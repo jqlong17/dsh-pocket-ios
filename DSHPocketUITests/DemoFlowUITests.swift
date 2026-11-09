@@ -53,6 +53,34 @@ final class DemoFlowUITests: XCTestCase {
         XCTAssertTrue(sent.waitForExistence(timeout: 12), "steer 消息未出现在对话中")
     }
 
+
+    /// 草稿按会话隔离：切换会话再回来，原草稿应恢复。
+    func testDraftIsPerSession() {
+        let app = launchDemo(session: "demo-1")
+        let field = app.textFields["composer-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15), "输入框未出现")
+        field.tap()
+        field.typeText("草稿-会话1")
+
+        // 返回列表
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let otherSession = app.staticTexts["分析 App Store 截图"]
+        XCTAssertTrue(otherSession.waitForExistence(timeout: 10), "会话列表未出现")
+        otherSession.tap()
+        let otherField = app.textFields["composer-field"]
+        XCTAssertTrue(otherField.waitForExistence(timeout: 10))
+        XCTAssertNotEqual(otherField.value as? String, "草稿-会话1", "不同会话不应共享草稿")
+
+        // 回到原会话，草稿应恢复
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let original = app.staticTexts["整理 v1.0.2 发布说明"]
+        XCTAssertTrue(original.waitForExistence(timeout: 10))
+        original.tap()
+        let restored = app.textFields["composer-field"]
+        XCTAssertTrue(restored.waitForExistence(timeout: 10))
+        XCTAssertEqual(restored.value as? String, "草稿-会话1", "切回会话后草稿未恢复")
+    }
+
     func testBackToBottomThenScrollUpDoesNotSnapBack() {
         let app = launchDemo()
         XCTAssertTrue(app.textFields["composer-field"].waitForExistence(timeout: 15))
