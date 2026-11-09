@@ -55,6 +55,23 @@ final class DemoFlowUITests: XCTestCase {
     }
 
 
+
+    /// 发送后输入框必须清空（回归：偶发残留已发送文字）。
+    func testSendClearsComposer() {
+        let app = launchDemo(session: "demo-1")
+        let field = app.textFields["composer-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.tap()
+        field.typeText("清空测试")
+        let send = app.buttons["send-button"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5))
+        send.tap()
+        // 空输入框的 value 会是占位符「发送消息」，因此断言"不再是刚发送的文字"。
+        let cleared = NSPredicate(format: "value != %@", "清空测试")
+        expectation(for: cleared, evaluatedWith: field)
+        waitForExpectations(timeout: 8)
+    }
+
     /// 草稿按会话隔离：切换会话再回来，原草稿应恢复。
     func testDraftIsPerSession() {
         let app = launchDemo(session: "demo-1")
