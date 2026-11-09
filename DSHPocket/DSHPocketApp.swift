@@ -4632,10 +4632,9 @@ struct ProcessRow: View {
                     }
                 }
                 .padding(.leading, 2)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity.combined(with: .move(edge: .top))
-                ))
+                // 从摘要行下方"向下展开"：只用淡入 + 顶部锚点微缩放，
+                // 不要用 .move(edge: .top)，否则文字会从上一行上方滑下来。
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                 .clipped()
             }
         }
