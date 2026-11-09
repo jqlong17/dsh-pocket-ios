@@ -58,7 +58,7 @@ public enum DSHDecoding {
             kind: kind,
             text: text,
             isUser: kind == "user/message",
-            rpcId: source?["rpcId"] as? String,
+            rpcId: RPCId.normalized(source?["rpcId"] as? String),
             images: images
         )
     }

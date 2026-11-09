@@ -68,8 +68,9 @@ public final class Outbox {
 
     public func confirm(rpcIds: Set<String>) {
         guard !rpcIds.isEmpty else { return }
+        let ids = Set(rpcIds.compactMap { RPCId.normalized($0) })
         let before = entries.count
-        entries.removeAll { rpcIds.contains($0.rpcId) }
+        entries.removeAll { ids.contains($0.rpcId.lowercased()) }
         if entries.count != before { persist() }
     }
 
@@ -89,7 +90,8 @@ public final class Outbox {
     }
 
     public func contains(rpcId: String) -> Bool {
-        entries.contains { $0.rpcId == rpcId }
+        guard let normalized = RPCId.normalized(rpcId) else { return false }
+        return entries.contains { $0.rpcId.lowercased() == normalized }
     }
 
     public var allEntries: [OutboxEntry] { entries }

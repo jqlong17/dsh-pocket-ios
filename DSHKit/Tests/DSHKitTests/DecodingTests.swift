@@ -15,7 +15,7 @@ final class DecodingTests: XCTestCase {
         }
         let first = try XCTUnwrap(userEvents.first)
         XCTAssertEqual(first.text, "你好")
-        XCTAssertEqual(first.rpcId, "RPC-1")
+        XCTAssertEqual(first.rpcId, "rpc-1")
         XCTAssertEqual(first.sequence, 2)
     }
 

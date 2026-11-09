@@ -1028,7 +1028,7 @@ final class ConnectionModel {
         var bySequence = Dictionary(uniqueKeysWithValues: messages.filter { !$0.isPending }.map { ($0.sequence, $0) })
         for message in incoming where !message.isPending { bySequence[message.sequence] = message }
         let incomingUserMessages = incoming.filter(\.isUser)
-        let incomingRpcIds = Set(incoming.compactMap(\.rpcId))
+        let incomingRpcIds = Set(incoming.compactMap(\.rpcId).map { $0.lowercased() })
         confirmOutbox(rpcIds: incomingRpcIds)
         ackedSendRpcIds.subtract(incomingRpcIds)
         failedSendRpcIds.subtract(incomingRpcIds)
@@ -1039,7 +1039,7 @@ final class ConnectionModel {
         let latestIncomingUser = incomingUserMessages.max { $0.sequence < $1.sequence }
         let pending = messages.filter { message in
             guard message.isPending else { return false }
-            if let rpcId = message.rpcId, incomingRpcIds.contains(rpcId) { return false }
+            if let rpcId = message.rpcId, incomingRpcIds.contains(rpcId.lowercased()) { return false }
             // 兼容不回 rpcId 的服务端：仅当“发送之后新出现的最后一条用户消息”文本相同才确认。
             if message.rpcId == nil,
                let latest = latestIncomingUser,
@@ -1092,6 +1092,8 @@ final class ConnectionModel {
         // 10 分钟内未确认视为历史遗留：steer 模式下服务端很快落库，长期 pending 只会造成"发送中"假象。
         let cutoff = Date().timeIntervalSince1970 - 10 * 60
         outboxEntries = entries.filter { $0.createdAt > cutoff }
+            .map { OutboxEntry(id: $0.id.lowercased(), sessionId: $0.sessionId,
+                               text: $0.text, createdAt: $0.createdAt) }
         persistOutbox()
     }
 
@@ -1105,7 +1107,7 @@ final class ConnectionModel {
     private func addOutbox(sessionId: String, rpcId: String, text: String) {
         guard !text.isEmpty else { return }
         loadOutboxIfNeeded()
-        outboxEntries.append(OutboxEntry(id: rpcId, sessionId: sessionId, text: text,
+        outboxEntries.append(OutboxEntry(id: rpcId.lowercased(), sessionId: sessionId, text: text,
                                          createdAt: Date().timeIntervalSince1970))
         persistOutbox()
     }
@@ -1113,9 +1115,10 @@ final class ConnectionModel {
     @MainActor
     private func confirmOutbox(rpcIds: Set<String>) {
         guard !rpcIds.isEmpty else { return }
+        let ids = Set(rpcIds.map { $0.lowercased() })
         loadOutboxIfNeeded()
         let before = outboxEntries.count
-        outboxEntries.removeAll { rpcIds.contains($0.id) }
+        outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
         if outboxEntries.count != before { persistOutbox() }
     }
 
@@ -1124,9 +1127,9 @@ final class ConnectionModel {
     private func restoreMissingOutboxMessages() {
         guard !isDemoMode, let session = selectedSession else { return }
         loadOutboxIfNeeded()
-        let representedRpcIds = Set(messages.compactMap(\.rpcId))
+        let representedRpcIds = Set(messages.compactMap(\.rpcId).map { $0.lowercased() })
         let missing = outboxEntries.filter {
-            $0.sessionId == session.sessionId && !$0.text.isEmpty && !representedRpcIds.contains($0.id)
+            $0.sessionId == session.sessionId && !$0.text.isEmpty && !representedRpcIds.contains($0.id.lowercased())
         }
         guard !missing.isEmpty else { return }
         for entry in missing {
@@ -1138,8 +1141,10 @@ final class ConnectionModel {
 
     @MainActor
     private func removeOutbox(rpcIds: Set<String>) {
+        guard !rpcIds.isEmpty else { return }
         loadOutboxIfNeeded()
-        outboxEntries.removeAll { rpcIds.contains($0.id) }
+        let ids = Set(rpcIds.map { $0.lowercased() })
+        outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
         persistOutbox()
     }
 
@@ -1755,7 +1760,7 @@ final class ConnectionModel {
     private func performSend(text: String, attachments: [PocketDraftImage]) async {
         guard let session = selectedSession, !isSending else { return }
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
-        let requestId = UUID().uuidString
+        let requestId = UUID().uuidString.lowercased()
         let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId)
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
@@ -1965,6 +1970,7 @@ struct PocketMessage: Identifiable {
     let images: [PocketImageRef]
     let localImages: [UIImage]
     /// 发送时客户端生成的 requestId，服务端会回填到 user/message 的 source.rpcId，用来精确对账。
+    /// 注意：服务端返回的 rpcId 是**小写 UUID**，客户端统一小写后再比较，避免大小写不一致。
     let rpcId: String?
 
     init(demoText: String, isUser: Bool, sequence: Int, localImages: [UIImage] = []) {
@@ -1988,7 +1994,7 @@ struct PocketMessage: Identifiable {
         self.isPending = true
         self.images = []
         self.localImages = localImages
-        self.rpcId = rpcId
+        self.rpcId = RPCId.normalized(rpcId)
     }
 
     init(sequence: Int, kind: String, text: String, isUser: Bool,
@@ -2001,7 +2007,7 @@ struct PocketMessage: Identifiable {
         self.isPending = false
         self.images = images
         self.localImages = []
-        self.rpcId = rpcId
+        self.rpcId = RPCId.normalized(rpcId)
     }
 
     init?(record: [String: Any]) {
@@ -2040,7 +2046,7 @@ struct PocketMessage: Identifiable {
         self.isPending = false
         self.images = images
         self.localImages = []
-        self.rpcId = source?["rpcId"] as? String
+        self.rpcId = RPCId.normalized(source?["rpcId"] as? String)
     }
 }
 

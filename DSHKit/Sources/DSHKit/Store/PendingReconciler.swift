@@ -26,9 +26,9 @@ public enum PendingReconciler {
                                   latestIncomingUserSeq: Int?,
                                   previousMaxConfirmedSeq: Int) -> Bool {
         if let rpcId = pending.rpcId {
-            if incomingRpcIds.contains(rpcId) { return false }
-            if failedRpcIds.contains(rpcId) { return true }
-            return outboxRpcIds.contains(rpcId)
+            if incomingRpcIds.contains(where: { RPCId.matches($0, rpcId) }) { return false }
+            if failedRpcIds.contains(where: { RPCId.matches($0, rpcId) }) { return true }
+            return outboxRpcIds.contains(where: { RPCId.matches($0, rpcId) })
         }
         guard let text = latestIncomingUserText, let seq = latestIncomingUserSeq else { return true }
         if text == pending.text && seq > previousMaxConfirmedSeq { return false }
