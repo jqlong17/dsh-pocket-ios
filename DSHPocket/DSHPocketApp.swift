@@ -470,7 +470,8 @@ final class ConnectionModel {
 #endif
         loadSavedEndpoints()
         CompletionNotifier.shared.configure()
-        if completionAlertsEnabled {
+        if completionAlertsEnabled,
+           ProcessInfo.processInfo.environment["DSH_NO_NOTIF_PROMPT"] != "1" {
             CompletionNotifier.shared.requestPermission()
         }
     }
@@ -965,7 +966,8 @@ final class ConnectionModel {
     func toggleCompletionAlerts() {
         completionAlertsEnabled.toggle()
         UserDefaults.standard.set(completionAlertsEnabled, forKey: Self.completionAlertKey)
-        if completionAlertsEnabled {
+        if completionAlertsEnabled,
+           ProcessInfo.processInfo.environment["DSH_NO_NOTIF_PROMPT"] != "1" {
             CompletionNotifier.shared.requestPermission()
         }
         recordDiagnostic("完成提醒：\(completionAlertsEnabled ? "开启" : "关闭")")
@@ -2539,6 +2541,26 @@ struct PocketStep: Identifiable {
         }
     }
 
+    /// 正在执行时的进行时文案（Mac 端那种"正在运行命令…"的实时感）。
+    var runningLabel: String {
+        switch name {
+        case "bash", "exec_command", "pwsh", "write_stdin", "terminal_read", "terminal_open": "正在运行命令…"
+        case "read": "正在读取文件…"
+        case "read_image": "正在查看图片…"
+        case "grep", "glob", "search": "正在搜索…"
+        case "write": "正在写入文件…"
+        case "edit", "apply_patch": "正在编辑文件…"
+        case "web_search": "正在搜索网页…"
+        case "web_fetch": "正在打开网页…"
+        case "job_output": "正在读取任务输出…"
+        case "todo_write": "正在更新待办…"
+        case "ask_user_question": "正在等待你的选择…"
+        case "present": "正在展示…"
+        case "subagent", "subagent_fork": "正在运行子任务…"
+        default: "正在执行 \(name)…"
+        }
+    }
+
     var icon: String {
         switch name {
         case "bash": "terminal"
@@ -3118,8 +3140,9 @@ struct ConnectedView: View {
 /// 聊天气泡里的标题：比默认更克制（默认 H1/H2 太大）。
 struct ChatHeadingStyle: StructuredText.HeadingStyle {
     // 以 Textual 基准字号 17pt（iOS .body）计算：
-    // H1 20 / H2 18 / H3 17 / H4 16 / H5 15 / H6 13。移动端更克制，标题不抢正文。
-    private static let fontScales: [CGFloat] = [1.18, 1.06, 1.0, 0.94, 0.88, 0.76]
+    // H1 17 / H2 16.5 / H3 16 / H4 15.5 / H5 15 / H6 14.5。移动端与正文接近。
+    // 移动端：标题贴近正文大小，避免在气泡里过于抢眼。
+    private static let fontScales: [CGFloat] = [1.0, 0.97, 0.94, 0.91, 0.88, 0.85]
 
     func makeBody(configuration: Configuration) -> some View {
         let index = min(max(configuration.headingLevel - 1, 0), Self.fontScales.count - 1)
@@ -4031,7 +4054,15 @@ struct ProcessRow: View {
     @Bindable var model: ConnectionModel
     let toggle: () -> Void
 
+    /// 最后一条未完成的步骤 = 当前正在执行的动作。
+    private var runningStep: PocketStep? {
+        group.steps.last(where: { !$0.finished })
+    }
+
     private var summary: String {
+        if let runningStep {
+            return "\(runningStep.runningLabel) · \(group.steps.count) 步"
+        }
         var seen = Set<String>()
         var labels: [String] = []
         for step in group.steps where !seen.contains(step.label) {
@@ -4048,7 +4079,11 @@ struct ProcessRow: View {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
+                    if runningStep != nil {
+                        ProgressView().scaleEffect(0.55).frame(width: 12, height: 12)
+                    }
                     Text(summary).font(.footnote).lineLimit(1)
+                        .foregroundStyle(runningStep == nil ? .secondary : Color(red: 0.08, green: 0.48, blue: 0.37))
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(.secondary)
@@ -4060,9 +4095,17 @@ struct ProcessRow: View {
                     ForEach(group.steps) { step in
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: step.icon).font(.caption).foregroundStyle(.secondary).frame(width: 16)
+                                Group {
+                                    if step.finished {
+                                        Image(systemName: step.icon).font(.caption).foregroundStyle(.secondary)
+                                    } else {
+                                        ProgressView().scaleEffect(0.55)
+                                    }
+                                }.frame(width: 16)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(step.label).font(.footnote)
+                                    Text(step.finished ? step.label : step.runningLabel)
+                                        .font(.footnote)
+                                        .foregroundStyle(step.finished ? .primary : Color(red: 0.08, green: 0.48, blue: 0.37))
                                     if !step.detail.isEmpty {
                                         Text(step.detail).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                     }
@@ -4167,7 +4210,9 @@ extension ConnectionModel {
                 return l.id < r.id
             case (.some, nil):
                 return true
-            case (nil, .some), (nil, nil):
+            case (nil, .some):
+                return false
+            case (nil, nil):
                 return lhs.id < rhs.id
             }
         }
