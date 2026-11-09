@@ -2412,6 +2412,7 @@ enum DebugLaunch {
     static var pin: String? { environment["DSH_PIN"] ?? value(for: "--dsh-pin") }
     static var sessionId: String? { environment["DSH_OPEN"] ?? value(for: "--dsh-open") }
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
+    static var uikitList: Bool { environment["DSH_LIST"] == "uikit" }
     static var loadOlderCount: Int {
         guard let raw = environment["DSH_LOAD_OLDER"] else { return 0 }
         return Int(raw) ?? (raw == "1" ? 1 : 0)
@@ -3017,6 +3018,46 @@ struct ConversationView: View {
         }
     }
 
+    private static var useUIKitList: Bool {
+#if DEBUG
+        // 测试分支：Debug 默认走 UIKit 列表；DSH_LIST=swiftui 可切回旧实现对比。
+        ProcessInfo.processInfo.environment["DSH_LIST"] != "swiftui"
+#else
+        false
+#endif
+    }
+
+    @State private var uikitAtBottom = true
+    @State private var uikitScrollTick = 0
+
+    private var uikitList: some View {
+        VStack(spacing: 0) {
+            UIKitMessageList(items: model.conversationItems,
+                             model: model,
+                             scrollToBottomTick: uikitScrollTick,
+                             onNearTop: { model.loadOlderMessages() },
+                             onAtBottomChange: { uikitAtBottom = $0 })
+                .overlay(alignment: .bottomTrailing) {
+                    if !uikitAtBottom {
+                        Button { uikitScrollTick += 1 } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(.regularMaterial, in: Capsule())
+                                .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("滚到底部")
+                        .accessibilityIdentifier("back-to-bottom")
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 12)
+                    }
+                }
+        }
+    }
+
     private var canSend: Bool {
         !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftImages.isEmpty
     }
@@ -3042,6 +3083,9 @@ struct ConversationView: View {
                 }
             }.padding(.horizontal).padding(.vertical, 6)
 
+            if Self.useUIKitList {
+                uikitList
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
@@ -3192,6 +3236,7 @@ struct ConversationView: View {
                         .padding(.trailing, 16)
                         .padding(.bottom, 12)
                     }
+                }
                 }
             }
             if let question = model.pendingQuestion {
@@ -3772,6 +3817,226 @@ struct CameraPicker: UIViewControllerRepresentable {
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
+        }
+    }
+}
+
+// MARK: - UIKit 消息列表（实验分支：彻底解决长历史滚动/复用）
+
+/// 会话列表项（消息或过程组），供 UIKit 列表与 SwiftUI 列表共用。
+struct ConversationListItem: Identifiable {
+    enum Content {
+        case message(PocketMessage)
+        case steps(PocketStepGroup)
+    }
+
+    let id: String
+    let sortKey: Int
+    let sequence: Int
+    let content: Content
+
+    var message: PocketMessage? {
+        if case .message(let message) = content { return message }
+        return nil
+    }
+
+    var group: PocketStepGroup? {
+        if case .steps(let group) = content { return group }
+        return nil
+    }
+}
+
+extension ConnectionModel {
+    /// 展示顺序：seq 为唯一真相；过程组按 turn 起始 seq 插入。
+    var conversationItems: [ConversationListItem] {
+        var result: [ConversationListItem] = messages.map { message in
+            ConversationListItem(id: message.id,
+                                 sortKey: displaySortKey(for: message),
+                                 sequence: message.sequence,
+                                 content: .message(message))
+        }
+        for group in stepGroups {
+            result.append(ConversationListItem(id: "steps-\(group.turn)",
+                                               sortKey: group.sequence,
+                                               sequence: group.sequence,
+                                               content: .steps(group)))
+        }
+        return result.sorted { lhs, rhs in
+            if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+            if lhs.sequence != rhs.sequence { return lhs.sequence < rhs.sequence }
+            switch (lhs.message, rhs.message) {
+            case let (.some(l), .some(r)):
+                if l.isPending != r.isPending { return !r.isPending }
+                return l.id < r.id
+            case (.some, nil):
+                return true
+            case (nil, .some), (nil, nil):
+                return lhs.id < rhs.id
+            }
+        }
+    }
+}
+
+/// UIKit 消息列表：UICollectionView + DiffableDataSource，cell 内用 SwiftUI 渲染。
+/// 目的：cell 复用、精确控制 contentOffset（加载更早一页时保持位置）。
+struct UIKitMessageList: UIViewRepresentable {
+    var items: [ConversationListItem]
+    let model: ConnectionModel
+    var scrollToBottomTick: Int
+    var onNearTop: () -> Void
+    var onAtBottomChange: (Bool) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UICollectionView {
+        let layout = UICollectionViewCompositionalLayout { _, _ in
+            let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1),
+                                              heightDimension: .estimated(80))
+            let item = NSCollectionLayoutItem(layoutSize: size)
+            let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
+            return NSCollectionLayoutSection(group: group)
+        }
+        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.backgroundColor = .clear
+        collectionView.contentInsetAdjustmentBehavior = .never
+        collectionView.delegate = context.coordinator
+        collectionView.keyboardDismissMode = .interactive
+        context.coordinator.attach(to: collectionView)
+        return collectionView
+    }
+
+    func updateUIView(_ collectionView: UICollectionView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.apply(items: items, in: collectionView)
+        if context.coordinator.lastScrollTick != scrollToBottomTick {
+            context.coordinator.lastScrollTick = scrollToBottomTick
+            context.coordinator.scrollToBottom(collectionView, animated: true)
+        }
+    }
+
+    final class Coordinator: NSObject, UICollectionViewDelegate {
+        var parent: UIKitMessageList
+        var dataSource: UICollectionViewDiffableDataSource<Int, String>!
+        private var lookup: [String: ConversationListItem] = [:]
+        private var orderedIDs: [String] = []
+        private var expandedTurns: Set<Int> = []
+        private var isAtBottom = true
+        private var isApplying = false
+        private var lastNearTopLoad = Date.distantPast
+        var lastScrollTick = Int.min
+
+        init(parent: UIKitMessageList) {
+            self.parent = parent
+        }
+
+        func attach(to collectionView: UICollectionView) {
+            collectionView.register(UIKitMessageCell.self, forCellWithReuseIdentifier: UIKitMessageCell.reuseID)
+            dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: collectionView) { [weak self] collectionView, indexPath, id in
+                let cell = collectionView.dequeueReusableCell(withReuseIdentifier: UIKitMessageCell.reuseID, for: indexPath) as! UIKitMessageCell
+                guard let self, let item = self.lookup[id] else { return cell }
+                cell.configure(item: item,
+                               model: self.parent.model,
+                               expanded: item.group.map { self.expandedTurns.contains($0.turn) } ?? false,
+                               toggleExpanded: { [weak self] turn in
+                                   guard let self else { return }
+                                   if self.expandedTurns.contains(turn) { self.expandedTurns.remove(turn) } else { self.expandedTurns.insert(turn) }
+                                   var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+                                   snapshot.appendSections([0])
+                                   snapshot.appendItems(self.orderedIDs)
+                                   self.dataSource.apply(snapshot, animatingDifferences: false)
+                               })
+                return cell
+            }
+        }
+
+        func apply(items: [ConversationListItem], in collectionView: UICollectionView) {
+            let newIDs = items.map(\.id)
+            guard newIDs != orderedIDs else { return }
+
+            // 记录当前顶部可见项及其视觉位置，插入更早消息后精确恢复。
+            let oldItems = orderedIDs
+            let oldCount = oldItems.count
+            var firstVisibleID: String?
+            var firstVisibleY: CGFloat = 0
+            if !oldItems.isEmpty,
+               let indexPath = collectionView.indexPathsForVisibleItems.sorted(by: { $0.item < $1.item }).first,
+               let id = dataSource.itemIdentifier(for: indexPath),
+               let attributes = collectionView.layoutAttributesForItem(at: indexPath) {
+                firstVisibleID = id
+                firstVisibleY = attributes.frame.minY - collectionView.contentOffset.y
+            }
+
+            lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+            orderedIDs = newIDs
+
+            isApplying = true
+            var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+            snapshot.appendSections([0])
+            snapshot.appendItems(newIDs)
+            dataSource.apply(snapshot, animatingDifferences: false) { [weak self, weak collectionView] in
+                guard let self, let collectionView else { return }
+                self.isApplying = false
+                collectionView.layoutIfNeeded()
+
+                // 插入更早消息：把原来顶部那条消息放回原来的视觉位置。
+                if let firstVisibleID,
+                   let newIndex = newIDs.firstIndex(of: firstVisibleID),
+                   let attributes = collectionView.layoutAttributesForItem(at: IndexPath(item: newIndex, section: 0)) {
+                    collectionView.contentOffset.y = attributes.frame.minY - firstVisibleY
+                } else if self.isAtBottom, newIDs.count > oldCount {
+                    self.scrollToBottom(collectionView, animated: false)
+                }
+            }
+        }
+
+        func scrollToBottom(_ collectionView: UICollectionView, animated: Bool) {
+            guard !orderedIDs.isEmpty else { return }
+            let indexPath = IndexPath(item: orderedIDs.count - 1, section: 0)
+            collectionView.scrollToItem(at: indexPath, at: .bottom, animated: animated)
+        }
+
+        // MARK: UIScrollViewDelegate
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard !isApplying else { return }
+            let distanceToBottom = scrollView.contentSize.height - scrollView.bounds.height - scrollView.contentOffset.y
+            let atBottom = distanceToBottom <= 60
+            if atBottom != isAtBottom {
+                isAtBottom = atBottom
+                parent.onAtBottomChange(atBottom)
+            }
+            if scrollView.contentOffset.y < 120,
+               Date().timeIntervalSince(lastNearTopLoad) > 1.5 {
+                lastNearTopLoad = Date()
+                parent.onNearTop()
+            }
+        }
+    }
+}
+
+final class UIKitMessageCell: UICollectionViewCell {
+    static let reuseID = "UIKitMessageCell"
+
+    func configure(item: ConversationListItem,
+                   model: ConnectionModel,
+                   expanded: Bool,
+                   toggleExpanded: @escaping (Int) -> Void) {
+        contentConfiguration = UIHostingConfiguration {
+            Group {
+                if let message = item.message {
+                    MessageRow(message: message, model: model)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                } else if let group = item.group {
+                    ProcessRow(group: group, expanded: expanded, model: model) {
+                        toggleExpanded(group.turn)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                } else {
+                    Color.clear
+                }
+            }
         }
     }
 }
