@@ -4448,9 +4448,13 @@ struct MessageRow: View {
                         Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
                             .font(.caption2)
                             .foregroundStyle(copied ? Color(red: 0.08, green: 0.48, blue: 0.37) : .secondary)
+                            .frame(width: 14, height: 14)
+                            .scaleEffect(copied ? 1.15 : 1)
+                            .animation(.spring(response: 0.22, dampingFraction: 0.6), value: copied)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(copied ? "已复制" : "复制整条消息")
+                    .sensoryFeedback(.success, trigger: copied)
                     Button {
                         model.beginQuote(message)
                     } label: {
@@ -4458,10 +4462,6 @@ struct MessageRow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("引用这条消息")
-                }
-                if copied {
-                    Text("已复制").font(.caption2).foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                        .transition(.opacity)
                 }
             }.font(.caption2.weight(.semibold))
             HStack {
