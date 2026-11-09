@@ -495,6 +495,51 @@ final class ConnectionModel {
         }
     }
 
+    /// 把回复里的本地图片（相对 cwd 的路径）解析成 `api/file` 可访问 URL，并把图片行从 Markdown 中移除。
+    func renderedMarkdown(_ markdown: String) -> (text: String, imageURLs: [URL]) {
+        guard markdown.contains("![") else { return (markdown, []) }
+        var kept: [String] = []
+        var urls: [URL] = []
+        let regex = try? NSRegularExpression(pattern: #"^!\[[^\]]*\]\(([^)\s]+)\)$"#)
+        for line in markdown.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let regex,
+               let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+               let range = Range(match.range(at: 1), in: trimmed) {
+                let destination = String(trimmed[range])
+                if let url = markdownImageURL(for: destination) {
+                    urls.append(url)
+                    continue
+                }
+            }
+            kept.append(line)
+        }
+        return (kept.joined(separator: "\n"), urls)
+    }
+
+    private func markdownImageURL(for destination: String) -> URL? {
+        if let url = URL(string: destination),
+           let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
+            return url
+        }
+        guard let base = try? Self.serverURL(from: serverAddress) else { return nil }
+        var raw = destination.removingPercentEncoding ?? destination
+        if raw.hasPrefix("file://") { raw = String(raw.dropFirst("file://".count)) }
+        else if raw.hasPrefix("file:") { raw = String(raw.dropFirst("file:".count)) }
+        guard !raw.isEmpty else { return nil }
+        let absolute: String
+        if raw.hasPrefix("/") {
+            absolute = raw
+        } else if let cwd = selectedSession?.cwd, cwd.hasPrefix("/") {
+            absolute = URL(fileURLWithPath: cwd).appendingPathComponent(raw).standardized.path
+        } else {
+            return nil
+        }
+        var components = URLComponents(url: base.appending(path: "api/file"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "path", value: absolute)]
+        return components?.url
+    }
+
     /// 会话列表的 updatedAt 可能是毫秒或秒，统一成 Date。
     private static func dateFromSessionUpdatedAt(_ value: TimeInterval) -> Date {
         let seconds = value > 10_000_000_000 ? value / 1000 : value
@@ -2812,6 +2857,59 @@ struct ChatHeadingStyle: StructuredText.HeadingStyle {
 }
 
 /// 消息 Markdown 渲染：交给 Textual（MarkdownUI 作者的新库，原生支持跨视图文本选择）。
+/// 远程 Markdown 图片（相对 cwd 的本地截图通过 `api/file` 读取）。
+struct RemoteMarkdownImage: View {
+    let url: URL
+    @State private var image: UIImage?
+    @State private var failed = false
+    @State private var showsPreview = false
+    private static var cache: [String: UIImage] = [:]
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else if failed {
+                HStack(spacing: 6) {
+                    Image(systemName: "photo").foregroundStyle(.secondary)
+                    Text("图片加载失败").font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(width: 200, height: 72)
+                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12).fill(Color(uiColor: .tertiarySystemFill))
+                    ProgressView()
+                }
+                .frame(width: 200, height: 120)
+            }
+        }
+        .frame(maxWidth: 240)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { if image != nil { showsPreview = true } }
+        .fullScreenCover(isPresented: $showsPreview) {
+            if let image { FullscreenImageViewer(image: image) }
+        }
+        .task {
+            guard image == nil else { return }
+            if let cached = Self.cache[url.absoluteString] { image = cached; return }
+            do {
+                let (data, response) = try await URLSession.shared.data(from: url)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                      let loaded = UIImage(data: data) else {
+                    failed = true
+                    return
+                }
+                Self.cache[url.absoluteString] = loaded
+                image = loaded
+            } catch {
+                failed = true
+            }
+        }
+    }
+}
+
 struct MarkdownBody: View {
     let text: String
     var foreground: Color = .primary
@@ -3236,6 +3334,12 @@ struct MessageRow: View {
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
 
+    private var renderedMarkdown: (text: String, imageURLs: [URL]) {
+        model.renderedMarkdown(message.text)
+    }
+    private var markdownText: String { renderedMarkdown.text }
+    private var markdownImageURLs: [URL] { renderedMarkdown.imageURLs }
+
     private func pendingStateColor(_ state: ConnectionModel.PendingSendState) -> Color {
         if case .failed = state { return Color.red.opacity(0.85) }
         return Color.secondary
@@ -3274,12 +3378,15 @@ struct MessageRow: View {
                             AttachmentThumbnail(ref: ref, model: model, size: 150)
                         }
                     }
-                    if !message.text.isEmpty {
-                        MarkdownBody(text: message.text, foreground: message.isUser ? .white : .primary)
+                    if !markdownText.isEmpty {
+                        MarkdownBody(text: markdownText, foreground: message.isUser ? .white : .primary)
                             .textSelection(.enabled)
                             .padding(.horizontal, 14).padding(.vertical, 11)
                             .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                             .foregroundStyle(message.isUser ? .white : .primary)
+                    }
+                    ForEach(markdownImageURLs, id: \.absoluteString) { url in
+                        RemoteMarkdownImage(url: url)
                     }
                 }
                 if !message.isUser { Spacer(minLength: 24) }
