@@ -10,15 +10,13 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { createServer, request as httpRequest } from 'node:http'
-import { connect as http2Connect } from 'node:http2'
-import { sign } from 'node:crypto'
 import { promisify } from 'node:util'
 import QRCode from 'qrcode'
 
 const execFileP = promisify(execFile)
 
 export const name = 'dsh-pocket-ios'
-export const inject = ['connection', 'webServer', 'sessions']
+export const inject = ['connection', 'webServer']
 
 const CHANNEL = '/dsh-pocket-ios'
 const TAILSCALE_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
@@ -26,142 +24,7 @@ const BODY_MAX = 64 * 1024
 /** 稳定本地入口端口：Tailscale Serve 指向它；默认 3081（与 dsh-pocket 代理端口一致）。 */
 const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3081)
 
-// ---------- APNs 后台推送 ----------
-async function readJSONFile(file, fallback) {
-  try { return JSON.parse(await readFile(file, 'utf8')) } catch { return fallback }
-}
-
-async function writeJSONFile(file, value) {
-  await mkdir(LOG_DIR, { recursive: true })
-  await writeFile(file, JSON.stringify(value, null, 2), { mode: 0o600 })
-}
-
-let apnsJWT = null
-let apnsJWTExpiresAt = 0
-
-/** ES256 JWT（Apple APNs provider token），50 分钟缓存。 */
-async function apnsToken(config) {
-  const now = Math.floor(Date.now() / 1000)
-  if (apnsJWT && now < apnsJWTExpiresAt - 60) return apnsJWT
-  const keyPath = config.keyPath || join(homedir(), '.appstoreconnect', 'private_keys', `AuthKey_${config.keyId}.p8`)
-  const key = await readFile(keyPath, 'utf8')
-  const header = Buffer.from(JSON.stringify({ alg: 'ES256', kid: config.keyId })).toString('base64url')
-  const claims = Buffer.from(JSON.stringify({ iss: config.teamId, iat: now })).toString('base64url')
-  const signature = sign('sha256', Buffer.from(`${header}.${claims}`), { key, dsaEncoding: 'ieee-p1363' }).toString('base64url')
-  apnsJWT = `${header}.${claims}.${signature}`
-  apnsJWTExpiresAt = now + 3000
-  return apnsJWT
-}
-
-async function sendAPNs(config, token, payload) {
-  const host = config.environment === 'production' ? 'api.push.apple.com' : 'api.sandbox.push.apple.com'
-  const jwt = await apnsToken(config)
-  const body = JSON.stringify(payload)
-  return await new Promise((resolve) => {
-    const client = http2Connect(`https://${host}:443`)
-    const finish = (result) => { try { client.close() } catch { /* noop */ } resolve(result) }
-    client.on('error', (error) => finish({ ok: false, status: 0, error: String(error?.message ?? error) }))
-    client.on('connect', () => {
-      const request = client.request({
-        ':method': 'POST',
-        ':path': `/3/device/${token}`,
-        'apns-topic': config.bundleId || APNS_TOPIC,
-        'apns-push-type': 'alert',
-        'apns-priority': '10',
-        authorization: `bearer ${jwt}`,
-      })
-      let responseBody = ''
-      request.on('response', (headers) => {
-        request.setEncoding('utf8')
-        request.on('data', (chunk) => { responseBody += chunk })
-        request.on('end', () => {
-          const status = Number(headers[':status'] ?? 0)
-          finish({ ok: status === 200, status, error: responseBody || undefined })
-        })
-      })
-      request.on('error', (error) => finish({ ok: false, status: 0, error: String(error?.message ?? error) }))
-      request.end(body)
-    })
-  })
-}
-
-function sessionRunning(session) {
-  try {
-    let running = false
-    for (const event of session.snapshotEvents()) {
-      if (event?.type === 'turn/start') running = true
-      else if (event?.type === 'turn/end') running = false
-    }
-    return running
-  } catch { return false }
-}
-
-function sessionLabel(session) {
-  const header = session?.header ?? {}
-  const meta = header.meta ?? {}
-  return meta.title || meta.name || meta.cwd?.split('/').pop() || '对话'
-}
-
-/** 完成检测 + 推送循环（MVP：轮询 live sessions）。 */
-async function pushLoop(ctx) {
-  const sessions = ctx?.sessions
-  if (!sessions || typeof sessions.list !== 'function') {
-    await logLine('push: ctx.sessions 不可用，后台推送未启动')
-    return
-  }
-  let previous = await readJSONFile(PUSH_STATE_FILE, {})
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 5000))
-    try {
-      const config = await readJSONFile(APNS_CONFIG_FILE, null)
-      if (!config?.keyId || !config?.teamId) continue
-      const tokens = await readJSONFile(PUSH_TOKENS_FILE, [])
-      if (!tokens.length) continue
-      const live = new Map()
-      for (const session of sessions.list()) {
-        live.set(session.id, sessionRunning(session))
-      }
-      for (const [sessionId, running] of live) {
-        const wasRunning = previous[sessionId] === true
-        if (wasRunning && !running) {
-          const session = sessions.get?.(sessionId)
-          const title = session ? sessionLabel(session) : '对话'
-          const payload = {
-            aps: {
-              alert: { title: '对话已完成', body: `「${title}」等待你的回复` },
-              sound: 'default',
-              badge: 1,
-              'thread-id': sessionId,
-              category: 'DSH_REPLY',
-            },
-            sessionId,
-            kind: 'turn-completed',
-          }
-          for (const entry of tokens) {
-            const result = await sendAPNs({ ...config, environment: entry.environment || config.environment }, entry.token, payload)
-            await logLine(`push session=${sessionId} token=…${String(entry.token).slice(-6)} status=${result.status} ok=${result.ok}${result.error ? ' err=' + String(result.error).slice(0, 120) : ''}`)
-            if (result.status === 410) {
-              const next = tokens.filter((t) => t.token !== entry.token)
-              await writeJSONFile(PUSH_TOKENS_FILE, next)
-            }
-          }
-        }
-      }
-      previous = Object.fromEntries(live)
-      await writeJSONFile(PUSH_STATE_FILE, previous)
-    } catch (error) {
-      await logLine(`push loop error: ${String(error?.message ?? error)}`)
-    }
-  }
-}
-
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
-
-const APNS_CONFIG_FILE = join(LOG_DIR, 'apns.json')
-const PUSH_TOKENS_FILE = join(LOG_DIR, 'push.json')
-const PUSH_STATE_FILE = join(LOG_DIR, 'push-state.json')
-const APNS_TOPIC = 'com.ruska.dsh-pocket-ios'
-
 async function logLine(line) {
   try {
     await mkdir(LOG_DIR, { recursive: true })
@@ -439,33 +302,6 @@ export function apply(ctx) {
         }
         const body = await readBody(req)
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
-        if (endpoint === 'push.register' || endpoint === 'push.unregister' || endpoint === 'push.status') {
-          const args = body?.payload?.args ?? body?.args ?? body ?? {}
-          const tokens = await readJSONFile(PUSH_TOKENS_FILE, [])
-          if (endpoint === 'push.register') {
-            const token = String(args.token ?? '').trim()
-            if (!/^[a-fA-F0-9]{32,256}$/.test(token)) {
-              send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'bad-request', message: 'invalid device token' } } })
-              return
-            }
-            const next = tokens.filter((entry) => entry.token !== token)
-            next.push({ token, environment: args.environment === 'production' ? 'production' : 'sandbox', bundleId: args.bundleId, deviceName: args.deviceName, updatedAt: new Date().toISOString() })
-            await writeJSONFile(PUSH_TOKENS_FILE, next)
-            await logLine(`push.register token=…${token.slice(-6)} total=${next.length}`)
-            send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { tokens: next.length } } })
-            return
-          }
-          if (endpoint === 'push.unregister') {
-            const token = String(args.token ?? '').trim()
-            const next = tokens.filter((entry) => entry.token !== token)
-            await writeJSONFile(PUSH_TOKENS_FILE, next)
-            send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { tokens: next.length } } })
-            return
-          }
-          const config = await readJSONFile(APNS_CONFIG_FILE, null)
-          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { configured: Boolean(config?.keyId && config?.teamId), tokens: tokens.length } } })
-          return
-        }
         if (endpoint === 'pin.refresh') {
           const nextPin = String(randomInt(10_000_000, 100_000_000))
           await setPin(nextPin)
@@ -503,6 +339,5 @@ export function apply(ctx) {
   } catch (error) {
     ctx?.logger?.warn?.(`dsh-pocket-ios: 挂载 RPC 失败：${String(error?.message ?? error)}`)
   }
-  void pushLoop(ctx)
   return attachStableProxy(ctx, route.handler)
 }
