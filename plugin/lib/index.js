@@ -311,7 +311,8 @@ export function apply(ctx) {
           return
         }
         if (endpoint === 'pin.set') {
-          const requested = String(body?.pin ?? '')
+          const args = body?.payload?.args ?? body?.args ?? body ?? {}
+          const requested = String(args.pin ?? '')
           if (!PIN_PATTERN.test(requested)) {
             send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'bad-request', message: '密码需为 8-64 位英文字母或数字' } } })
             return
