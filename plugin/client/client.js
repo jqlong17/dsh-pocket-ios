@@ -147,25 +147,16 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function openMobileAccessModal() {
-      if (document.getElementById(MOBILE_MODAL_ID)) return;
-      var modal = document.createElement("div");
-      modal.id = MOBILE_MODAL_ID;
-      modal.style.cssText = "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box";
-      modal.addEventListener("click", function (event) { if (event.target === modal) closeMobileAccessModal(); });
-      var card = document.createElement("div");
-      card.style.cssText = "width:min(720px,94vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-sizing:border-box;box-shadow:0 24px 60px rgba(0,0,0,.25);text-align:left;color:#111";
-      card.innerHTML =
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
-          '<div style="font-weight:700;font-size:18px">手机访问（iOS）</div>' +
-          '<button type="button" data-close="1" style="border:0;background:transparent;font-size:20px;cursor:pointer;color:#666">×</button>' +
-        '</div>' +
+    function mobileAccessPanelHTML() {
+      var QR = '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 37 37" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h37v37H0z"/><path stroke="#000000" d="M4 4.5h7m3 0h1m4 0h5m2 0h7M4 5.5h1m5 0h1m2 0h1m7 0h1m2 0h1m1 0h1m5 0h1M4 6.5h1m1 0h3m1 0h1m1 0h1m5 0h1m1 0h1m3 0h1m1 0h1m1 0h3m1 0h1M4 7.5h1m1 0h3m1 0h1m1 0h2m7 0h1m1 0h1m2 0h1m1 0h3m1 0h1M4 8.5h1m1 0h3m1 0h1m1 0h8m2 0h3m1 0h1m1 0h3m1 0h1M4 9.5h1m5 0h1m1 0h2m1 0h5m2 0h1m1 0h1m1 0h1m5 0h1M4 10.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M12 11.5h1m1 0h1m1 0h2m1 0h2m2 0h2M4 12.5h1m1 0h5m5 0h1m1 0h2m1 0h1m1 0h1m2 0h5M8 13.5h1m5 0h2m7 0h4m1 0h1m3 0h1M5 14.5h1m3 0h2m1 0h1m1 0h3m5 0h1m1 0h1m1 0h2M4 15.5h5m6 0h2m1 0h1m1 0h1m1 0h2m1 0h2m1 0h2m1 0h1M5 16.5h3m1 0h2m1 0h2m5 0h3m5 0h1m1 0h2M4 17.5h4m3 0h3m1 0h1m1 0h2m4 0h6m3 0h1M8 18.5h3m3 0h1m2 0h4m1 0h1m2 0h1m2 0h3M5 19.5h2m2 0h1m1 0h1m3 0h1m1 0h1m1 0h1m2 0h3m3 0h1m2 0h1M4 20.5h2m2 0h1m1 0h6m2 0h1m1 0h4m3 0h1m1 0h2M4 21.5h6m1 0h1m1 0h3m5 0h3m2 0h3m1 0h1m1 0h1M4 22.5h1m4 0h3m2 0h2m3 0h3m2 0h2m2 0h1m1 0h1M4 23.5h1m2 0h3m3 0h1m1 0h2m1 0h1m5 0h2m2 0h1m2 0h1M4 24.5h1m1 0h3m1 0h1m3 0h3m4 0h1m2 0h5m1 0h3M12 25.5h3m1 0h3m2 0h2m1 0h1m3 0h5M4 26.5h7m6 0h2m3 0h3m1 0h1m1 0h3M4 27.5h1m5 0h1m1 0h6m5 0h2m3 0h1M4 28.5h1m1 0h3m1 0h1m1 0h5m1 0h1m2 0h1m2 0h5m1 0h1m1 0h1M4 29.5h1m1 0h3m1 0h1m1 0h2m8 0h1m4 0h1m1 0h2M4 30.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m3 0h2m1 0h6M4 31.5h1m5 0h1m3 0h2m3 0h1m2 0h1m1 0h2m1 0h3m1 0h1M4 32.5h7m1 0h2m1 0h1m1 0h4m1 0h2m1 0h1m2 0h1m1 0h1"/></svg>';
+      var QR_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 37 37" shape-rendering="crispEdges"><path fill="#fff" d="M0 0h37v37H0z"/>' + String(QR_SVG).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '') + '</svg>';
+      return '<div style="max-width:760px;text-align:left">' +
         '<div style="padding:18px;border-radius:14px;border:1px solid rgba(0,0,0,.08);background:rgba(20,122,94,.04);margin-bottom:16px">' +
           '<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">' +
             '<div style="width:132px;height:132px;flex:0 0 132px;background:#fff;border-radius:10px;padding:8px;border:1px solid rgba(0,0,0,.06);box-sizing:border-box">' + QR_SVG + '</div>' +
             '<div style="flex:1 1 240px;min-width:0">' +
               '<div style="font-weight:600;font-size:16px;margin-bottom:6px">在 iPhone 上使用 DSH</div>' +
-              '<div style="font-size:13px;opacity:.72;line-height:1.65;margin-bottom:12px">用手机扫描二维码从 App Store 安装 DSH Pocket iOS；装好后扫描下方 Tailscale 二维码即可连接（无需公网暴露）。</div>' +
+              '<div style="font-size:13px;opacity:.72;line-height:1.65;margin-bottom:12px">用手机扫描二维码从 App Store 安装 DSH Pocket iOS；装好后扫描下方 Tailscale 二维码即可连接（无需公网暴露、地址固定）。</div>' +
               '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
                 '<a href="' + APP_STORE_URL + '" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;color:#fff;background:#147A5E">在 App Store 下载</a>' +
                 '<a href="' + REPO_URL + '" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;color:#147A5E;background:rgba(20,122,94,.08);border:1px solid rgba(20,122,94,.25)">GitHub 仓库</a>' +
@@ -173,15 +164,89 @@ window.__ModuleLoader__.load({
             '</div>' +
           '</div>' +
         '</div>' +
-        '<div style="padding:18px;border-radius:14px;border:1px solid rgba(0,0,0,.08)">' +
+        '<div style="padding:18px;border-radius:14px;border:1px solid rgba(0,0,0,.08);margin-bottom:16px">' +
           '<div style="font-weight:600;font-size:16px;margin-bottom:10px">Tailscale 连接（推荐，地址固定且更稳定）</div>' +
           '<div data-tailscale-slot="1"></div>' +
         '</div>' +
-        '<div style="margin-top:14px;font-size:12px;opacity:.6;line-height:1.6">局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。</div>';
+        '<div style="font-size:12px;opacity:.6;line-height:1.6">局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。</div>' +
+      '</div>';
+    }
+
+    var PAGE_ID = "dsh-pocket-ios-page";
+
+    function closeMobileAccessPage() {
+      var page = document.getElementById(PAGE_ID);
+      if (page) page.remove();
+      var entry = document.getElementById(MOBILE_NAV_ID);
+      if (entry) entry.style.background = "transparent";
+    }
+
+    /** 找到设置内容区（导航列的同级兄弟），用于像其他 tab 一样展示我们的内容。 */
+    function settingsContentRoot() {
+      var navLabel = null;
+      var candidates = Array.prototype.slice.call(document.querySelectorAll("button,div,span"));
+      for (var i = 0; i < candidates.length; i++) {
+        var text = (candidates[i].textContent || "").trim();
+        if (text === "通用设置" || text === "模型") { navLabel = candidates[i]; break; }
+      }
+      if (!navLabel) return null;
+      var container = navLabel.parentElement;
+      for (var depth = 0; depth < 5 && container && container !== document.body; depth++) {
+        if (container.querySelectorAll("button").length >= 2) break;
+        container = container.parentElement;
+      }
+      if (!container || !container.parentElement) return null;
+      var body = container.parentElement;
+      for (var child = body.firstElementChild; child; child = child.nextElementSibling) {
+        if (child !== container) return child;
+      }
+      return null;
+    }
+
+    function openMobileAccessPage() {
+      var root = settingsContentRoot();
+      if (!root) { openMobileAccessModalFallback(); return; }
+      var existing = document.getElementById(PAGE_ID);
+      if (existing) { closeMobileAccessPage(); return; }
+      if (getComputedStyle(root).position === "static") root.style.position = "relative";
+      var page = document.createElement("div");
+      page.id = PAGE_ID;
+      page.style.cssText = "position:absolute;inset:0;z-index:50;overflow:auto;background:var(--dsw-alias-bg-base,#fff);padding:26px 28px;box-sizing:border-box;text-align:left";
+      page.innerHTML = '<div style="font-weight:700;font-size:18px;margin-bottom:18px">手机访问（iOS）</div>' + mobileAccessPanelHTML();
+      root.appendChild(page);
+      var entry = document.getElementById(MOBILE_NAV_ID);
+      if (entry) entry.style.background = "rgba(0,0,0,.06)";
+      fillTailscaleSlot(page.querySelector('[data-tailscale-slot]'));
+    }
+
+    /** 兜底：窗口尺寸/结构异常时仍用弹窗。 */
+    function openMobileAccessModalFallback() {
+      if (document.getElementById(MOBILE_MODAL_ID)) return;
+      var modal = document.createElement("div");
+      modal.id = MOBILE_MODAL_ID;
+      modal.style.cssText = "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box";
+      modal.addEventListener("click", function (event) { if (event.target === modal) closeMobileAccessModal(); });
+      var card = document.createElement("div");
+      card.style.cssText = "width:min(760px,94vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-sizing:border-box;text-align:left;color:#111";
+      card.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div style="font-weight:700;font-size:18px">手机访问（iOS）</div><button type="button" data-close="1" style="border:0;background:transparent;font-size:20px;cursor:pointer;color:#666">×</button></div>' + mobileAccessPanelHTML();
       modal.appendChild(card);
       card.querySelector('[data-close]').addEventListener('click', closeMobileAccessModal);
       document.body.appendChild(modal);
       fillTailscaleSlot(card.querySelector('[data-tailscale-slot]'));
+    }
+
+    var mobileNavClickBound = false;
+    function bindNavOutsideClick() {
+      if (mobileNavClickBound) return;
+      mobileNavClickBound = true;
+      document.addEventListener("click", function (event) {
+        var entry = document.getElementById(MOBILE_NAV_ID);
+        if (!entry) return;
+        var nav = entry.parentElement;
+        if (nav && nav.contains(event.target) && !entry.contains(event.target)) {
+          closeMobileAccessPage();
+        }
+      }, true);
     }
 
     function ensureMobileAccessNavEntry() {
@@ -206,7 +271,13 @@ window.__ModuleLoader__.load({
         container = container.parentElement;
       }
       if (!container) return;
-      if (document.getElementById(MOBILE_NAV_ID)) return;
+      if (document.getElementById(MOBILE_NAV_ID)) {
+        // 若用户点了别的设置项，收起我们的页面
+        var other = document.querySelector("button[aria-current='true'],button[data-active='true']");
+        if (other && other.id !== MOBILE_NAV_ID) closeMobileAccessPage();
+        return;
+      }
+      bindNavOutsideClick();
       var entry = document.createElement("button");
       entry.id = MOBILE_NAV_ID;
       entry.type = "button";
@@ -214,7 +285,11 @@ window.__ModuleLoader__.load({
       entry.innerHTML = '<span style="font-size:15px">📱</span><span>手机访问（iOS）</span>';
       entry.addEventListener("mouseenter", function () { entry.style.background = "rgba(0,0,0,.05)"; });
       entry.addEventListener("mouseleave", function () { entry.style.background = "transparent"; });
-      entry.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); openMobileAccessModal(); });
+      entry.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        openMobileAccessPage();
+      });
       container.appendChild(entry);
     }
 
