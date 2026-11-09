@@ -102,6 +102,7 @@ window.__ModuleLoader__.load({
             status.available ? React.createElement("code", null, "tailscale serve --bg 3081") : null,
             status.available ? "，刷新本页即可生成二维码。" : ""));
       }
+      var mask = new Array(status.pin ? status.pin.length : 8).fill("•").join("");
       var copy = function (text, field) {
         if (!text) return;
         copyText(text);
@@ -121,7 +122,7 @@ window.__ModuleLoader__.load({
               React.createElement("button", { type: "button", onClick: function () { copy(status.httpsUrl, "url"); }, style: linkStyle(false) }, copyLabel("url"))),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "访问密码（手动输入）"),
             React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
-              React.createElement("code", { style: { fontSize: 14, letterSpacing: 1 } }, showPin ? (status.pin || "—") : "••••••••"),
+              React.createElement("code", { style: { fontSize: 14, letterSpacing: 1 } }, showPin ? (status.pin || "—") : mask),
               React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: linkStyle(false) }, showPin ? "隐藏" : "显示"),
               React.createElement("button", { type: "button", onClick: function () { copy(status.pin, "pin"); }, style: linkStyle(false) }, copyLabel("pin"))),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
