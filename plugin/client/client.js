@@ -122,6 +122,46 @@ window.__ModuleLoader__.load({
           "</div>" +
         "</div>" +
       "</div>";
+
+    /** 把 Tailscale 二维码注入「手机访问」卡片（同源 fetch，走插件 RPC 路由）。 */
+    function loadTailscaleIntoCard(card) {
+      if (!card || card.querySelector("[data-tailscale-block]")) return;
+      var wrap = document.createElement("div");
+      wrap.setAttribute("data-tailscale-block", "1");
+      wrap.style.cssText = "margin-top:14px;padding-top:14px;border-top:1px solid rgba(0,0,0,.08);width:100%";
+      wrap.innerHTML = '<div style="font-size:13px;opacity:.65">正在检测 Tailscale…</div>';
+      card.appendChild(wrap);
+      var rpcId = "ts-" + Math.random().toString(36).slice(2);
+      fetch("/dsh-pocket-ios/tailscale.status", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rpcId: rpcId, method: "tailscale.status", payload: {} })
+      }).then(function (r) { return r.json(); }).then(function (json) {
+        var result = json && json.result;
+        var value = result && result.ok ? result.value : null;
+        if (!value) throw new Error("no status");
+        if (!value.httpsUrl) {
+          wrap.innerHTML =
+            '<div style="font-weight:600;font-size:14px;margin-bottom:6px">Tailscale 连接（推荐，地址固定）</div>' +
+            '<div style="font-size:12px;opacity:.65;line-height:1.6">检测到 Tailscale，但还没开启 HTTPS 代理。在 Tailscale 后台 DNS 页开启 HTTPS Certificates，然后执行 <code>tailscale serve --bg 3081</code>，刷新本页即可生成二维码。</div>';
+          return;
+        }
+        wrap.innerHTML =
+          '<div style="font-weight:600;font-size:14px;margin-bottom:8px">Tailscale 连接（推荐，地址固定且更稳定）</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">' +
+            (value.qr ? '<img alt="Tailscale 连接二维码" src="' + value.qr + '" style="width:150px;height:150px;border-radius:10px;background:#fff;padding:6px;border:1px solid rgba(0,0,0,.06);box-sizing:border-box" />' : '') +
+            '<div style="flex:1 1 200px;min-width:0">' +
+              '<div style="font-size:12px;opacity:.6;margin-bottom:4px">固定地址</div>' +
+              '<div style="font-size:13px;word-break:break-all;margin-bottom:8px">' + value.httpsUrl + '</div>' +
+              '<div style="font-size:12px;opacity:.65;line-height:1.6">手机装好 Tailscale（同一账号、开启 VPN）后，用 DSH Pocket 扫左侧二维码：已包含地址与访问密码，扫完自动连接，换 Wi-Fi / 切 4G 都不用重扫。</div>' +
+            '</div>' +
+          '</div>';
+      }).catch(function () {
+        wrap.innerHTML = '<div style="font-size:12px;opacity:.6">未读取到 Tailscale 状态；可继续使用局域网/公网二维码。</div>';
+      });
+    }
+
     /** 把卡片插到「手机访问」页签内容内（切到其他页签时移除），失败不影响原生入口。 */
     function insertCardInPocketPage() {
       if (typeof document === "undefined") return;
@@ -155,6 +195,7 @@ window.__ModuleLoader__.load({
       card.id = CARD_ID;
       card.innerHTML = CARD_HTML;
       contentRoot.insertBefore(card, contentRoot.firstChild);
+      loadTailscaleIntoCard(card);
     }
 
     var observer = null;
