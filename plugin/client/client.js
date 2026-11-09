@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
         return function () { alive = false; };
       }, []);
 
-      var box = { marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(0,0,0,.08)" };
+      var box = props.padded ? {} : { marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(0,0,0,.08)" };
       if (value.loading) {
         return React.createElement("div", { style: box }, React.createElement("div", { style: { fontSize: 13, opacity: 0.72 } }, "正在检测 Tailscale…"));
       }
@@ -63,6 +63,45 @@ window.__ModuleLoader__.load({
             React.createElement("button", { type: "button", onClick: copy, style: linkStyle(false) }, "复制地址"),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
               "如果二维码里没有密码，也可以手动输入访问密码；未安装 Tailscale 时请使用下方局域网/公网二维码。"))));
+    }
+
+
+    function MobileAccessPanel(props) {
+      var rpcCall = props.rpcCall;
+      return React.createElement(
+        "div",
+        { style: { width: "100%", maxWidth: 760, display: "flex", flexDirection: "column", gap: 16 } },
+        React.createElement(
+          "div",
+          { style: { padding: 18, borderRadius: 14, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
+          React.createElement(
+            "div",
+            { style: { display: "flex", flexWrap: "wrap", gap: 18, alignItems: "flex-start" } },
+            React.createElement("div", {
+              style: { width: 132, height: 132, flex: "0 0 132px", background: "#fff", borderRadius: 10, padding: 8, border: "1px solid rgba(0,0,0,.06)", boxSizing: "border-box" },
+              dangerouslySetInnerHTML: { __html: QR_SVG }
+            }),
+            React.createElement(
+              "div",
+              { style: { flex: "1 1 240px", minWidth: 0 } },
+              React.createElement("div", { style: { fontWeight: 600, fontSize: 16, marginBottom: 6 } }, "在 iPhone 上使用 DSH"),
+              React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.65, marginBottom: 12 } },
+                "用手机扫描二维码从 App Store 安装 DSH Pocket iOS。装好后在本页下方扫描 Tailscale 二维码（或 dsh-pocket 的局域网/公网二维码）即可连接。"),
+              React.createElement(
+                "div",
+                { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+                React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: linkStyle(true) }, "在 App Store 下载"),
+                React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: linkStyle(false) }, "GitHub 仓库")
+              )
+            )
+          )
+        ),
+        React.createElement("div", {
+          style: { padding: 18, borderRadius: 14, border: "1px solid rgba(0,0,0,.08)", background: "#fff" }
+        }, React.createElement(TailscaleCard, { rpcCall: rpcCall, padded: true })),
+        React.createElement("div", { style: { fontSize: 12, opacity: 0.6, lineHeight: 1.6 } },
+          "局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。")
+      );
     }
 
     var CARD_ID = "dsh-pocket-ios-card";
@@ -216,19 +255,20 @@ window.__ModuleLoader__.load({
           return Promise.reject(error);
         }
       };
-      function IOSSection() {
-        return React.createElement(
-          "div",
-          { style: { width: "100%" } },
-          React.createElement(IOSCard),
-          React.createElement(TailscaleCard, { rpcCall: rpcCall })
-        );
+      function MobileAccessSection() {
+        return React.createElement(MobileAccessPanel, { rpcCall: rpcCall });
       }
       try {
         ctx.slots.inject("settings.section", function () {
           return ctx.slots.register(
-            { name: "settings.section", id: "pocket-ios", order: 0, label: function () { return "iOS 客户端"; } },
-            IOSSection
+            {
+              name: "settings.section",
+              id: "pocket-ios",
+              order: 0,
+              label: function () { return "手机访问（iOS）"; },
+              inject: function () { return { rpcCall: rpcCall }; }
+            },
+            MobileAccessSection
           );
         });
       } catch (e) {}
