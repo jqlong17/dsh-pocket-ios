@@ -181,7 +181,7 @@ window.__ModuleLoader__.load({
       if (entry) entry.style.background = "transparent";
     }
 
-    /** 找到设置内容区（导航列的同级兄弟），用于像其他 tab 一样展示我们的内容。 */
+    /** 找到设置内容区：通过内容区里的标题（如「模型」）定位，而不是猜兄弟节点。 */
     function settingsContentRoot() {
       var navLabel = null;
       var candidates = Array.prototype.slice.call(document.querySelectorAll("button,div,span"));
@@ -190,15 +190,24 @@ window.__ModuleLoader__.load({
         if (text === "通用设置" || text === "模型") { navLabel = candidates[i]; break; }
       }
       if (!navLabel) return null;
-      var container = navLabel.parentElement;
-      for (var depth = 0; depth < 5 && container && container !== document.body; depth++) {
-        if (container.querySelectorAll("button").length >= 2) break;
-        container = container.parentElement;
+      var navContainer = navLabel.parentElement;
+      for (var depth = 0; depth < 5 && navContainer && navContainer !== document.body; depth++) {
+        if (navContainer.querySelectorAll("button").length >= 2) break;
+        navContainer = navContainer.parentElement;
       }
-      if (!container || !container.parentElement) return null;
-      var body = container.parentElement;
-      for (var child = body.firstElementChild; child; child = child.nextElementSibling) {
-        if (child !== container) return child;
+      if (!navContainer) return null;
+      // 内容区里有各 section 的标题（与导航 label 同名），取不在导航列里的那一个，再向上找滚动容器。
+      var titles = Array.prototype.slice.call(document.querySelectorAll("h1,h2,h3,h4,div,span"));
+      for (var j = 0; j < titles.length; j++) {
+        var el = titles[j];
+        if (navContainer.contains(el)) continue;
+        if ((el.textContent || "").trim() !== "模型" && (el.textContent || "").trim() !== "通用设置") continue;
+        var node = el;
+        for (var up = 0; up < 8 && node && node !== document.body; up++) {
+          var style = window.getComputedStyle(node);
+          if ((style.overflowY === "auto" || style.overflowY === "scroll") && node.offsetHeight > 120) return node;
+          node = node.parentElement;
+        }
       }
       return null;
     }
@@ -208,10 +217,11 @@ window.__ModuleLoader__.load({
       if (!root) { openMobileAccessModalFallback(); return; }
       var existing = document.getElementById(PAGE_ID);
       if (existing) { closeMobileAccessPage(); return; }
-      if (getComputedStyle(root).position === "static") root.style.position = "relative";
+      var rect = root.getBoundingClientRect();
       var page = document.createElement("div");
       page.id = PAGE_ID;
-      page.style.cssText = "position:absolute;inset:0;z-index:50;overflow:auto;background:var(--dsw-alias-bg-base,#fff);padding:26px 28px;box-sizing:border-box;text-align:left";
+      page.style.cssText = "position:fixed;z-index:80;overflow:auto;background:var(--dsw-alias-bg-base,#fff);padding:26px 28px;box-sizing:border-box;text-align:left;border-radius:12px;"
+        + "left:" + rect.left + "px;top:" + rect.top + "px;width:" + rect.width + "px;height:" + rect.height + "px";
       page.innerHTML = '<div style="font-weight:700;font-size:18px;margin-bottom:18px">手机访问（iOS）</div>' + mobileAccessPanelHTML();
       root.appendChild(page);
       var entry = document.getElementById(MOBILE_NAV_ID);
