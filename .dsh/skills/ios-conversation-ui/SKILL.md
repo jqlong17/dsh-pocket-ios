@@ -36,8 +36,8 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - **为什么从 MarkdownUI 迁移**：MarkdownUI 的已知限制（[issue #264](https://github.com/gonzalezreal/swift-markdown-ui/issues/264)）——每个段落/块是独立 `Text`，只能按段落选中，无法跨行选择。作者的新库 Textual 用 SwiftUI Text 管线重生，支持跨视图选择。
 - **部署目标因此升到 iOS 18**（Textual 所有版本都要求 iOS 18；iOS 18 与 17 支持相同机型，代价可接受）。不要再降回 17，除非放弃 Textual。
 - 表格：`.gitHub` 风格自带边框，列多时会压缩换行（与 MarkdownUI 类似），**仍不要**在消息列表里套横向滚动。
-- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.18, 1.06, 1.0, 0.94, 0.88, 0.76]`（Textual 基准 `.body` = 17pt）：
-  实际 H1 20 / H2 18 / H3 17 / H4 16 / H5 15 / H6 13。移动端刻意克制，标题不抢正文；
+- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.0, 0.97, 0.94, 0.91, 0.88, 0.85]`（Textual 基准 `.body` = 17pt，
+  来自 2026-11-09 反馈：移动端标题要与正文接近，不能太大）：实际 H1 17 / H2 16.5 / H3 16 / H4 15.5 / H5 15 / H6 14.5；
   权重统一 semibold，间距 `fontScaled(top: 0.9, bottom: 0.35)`。改标题大小只动这个数组。
 - 代码块由 Textual 内置语法高亮，样式通过 `structuredTextStyle` 控制，不要自己写高亮。
 
@@ -54,6 +54,16 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 5. 修改后再排查重叠，先确认真机跑的是新进程：`devicectl install` 不会重启 App，要 `terminate` 后重新 `launch`（或让用户手动强制退出）。曾有多次"改了没效果"其实是旧进程。
 
 排查顺序（由外到内）：容器（VStack/LazyVStack）→ 嵌套滚动 → 动画/选择层 → 单行内容（Markdown/表格/图片）。
+
+**Textual 自定义标题样式的顺序坑（2026-11-09 实测）**：`.textual.structuredTextStyle(.gitHub)` 内部会 `environment(\.headingStyle, style.headingStyle)`，如果 `.textual.headingStyle(自定义)` 写在它**之后**（更外层），会被内置 headingStyle 覆盖，改字号完全不生效。必须写成：
+
+```swift
+StructuredText(markdown: text)
+    .textual.headingStyle(ChatHeadingStyle())   // 必须在 structuredTextStyle 之前
+    .textual.structuredTextStyle(.gitHub)
+```
+
+另外 `fontScale` 是乘在 `.gitHub` 默认标题字号（H1≈24pt）上的，要压到正文 17pt 附近需要 ~0.7 的系数。
 
 ## 表格
 
@@ -251,6 +261,25 @@ xcrun devicectl device process launch --device <UDID> com.ruska.dsh-pocket-ios
 ```
 
 调试入口（DEBUG 构建）：`DSH_DEMO=1` 进演示模式，`DSH_OPEN=demo-1|2|3` 直接打开示例会话。
+
+
+## UIKit 列表实验结论（2026-11-09，分支 feat/uikit-message-list）
+
+**现象**：把消息列表换成 UIKit（UICollectionView / UITableView + `UIHostingConfiguration` 承载 SwiftUI `MessageRow`，或内嵌 `UIHostingController`）后，滚动时**气泡里的文字会"滚动"/重排/抖动**，气泡背景与文字不同步；手工测量行高还会出现行重叠。
+
+**原因**：我们的消息行是 **Textual 的 `StructuredText`（复杂 Markdown/表格/代码块）**，不是轻量 SwiftUI 文本：
+- UIKit cell 复用 + `UIHostingConfiguration` 下，行高由 UIKit 估算/测量，Textual 完成布局的时机晚于 cell 尺寸确定 → 滚动中反复重排；
+- 手动 `UIHostingController.sizeThatFits` 测量也会低估（表格/图片晚布局），导致行高偏小、内容被裁剪或与下一行重叠；
+- Element X 能安全使用翻转 UITableView + `UIHostingConfiguration`，是因为它的消息行是轻量 SwiftUI/AttributedString 渲染，不是 Textual 这种重排版组件。
+
+**处理（结论）**：
+- **默认保留 SwiftUI `VStack` 消息列表**（虽然无法做像素级锚定，但文字渲染稳定）；
+- UIKit 列表代码保留在分支 `feat/uikit-message-list`，仅通过 `DSH_LIST=uikit`（DEBUG）实验开关启用，不要默认开启；
+- 以后若要"彻底解决长历史性能"，只有两条路：
+  1. 接受 SwiftUI VStack + 分页（现状），做局部性能优化；
+  2. 把消息渲染从 Textual 换成 **UIKit 原生（TextKit/AttributedString）**，列表与渲染都用 UIKit —— 工作量大（约 1–2 周），需单独评估。
+
+**不要做**：不要再用"UICollectionView/UITableView + 自适应行高 + Textual(SwiftUI) 行"的组合去修重叠；调 `estimatedRowHeight`、预测量、延迟 apply 都只能缓解，不能根治。
 
 ## 扩展约定
 
