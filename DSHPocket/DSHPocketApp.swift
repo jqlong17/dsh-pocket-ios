@@ -67,6 +67,8 @@ final class ConnectionModel {
     var pin = ""
     var isConnecting = false
     var errorMessage: String?
+    /// 连接失败的原因是"电脑地址已失效"（如 quick tunnel 重建换了域名）→ UI 提示重新扫码。
+    var addressNeedsRescan = false
     var isConnected = false
     var isDemoMode = false
     var sessions: [PocketSession] = []
@@ -278,8 +280,32 @@ final class ConnectionModel {
             recordDiagnostic("连接成功：会话 \(sessions.count) 个")
         } catch {
             recordDiagnostic("连接失败：\(error.localizedDescription)")
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyConnectError(error)
         }
+    }
+
+    /// 连接错误 → 用户能看懂的提示；TLS/主机不可达时提示地址已失效并引导重新扫码。
+    private func applyConnectError(_ error: Error) {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                 .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+                 .serverCertificateHasUnknownRoot, .clientCertificateRejected:
+                addressNeedsRescan = true
+                errorMessage = "无法建立安全连接：电脑的公网地址可能已失效。隧道重启后会分配新地址，请在电脑上打开 DSH → 设置 → 手机访问，用这里的二维码重新扫描；同一 Wi-Fi 下也可以改用局域网地址。"
+                return
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost, .notConnectedToInternet:
+                addressNeedsRescan = true
+                errorMessage = "连不上电脑：请确认电脑和手机网络正常、DSH 的「手机访问」仍开着；如果公网地址变了，请重新扫码。"
+                return
+            case .timedOut:
+                errorMessage = "连接超时：电脑端可能正忙或网络不稳定，请稍后重试。"
+                return
+            default:
+                break
+            }
+        }
+        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// 整理用户输入：去掉首尾空白和零宽字符，缺少协议时补 `http://`。
@@ -331,7 +357,7 @@ final class ConnectionModel {
             errorMessage = nil
         } catch {
             isConnected = false
-            errorMessage = "无法恢复上次连接（\(error.localizedDescription)），请重新输入访问密码。"
+            applyConnectError(error)
         }
     }
 
@@ -1962,7 +1988,16 @@ struct ConnectView: View {
                 }
                 SecureField("访问密码", text: $model.pin).textContentType(.password).textInputAutocapitalization(.never).autocorrectionDisabled()
             }
-            if let error = model.errorMessage { Section { Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red).font(.subheadline) } }
+            if let error = model.errorMessage {
+                Section {
+                    Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red).font(.subheadline)
+                    if model.addressNeedsRescan {
+                        Button { showingScanner = true } label: {
+                            Label("重新扫码连接", systemImage: "qrcode.viewfinder")
+                        }
+                    }
+                }
+            }
             Section {
                 Button { Task { await model.connect() } } label: {
                     HStack { Spacer(); if model.isConnecting { ProgressView().padding(.trailing, 6); Text("正在连接") } else { Image(systemName: "arrow.right.circle.fill"); Text("连接") }; Spacer() }.fontWeight(.semibold)
