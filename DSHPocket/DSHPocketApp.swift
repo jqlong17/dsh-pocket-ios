@@ -289,7 +289,25 @@ final class ConnectionModel {
     }
 
     /// 连接错误 → 用户能看懂的提示；TLS/主机不可达时提示地址已失效并引导重新扫码。
+    /// 是否是"公网隧道地址已失效/隧道未连接"这类错误（Cloudflare 常见 5xx）。
+    private func isStaleTunnelError(_ error: Error) -> Bool {
+        if case .server(let code) = error as? ConnectionError {
+            return [502, 503, 504, 520, 521, 522, 523, 524, 530].contains(code)
+        }
+        if let urlError = error as? URLError {
+            return [.secureConnectionFailed, .serverCertificateUntrusted,
+                    .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+                    .serverCertificateHasUnknownRoot].contains(urlError.code)
+        }
+        return false
+    }
+
     private func applyConnectError(_ error: Error) {
+        if isStaleTunnelError(error) {
+            addressNeedsRescan = true
+            errorMessage = "公网隧道暂时连不上（HTTP 530）：电脑上的隧道可能已重启、公网地址已经变化。请在电脑上重新打开「手机访问」并用二维码重新扫码；同一 Wi-Fi 下也可以改用局域网地址。"
+            return
+        }
         if let urlError = error as? URLError {
             switch urlError.code {
             case .secureConnectionFailed, .serverCertificateUntrusted,
@@ -726,8 +744,12 @@ final class ConnectionModel {
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            errorMessage = "无法读取会话：\(error.localizedDescription)"
             recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
+            if isStaleTunnelError(error) {
+                applyConnectError(error)
+            } else {
+                errorMessage = "无法读取会话：\(error.localizedDescription)"
+            }
         }
     }
 
@@ -2387,7 +2409,12 @@ struct ConnectedView: View {
                 }
             }
             if let error = model.errorMessage {
-                Section { Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red) }
+                Section {
+                    Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
+                    if model.addressNeedsRescan {
+                        Button("重新选择连接地址") { model.disconnect() }
+                    }
+                }
             }
             if model.sessions.isEmpty && !model.isLoadingSessions {
                 ContentUnavailableView("还没有会话", systemImage: "bubble.left.and.bubble.right", description: Text("创建会话后即可开始对话。"))
