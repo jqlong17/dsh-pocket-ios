@@ -4290,9 +4290,72 @@ struct MessageRow: View {
         message.isUser && (!message.localImages.isEmpty || !message.images.isEmpty)
     }
 
+    /// 用户消息开头的 Markdown 引用块（`> ` 行）：单独渲染成白色半透明引用卡片，
+    /// 否则会套用 Markdown 的深色 blockquote 样式，在绿色气泡上几乎看不见。
+    private var leadingQuote: (quote: String, rest: String)? {
+        guard message.isUser else { return nil }
+        let lines = message.text.components(separatedBy: "\n")
+        var quoteLines: [String] = []
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
+            if line.hasPrefix("> ") {
+                quoteLines.append(String(line.dropFirst(2)))
+                index += 1
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty,
+                      !quoteLines.isEmpty,
+                      index + 1 < lines.count,
+                      lines[index + 1].hasPrefix("> ") {
+                index += 1
+            } else {
+                break
+            }
+        }
+        guard !quoteLines.isEmpty else { return nil }
+        let rest = lines[index...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return (quoteLines.joined(separator: "\n"), rest)
+    }
+
     /// 气泡内的 Markdown（含原位置插图）。
     @ViewBuilder
     private var markdownContent: some View {
+        if message.isUser, let quoted = leadingQuote {
+            userQuotedContent(quoted)
+        } else {
+            plainMarkdownContent
+        }
+    }
+
+    @ViewBuilder
+    private func userQuotedContent(_ quoted: (quote: String, rest: String)) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Capsule().fill(Color.white.opacity(0.55)).frame(width: 2.5)
+                Text(quoted.quote)
+                    .font(.caption)
+                    .foregroundStyle(Color.white.opacity(0.82))
+                    .lineLimit(6)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            if !quoted.rest.isEmpty {
+                ForEach(Array(model.markdownSegments(quoted.rest).enumerated()), id: \.offset) { _, segment in
+                    switch segment {
+                    case .text(let markdown):
+                        MarkdownBody(text: markdown, foreground: .white)
+                            .textSelection(.enabled)
+                            .tint(Color(red: 0.10, green: 0.35, blue: 0.95))
+                    case .image(let url, let caption):
+                        RemoteMarkdownImage(url: url, caption: caption)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var plainMarkdownContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(model.markdownSegments(message.text).enumerated()), id: \.offset) { _, segment in
                 switch segment {
