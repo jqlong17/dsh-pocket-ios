@@ -268,12 +268,17 @@ export function apply(ctx) {
           }
           const expected = await readPin()
           if (String(pinAttempt) !== expected) { send(res, 401, { ok: false }); return }
-          const base = (await readConfiguredUrl()) ?? null
-          if (!base || typeof connection?.authenticatedUrl !== 'function') {
+          // 重定向必须回到“客户端正在使用的地址”（localhost / 局域网 / Tailscale 都可），
+          // 不能固定用配置里的 Tailscale 地址，否则局域网登录会被带到不可达的域名。
+          const host = String(req.headers.host ?? '')
+          if (!host || typeof connection?.authenticatedUrl !== 'function') {
             send(res, 503, { ok: false })
             return
           }
-          const target = connection.authenticatedUrl(`${base}/`)
+          const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
+          const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
+          const proto = forwardedProto || (isLoopback ? 'http' : 'https')
+          const target = connection.authenticatedUrl(`${proto}://${host}/`)
           res.writeHead(302, { location: target, 'cache-control': 'no-store' })
           res.end()
           return
