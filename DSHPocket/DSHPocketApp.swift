@@ -4149,8 +4149,6 @@ struct ConversationView: View {
         VStack(spacing: 8) {
             if let quote = model.pendingQuote {
                 HStack(alignment: .top, spacing: 8) {
-                    Rectangle().fill(Color(red: 0.08, green: 0.48, blue: 0.37)).frame(width: 3)
-                        .clipShape(Capsule())
                     VStack(alignment: .leading, spacing: 2) {
                         Text("引用 \(quote.sender) · #\(quote.sequence)")
                             .font(.caption2.weight(.semibold))
@@ -4159,6 +4157,10 @@ struct ConversationView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                    }
+                    .padding(.leading, 12)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(Color(red: 0.08, green: 0.48, blue: 0.37)).frame(width: 3)
                     }
                     Spacer(minLength: 0)
                     Button { model.cancelQuote() } label: {
@@ -4173,6 +4175,7 @@ struct ConversationView: View {
                 .padding(.horizontal)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             if !model.draftImages.isEmpty {
