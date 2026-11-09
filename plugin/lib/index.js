@@ -4,7 +4,7 @@
  * 2) 读取 dsh-pocket 的访问密码，生成带 `?pin=` 的二维码（App 扫码即连）；
  * 3) 通过 webServer 暴露 `/dsh-pocket-ios/tailscale.status` 给设置页卡片。
  */
-import { readFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -20,9 +20,22 @@ const CHANNEL = '/dsh-pocket-ios'
 const TAILSCALE_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
 const BODY_MAX = 64 * 1024
 
+const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
+async function logLine(line) {
+  try {
+    await mkdir(LOG_DIR, { recursive: true })
+    await appendFile(join(LOG_DIR, 'tailscale.log'), `${new Date().toISOString()} ${line}\n`)
+  } catch { /* 日志失败不影响主流程 */ }
+}
+
 async function tailscale(args) {
-  const { stdout } = await execFileP(TAILSCALE_BIN, args, { timeout: 5000, maxBuffer: 1 << 20 })
-  return stdout
+  try {
+    const { stdout } = await execFileP(TAILSCALE_BIN, args, { timeout: 8000, maxBuffer: 1 << 20 })
+    return stdout
+  } catch (error) {
+    await logLine(`exec ${args.join(' ')} failed: ${error?.code ?? ''} ${error?.message ?? error}`)
+    throw error
+  }
 }
 
 async function readPin() {
@@ -39,20 +52,25 @@ async function readPin() {
 export async function tailscaleStatus() {
   let dnsName = null
   let httpsUrl = null
+  let serveRaw = null
   try {
     const json = JSON.parse(await tailscale(['status', '--json']))
     dnsName = json?.Self?.DNSName ? String(json.Self.DNSName).replace(/\.$/, '') : null
   } catch { /* Tailscale 未安装/未登录 */ }
   try {
     const out = await tailscale(['serve', 'status'])
+    serveRaw = out
     const match = out.match(/https:\/\/[^\s)]+/)
     if (match) httpsUrl = match[0].replace(/\/$/, '')
-  } catch { /* serve 未配置 */ }
+    else await logLine(`serve status 无 https 匹配: ${JSON.stringify(out.slice(0, 200))}`)
+  } catch (error) {
+    await logLine(`serve status 异常: ${error?.message ?? error}`)
+  }
 
   const pin = await readPin()
   const qrUrl = httpsUrl && pin ? `${httpsUrl}?pin=${encodeURIComponent(pin)}` : httpsUrl
   const qr = qrUrl ? await QRCode.toDataURL(qrUrl, { margin: 1, width: 360 }) : null
-  return { available: Boolean(dnsName), dnsName, httpsUrl, pinSet: Boolean(pin), qrUrl, qr }
+  return { available: Boolean(dnsName), dnsName, httpsUrl, pinSet: Boolean(pin), qrUrl, qr, serveRaw }
 }
 
 function endpointFromPath(pathname) {

@@ -142,9 +142,10 @@ window.__ModuleLoader__.load({
         var value = result && result.ok ? result.value : null;
         if (!value) throw new Error("no status");
         if (!value.httpsUrl) {
-          wrap.innerHTML =
-            '<div style="font-weight:600;font-size:14px;margin-bottom:6px">Tailscale 连接（推荐，地址固定）</div>' +
-            '<div style="font-size:12px;opacity:.65;line-height:1.6">检测到 Tailscale，但还没开启 HTTPS 代理。在 Tailscale 后台 DNS 页开启 HTTPS Certificates，然后执行 <code>tailscale serve --bg 3081</code>，刷新本页即可生成二维码。</div>';
+          wrap.innerHTML = value.available
+            ? '<div style="font-weight:600;font-size:14px;margin-bottom:6px">Tailscale 连接（推荐，地址固定）</div>' +
+              '<div style="font-size:12px;opacity:.65;line-height:1.6">检测到 Tailscale，但还没开启 HTTPS 代理。在 Tailscale 后台 DNS 页开启 HTTPS Certificates，然后执行 <code>tailscale serve --bg 3081</code>，刷新本页即可生成二维码。</div>'
+            : '<div style="font-size:12px;opacity:.6;line-height:1.6">未读取到 Tailscale 状态（插件 host 可能未重启或未安装 Tailscale）。可继续使用局域网/公网二维码。</div>';
           return;
         }
         wrap.innerHTML =
