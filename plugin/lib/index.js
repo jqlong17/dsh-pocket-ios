@@ -27,11 +27,6 @@ const BODY_MAX = 64 * 1024
 const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3081)
 
 // ---------- APNs 后台推送 ----------
-const APNS_CONFIG_FILE = join(LOG_DIR, 'apns.json')
-const PUSH_TOKENS_FILE = join(LOG_DIR, 'push.json')
-const PUSH_STATE_FILE = join(LOG_DIR, 'push-state.json')
-const APNS_TOPIC = 'com.ruska.dsh-pocket-ios'
-
 async function readJSONFile(file, fallback) {
   try { return JSON.parse(await readFile(file, 'utf8')) } catch { return fallback }
 }
@@ -161,6 +156,12 @@ async function pushLoop(ctx) {
 }
 
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
+
+const APNS_CONFIG_FILE = join(LOG_DIR, 'apns.json')
+const PUSH_TOKENS_FILE = join(LOG_DIR, 'push.json')
+const PUSH_STATE_FILE = join(LOG_DIR, 'push-state.json')
+const APNS_TOPIC = 'com.ruska.dsh-pocket-ios'
+
 async function logLine(line) {
   try {
     await mkdir(LOG_DIR, { recursive: true })
