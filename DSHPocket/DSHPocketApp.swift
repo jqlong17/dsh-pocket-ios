@@ -3892,7 +3892,10 @@ struct ConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let error = model.conversationError {
-                Text(error).font(.footnote).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.vertical, 8).background(.red.opacity(0.06))
+                Text(error).font(.footnote).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(.red.opacity(0.06))
             }
             if model.isDemoMode || model.liveConnection != .connected {
                 HStack(spacing: 6) {
@@ -4212,7 +4215,7 @@ struct ConversationView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("取消引用")
                 }
-                .padding(.horizontal, 12).padding(.vertical, 8)
+                .padding(.horizontal, 12).padding(.vertical, 10)
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.horizontal)
                 .frame(maxWidth: 720)
@@ -4382,7 +4385,7 @@ struct MessageRow: View {
                     .multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             if !quoted.rest.isEmpty {
                 ForEach(Array(model.markdownSegments(quoted.rest).enumerated()), id: \.offset) { _, segment in
                     switch segment {
@@ -4445,7 +4448,7 @@ struct MessageRow: View {
     }
 
     var body: some View {
-        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 7) {
+        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if !message.isUser {
                     Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
@@ -4489,7 +4492,7 @@ struct MessageRow: View {
                             if !message.text.isEmpty { markdownContent }
                             userImageThumbnails
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .padding(.horizontal, 13).padding(.vertical, 10)
                         .background(Color(red: 0.08, green: 0.48, blue: 0.37),
                                     in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         .foregroundStyle(.white)
@@ -4801,7 +4804,7 @@ struct ProcessRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Button(action: toggle) {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")
@@ -4820,7 +4823,7 @@ struct ProcessRow: View {
             }.buttonStyle(.plain)
 
             if expanded {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(group.steps) { step in
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(alignment: .top, spacing: 8) {
@@ -4831,7 +4834,7 @@ struct ProcessRow: View {
                                         ProgressView().scaleEffect(0.55)
                                     }
                                 }.frame(width: 16)
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 3) {
                                     Text(step.finished ? step.label : step.runningLabel)
                                         .font(.footnote)
                                         .foregroundStyle(step.finished ? .primary : Color(red: 0.08, green: 0.48, blue: 0.37))
@@ -4854,6 +4857,7 @@ struct ProcessRow: View {
                 .padding(.leading, 2)
                 // 从摘要行下方"向下展开"：只用淡入 + 顶部锚点微缩放，
                 // 不要用 .move(edge: .top)，否则文字会从上一行上方滑下来。
+                .padding(.top, 4)
                 .padding(.horizontal, 12)
                 .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                 .clipped()
