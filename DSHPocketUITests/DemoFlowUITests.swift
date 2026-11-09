@@ -36,8 +36,8 @@ final class DemoFlowUITests: XCTestCase {
             throw XCTSkip("未提供 LIVE_SESSION_ID")
         }
         let app = XCUIApplication()
-        app.launchEnvironment["DSH_SERVER"] = ProcessInfo.processInfo.environment["LIVE_SERVER"] ?? "http://192.0.2.10:3081"
-        app.launchEnvironment["DSH_PIN"] = ProcessInfo.processInfo.environment["LIVE_PIN"] ?? "00000000"
+        app.launchEnvironment["DSH_SERVER"] = ProcessInfo.processInfo.environment["LIVE_SERVER"] ?? ""
+        app.launchEnvironment["DSH_PIN"] = ProcessInfo.processInfo.environment["LIVE_PIN"] ?? ""
         app.launchEnvironment["DSH_OPEN"] = session
         app.launch()
 
