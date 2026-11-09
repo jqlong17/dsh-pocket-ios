@@ -3877,8 +3877,10 @@ extension ConnectionModel {
     }
 }
 
-/// UIKit 消息列表：UICollectionView + DiffableDataSource，cell 内用 SwiftUI 渲染。
-/// 目的：cell 复用、精确控制 contentOffset（加载更早一页时保持位置）。
+/// UIKit 消息列表（参考 Element X `TimelineTableViewController`）：
+/// - 翻转的 UITableView（transform scaleY -1），最新消息在视觉底部；
+/// - UIHostingConfiguration 自适应行高 + `.minSize(height: 1)`；
+/// - 插入更早消息时内容只在上方增长，视觉位置天然稳定，无需手动 contentOffset 校正。
 struct UIKitMessageList: UIViewRepresentable {
     var items: [ConversationListItem]
     let model: ConnectionModel
@@ -3888,124 +3890,192 @@ struct UIKitMessageList: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    func makeUIView(context: Context) -> UICollectionView {
-        let layout = UICollectionViewCompositionalLayout { _, _ in
-            let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1),
-                                              heightDimension: .estimated(80))
-            let item = NSCollectionLayoutItem(layoutSize: size)
-            let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
-            return NSCollectionLayoutSection(group: group)
-        }
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
-        collectionView.contentInsetAdjustmentBehavior = .never
-        collectionView.delegate = context.coordinator
-        collectionView.keyboardDismissMode = .interactive
-        context.coordinator.attach(to: collectionView)
-        return collectionView
+    func makeUIView(context: Context) -> UITableView {
+        let tableView = UITableView(frame: .zero, style: .plain)
+        tableView.register(UIKitMessageCell.self, forCellReuseIdentifier: UIKitMessageCell.reuseID)
+        tableView.separatorStyle = .none
+        tableView.allowsSelection = false
+        tableView.backgroundColor = .clear
+        tableView.keyboardDismissMode = .interactive
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 100
+        tableView.contentInsetAdjustmentBehavior = .never
+        // 翻转：row 0 在视觉底部（最新消息）。
+        tableView.transform = CGAffineTransform(scaleX: 1, y: -1)
+        tableView.delegate = context.coordinator
+        context.coordinator.attach(to: tableView)
+        return tableView
     }
 
-    func updateUIView(_ collectionView: UICollectionView, context: Context) {
+    func updateUIView(_ tableView: UITableView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.apply(items: items, in: collectionView)
+        context.coordinator.apply(items: items, in: tableView)
         if context.coordinator.lastScrollTick != scrollToBottomTick {
             context.coordinator.lastScrollTick = scrollToBottomTick
-            context.coordinator.scrollToBottom(collectionView, animated: true)
+            context.coordinator.scrollToBottom(tableView, animated: true)
         }
     }
 
-    final class Coordinator: NSObject, UICollectionViewDelegate {
+    final class Coordinator: NSObject, UITableViewDelegate {
         var parent: UIKitMessageList
-        var dataSource: UICollectionViewDiffableDataSource<Int, String>!
+        var dataSource: UITableViewDiffableDataSource<Int, String>!
         private var lookup: [String: ConversationListItem] = [:]
-        private var orderedIDs: [String] = []
+        private var orderedIDs: [String] = []          // 从旧到新
+        private var snapshotIDs: [String] = []         // 翻转后：从新到旧
         private var expandedTurns: Set<Int> = []
+        private var fingerprints: [String: String] = [:]
         private var isAtBottom = true
         private var isApplying = false
         private var lastNearTopLoad = Date.distantPast
+        private weak var tableView: UITableView?
         var lastScrollTick = Int.min
 
         init(parent: UIKitMessageList) {
             self.parent = parent
         }
 
-        func attach(to collectionView: UICollectionView) {
-            collectionView.register(UIKitMessageCell.self, forCellWithReuseIdentifier: UIKitMessageCell.reuseID)
-            dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: collectionView) { [weak self] collectionView, indexPath, id in
-                let cell = collectionView.dequeueReusableCell(withReuseIdentifier: UIKitMessageCell.reuseID, for: indexPath) as! UIKitMessageCell
+        func attach(to tableView: UITableView) {
+            self.tableView = tableView
+            dataSource = UITableViewDiffableDataSource<Int, String>(tableView: tableView) { [weak self] tableView, indexPath, id in
+                let cell = tableView.dequeueReusableCell(withIdentifier: UIKitMessageCell.reuseID, for: indexPath) as! UIKitMessageCell
                 guard let self, let item = self.lookup[id] else { return cell }
-                cell.configure(item: item,
-                               model: self.parent.model,
-                               expanded: item.group.map { self.expandedTurns.contains($0.turn) } ?? false,
-                               toggleExpanded: { [weak self] turn in
-                                   guard let self else { return }
-                                   if self.expandedTurns.contains(turn) { self.expandedTurns.remove(turn) } else { self.expandedTurns.insert(turn) }
-                                   var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
-                                   snapshot.appendSections([0])
-                                   snapshot.appendItems(self.orderedIDs)
-                                   self.dataSource.apply(snapshot, animatingDifferences: false)
-                               })
+                cell.configure(view: self.rowView(for: item))
                 return cell
+            }
+            dataSource.defaultRowAnimation = .none
+        }
+
+        private func rowView(for item: ConversationListItem) -> AnyView {
+            if let message = item.message {
+                return AnyView(
+                    MessageRow(message: message, model: parent.model)
+                        .id(item.id)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                )
+            }
+            if let group = item.group {
+                let turn = group.turn
+                return AnyView(
+                    ProcessRow(group: group,
+                               expanded: expandedTurns.contains(turn),
+                               model: parent.model) { [weak self] in
+                        self?.toggleExpanded(turn)
+                    }
+                    .id(item.id)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                )
+            }
+            return AnyView(Color.clear)
+        }
+
+        private func toggleExpanded(_ turn: Int) {
+            if expandedTurns.contains(turn) { expandedTurns.remove(turn) } else { expandedTurns.insert(turn) }
+            guard let tableView else { return }
+            let id = "steps-\(turn)"
+            if let item = lookup[id] { fingerprints[id] = fingerprint(for: item) }
+            reconfigure(id: id, in: tableView)
+        }
+
+        private func fingerprint(for item: ConversationListItem) -> String {
+            switch item.content {
+            case .message(let message):
+                let pending: String
+                if message.isPending, let state = parent.model.pendingSendState(for: message) {
+                    switch state {
+                    case .sending: pending = "s"
+                    case .acked(let steered): pending = steered ? "a1" : "a0"
+                    case .failed: pending = "f"
+                    }
+                } else {
+                    pending = "-"
+                }
+                return [
+                    "m", message.text, String(message.sequence), message.isPending ? "1" : "0", pending,
+                    message.images.map(\.attachmentId).joined(separator: ","),
+                    String(message.localImages.count)
+                ].joined(separator: "|")
+            case .steps(let group):
+                let steps = group.steps.map { step in
+                    "\(step.id):\(step.name):\(step.detail):\(step.resultText.count):\(step.images.count):\(step.finished ? 1 : 0)"
+                }.joined(separator: ",")
+                return "s|\(group.turn)|\(steps)|\(expandedTurns.contains(group.turn) ? 1 : 0)"
             }
         }
 
-        func apply(items: [ConversationListItem], in collectionView: UICollectionView) {
-            let newIDs = items.map(\.id)
-            guard newIDs != orderedIDs else { return }
-
-            // 记录当前顶部可见项及其视觉位置，插入更早消息后精确恢复。
-            let oldItems = orderedIDs
-            let oldCount = oldItems.count
-            var firstVisibleID: String?
-            var firstVisibleY: CGFloat = 0
-            if !oldItems.isEmpty,
-               let indexPath = collectionView.indexPathsForVisibleItems.sorted(by: { $0.item < $1.item }).first,
-               let id = dataSource.itemIdentifier(for: indexPath),
-               let attributes = collectionView.layoutAttributesForItem(at: indexPath) {
-                firstVisibleID = id
-                firstVisibleY = attributes.frame.minY - collectionView.contentOffset.y
-            }
-
-            lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-            orderedIDs = newIDs
-
-            isApplying = true
+        private func reconfigure(id: String, in tableView: UITableView) {
+            guard orderedIDs.contains(id) else { return }
             var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
             snapshot.appendSections([0])
-            snapshot.appendItems(newIDs)
-            dataSource.apply(snapshot, animatingDifferences: false) { [weak self, weak collectionView] in
-                guard let self, let collectionView else { return }
-                self.isApplying = false
-                collectionView.layoutIfNeeded()
+            snapshot.appendItems(snapshotIDs)
+            snapshot.reconfigureItems([id])
+            dataSource.apply(snapshot, animatingDifferences: false)
+        }
 
-                // 插入更早消息：把原来顶部那条消息放回原来的视觉位置。
-                if let firstVisibleID,
-                   let newIndex = newIDs.firstIndex(of: firstVisibleID),
-                   let attributes = collectionView.layoutAttributesForItem(at: IndexPath(item: newIndex, section: 0)) {
-                    collectionView.contentOffset.y = attributes.frame.minY - firstVisibleY
-                } else if self.isAtBottom, newIDs.count > oldCount {
-                    self.scrollToBottom(collectionView, animated: false)
+        func apply(items: [ConversationListItem], in tableView: UITableView) {
+            let newIDs = items.map(\.id)
+            lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+
+            if newIDs == orderedIDs {
+                // 内容变化（流式回复、pending 状态、展开过程）→ 只 reconfigure 变化的行。
+                let changed = items.filter { fingerprints[$0.id] != fingerprint(for: $0) }.map(\.id)
+                guard !changed.isEmpty else { return }
+                for item in items where changed.contains(item.id) {
+                    fingerprints[item.id] = fingerprint(for: item)
+                }
+                var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+                snapshot.appendSections([0])
+                snapshot.appendItems(snapshotIDs)
+                snapshot.reconfigureItems(changed)
+                dataSource.apply(snapshot, animatingDifferences: false)
+                return
+            }
+
+            let wasAtBottom = isAtBottom
+            let oldCount = orderedIDs.count
+            orderedIDs = newIDs
+            snapshotIDs = newIDs.reversed()
+            let alive = Set(newIDs)
+            fingerprints = fingerprints.filter { alive.contains($0.key) }
+            for item in items { fingerprints[item.id] = fingerprint(for: item) }
+
+            var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+            snapshot.appendSections([0])
+            snapshot.appendItems(snapshotIDs)
+            isApplying = true
+            dataSource.apply(snapshot, animatingDifferences: false) { [weak self, weak tableView] in
+                guard let self, let tableView else { return }
+                self.isApplying = false
+                if wasAtBottom, newIDs.count > oldCount {
+                    self.scrollToBottom(tableView, animated: false)
                 }
             }
         }
 
-        func scrollToBottom(_ collectionView: UICollectionView, animated: Bool) {
-            guard !orderedIDs.isEmpty else { return }
-            let indexPath = IndexPath(item: orderedIDs.count - 1, section: 0)
-            collectionView.scrollToItem(at: indexPath, at: .bottom, animated: animated)
+        func scrollToBottom(_ tableView: UITableView, animated: Bool) {
+            guard !snapshotIDs.isEmpty else { return }
+            tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: .top, animated: animated)
+        }
+
+        // MARK: UITableViewDelegate
+
+        func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+            (cell as? UIKitMessageCell)?.contentView.transform = CGAffineTransform(scaleX: 1, y: -1)
         }
 
         // MARK: UIScrollViewDelegate
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             guard !isApplying else { return }
-            let distanceToBottom = scrollView.contentSize.height - scrollView.bounds.height - scrollView.contentOffset.y
-            let atBottom = distanceToBottom <= 60
+            // 翻转表：offset 0 = 视觉底部；越大越接近视觉顶部。
+            let atBottom = scrollView.contentOffset.y <= 60
             if atBottom != isAtBottom {
                 isAtBottom = atBottom
                 parent.onAtBottomChange(atBottom)
             }
-            if scrollView.contentOffset.y < 120,
+            let distanceToVisualTop = max(0, scrollView.contentSize.height - scrollView.bounds.height - scrollView.contentOffset.y)
+            if distanceToVisualTop < 120,
                Date().timeIntervalSince(lastNearTopLoad) > 1.5 {
                 lastNearTopLoad = Date()
                 parent.onNearTop()
@@ -4014,29 +4084,22 @@ struct UIKitMessageList: UIViewRepresentable {
     }
 }
 
-final class UIKitMessageCell: UICollectionViewCell {
+final class UIKitMessageCell: UITableViewCell {
     static let reuseID = "UIKitMessageCell"
 
-    func configure(item: ConversationListItem,
-                   model: ConnectionModel,
-                   expanded: Bool,
-                   toggleExpanded: @escaping (Int) -> Void) {
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        contentConfiguration = nil
+    }
+
+    func configure(view: AnyView) {
         contentConfiguration = UIHostingConfiguration {
-            Group {
-                if let message = item.message {
-                    MessageRow(message: message, model: model)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
-                } else if let group = item.group {
-                    ProcessRow(group: group, expanded: expanded, model: model) {
-                        toggleExpanded(group.turn)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
-                } else {
-                    Color.clear
-                }
-            }
+            view.frame(maxWidth: .infinity, alignment: .leading)
         }
+        .margins(.all, 0)
+        .minSize(height: 1)
+        .background(Color.clear)
+        // 翻转的 table 会影响 cell 尺寸计算，所以只翻转 contentView（同 Element X）。
+        contentView.transform = CGAffineTransform(scaleX: 1, y: -1)
     }
 }

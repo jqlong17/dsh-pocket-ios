@@ -81,6 +81,41 @@ final class DemoFlowUITests: XCTestCase {
         XCTAssertEqual(restored.value as? String, "草稿-会话1", "切回会话后草稿未恢复")
     }
 
+
+    /// 调试：滚动 UIKit 列表并截图，人工检查气泡重叠/跟随。
+    func testUIKitListScrollStability() throws {
+        guard let session = ProcessInfo.processInfo.environment["LIVE_SESSION_ID"], !session.isEmpty else {
+            throw XCTSkip("未提供 LIVE_SESSION_ID")
+        }
+        let app = XCUIApplication()
+        app.launchEnvironment["DSH_SERVER"] = ProcessInfo.processInfo.environment["LIVE_SERVER"] ?? "http://192.0.2.10:3081"
+        app.launchEnvironment["DSH_PIN"] = ProcessInfo.processInfo.environment["LIVE_PIN"] ?? "00000000"
+        app.launchEnvironment["DSH_OPEN"] = session
+        app.launchEnvironment["DSH_LIST"] = "uikit"
+        app.launch()
+        XCTAssertTrue(app.textFields["composer-field"].waitForExistence(timeout: 20))
+        let list = app.tables.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 10), "UIKit 列表未出现")
+
+        func attach(_ name: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        attach("uikit-0-initial")
+        for index in 1...6 {
+            list.swipeUp()
+            usleep(350_000)
+            attach("uikit-\(index)-up")
+        }
+        for index in 1...6 {
+            list.swipeDown()
+            usleep(350_000)
+            attach("uikit-\(index)-down")
+        }
+    }
+
     func testBackToBottomThenScrollUpDoesNotSnapBack() {
         let app = launchDemo()
         XCTAssertTrue(app.textFields["composer-field"].waitForExistence(timeout: 15))
