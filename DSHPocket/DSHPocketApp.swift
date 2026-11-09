@@ -316,6 +316,9 @@ final class ConnectionModel {
 
     func diagnosticReport() -> String { liveDiagnosticHistory.joined(separator: "\n") }
 
+    /// 带 `?token=` 的 DSH 认证 URL（浏览器复制出来的地址）：直接用 GET 换 cookie，无需密码。
+    var pendingLoginToken: String?
+
     @discardableResult
     func useScannedAddress(_ value: String) -> Bool {
         guard var components = URLComponents(string: value),
@@ -324,9 +327,13 @@ final class ConnectionModel {
             errorMessage = "二维码中没有有效的 HTTP 或 HTTPS 地址。"
             return false
         }
-        // 支持二维码携带访问密码（插件生成的 Tailscale 二维码：https://host?pin=xxxx）
-        if let scannedPin = components.queryItems?.first(where: { $0.name == "pin" })?.value,
-           !scannedPin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // 二维码/粘贴的地址可能携带：?token=<DSH 认证 token>（登录后浏览器地址栏），或旧版 ?pin=<密码>。
+        if let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
+           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingLoginToken = token
+            pin = ""
+        } else if let scannedPin = components.queryItems?.first(where: { $0.name == "pin" })?.value,
+                  scannedPin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil {
             pin = scannedPin
         }
         components.path = ""
@@ -350,6 +357,35 @@ final class ConnectionModel {
             return
         }
         recordDiagnostic("开始连接：\(url.absoluteString)")
+        if let token = pendingLoginToken {
+            pendingLoginToken = nil
+            recordDiagnostic("使用认证 URL 登录（token 长度 \(token.count)）")
+            do {
+                var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                components?.queryItems = [URLQueryItem(name: "token", value: token)]
+                guard let tokenURL = components?.url else { throw ConnectionError.invalidPayload }
+                let loginSession = URLSession(configuration: .default)
+                defer { loginSession.finishTasksAndInvalidate() }
+                _ = try await loginSession.data(from: tokenURL)
+                let hasAuth = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name.hasPrefix("dsh-auth") } ?? false
+                guard hasAuth else { throw ConnectionError.invalidPin }
+                sessions = try await fetchSessions()
+                isConnected = true
+                errorMessage = nil
+                recordDiagnostic("token 登录成功：会话 \(sessions.count) 个")
+                return
+            } catch {
+                errorMessage = "登录链接已失效（DSH 重启后 token 会变化），请重新在设置页复制最新地址或输入访问密码。"
+                recordDiagnostic("token 登录失败：\(error.localizedDescription)")
+                return
+            }
+        }
+        // 访问密码只允许 8-64 位字母或数字；避免把密码管理器自动填入的长密码发给服务器后变成“密码错误”。
+        guard pin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil else {
+            errorMessage = "访问密码需为 8–64 位英文字母或数字，请重新输入（不要使用密码管理器的自动填充）。"
+            recordDiagnostic("密码格式无效（长度 \(pin.count)），未发起请求")
+            return
+        }
         guard !pin.isEmpty else {
             errorMessage = "请输入访问密码"
             return
