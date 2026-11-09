@@ -3394,6 +3394,9 @@ struct ConversationView: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 6)
                         .onChanged { value in
+                            // 用户一旦主动拖动，立刻取消"刚进会话时的多次补滚"，不要跟手指抢滚动。
+                            scrollGeneration &+= 1
+                            isSettlingScroll = false
                             if value.translation.height > 10 { followsLatest = false }
                         }
                 )
@@ -3456,6 +3459,7 @@ struct ConversationView: View {
                     } else if !followsLatest {
                         // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
                         isAtBottom = false
+                        isSettlingScroll = false
                     } else {
                         scrollGeneration &+= 1
                         isAtBottom = false

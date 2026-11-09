@@ -91,6 +91,14 @@ StructuredText(markdown: text)
 3. 给内容加 `GeometryReader` + `PreferenceKey` 上报高度；**进入后 4 秒稳定期内**只要高度变化就再贴底；
 4. 消息数量、过程行数量变化也触发补滚。
 
+## 进会话上滑被"锁在底部"（2026-11-09）
+
+**现象**：刚进入会话时手指上滑，列表被反复拉回底部，持续 2–4 秒后才恢复。
+
+**原因**：打开会话后有 4 秒首屏稳定期，会分多次 `scrollTo(bottomAnchor)`；用户上滑时只把 `followsLatest` 置 false，没有递增 `scrollGeneration`、也没有清 `isSettlingScroll`，已排期的补滚继续执行。
+
+**处理**：`DragGesture` 第一个 changed 事件里立刻 `scrollGeneration += 1` + `isSettlingScroll = false`（超过阈值再 `followsLatest = false`）；滚动几何检测到离开底部且 `!followsLatest` 时也清 settle。核心原则：**用户的滑动必须能取消所有程序化补滚**。
+
 ## 实时流假死（无回复/无过程行）
 
 **现象**：发送消息后，助手回复和"过程"行都不出现，但顶部仍显示"实时连接：已连接"、
