@@ -648,16 +648,41 @@ final class ConnectionModel {
     /// 引用一条消息后递增，用于让输入框自动聚焦。
     var focusComposerTick = 0
 
-    /// 引用消息：把原文以 Markdown 引用块追加到草稿，并请求聚焦输入框。
+    struct PendingQuote: Identifiable, Equatable {
+        let id: String
+        let sequence: Int
+        let sender: String
+        let text: String
+    }
+
+    /// 输入框上方显示的"正在引用"状态；发送时转成 DSH 原生 Markdown 引用块。
+    var pendingQuote: PendingQuote?
+
     @MainActor
     func beginQuote(_ message: PocketMessage) {
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        let quoted = text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { "> \($0)" }.joined(separator: "\n")
-        let prefix = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : draft + "\n\n"
-        draft = prefix + quoted + "\n\n"
+        withAnimation(.easeInOut(duration: 0.18)) {
+            pendingQuote = PendingQuote(
+                id: message.id,
+            sequence: message.sequence,
+                sender: message.isUser ? "你" : "DSH",
+                text: text
+            )
+        }
         focusComposerTick += 1
+    }
+
+    @MainActor
+    func cancelQuote() {
+        withAnimation(.easeInOut(duration: 0.18)) { pendingQuote = nil }
+    }
+
+    /// 把待引用内容转成 Markdown 引用块（DSH 协议只认文本，不携带消息 ID）。
+    private func quotedPrefix(for quote: PendingQuote) -> String {
+        let lines = quote.text.split(separator: "\n", omittingEmptySubsequences: false)
+        let quoted = lines.map { "> \($0)" }.joined(separator: "\n")
+        return quoted + "\n\n"
     }
 
     /// APNs device token：登录成功后注册到插件，用于后台完成推送。
@@ -2169,9 +2194,16 @@ final class ConnectionModel {
             return
         }
         sendTask?.cancel()
+        // 有引用时把原文作为 Markdown 引用块前置（DSH 协议层只接受文本/图片块）。
+        var outgoingText = text
+        if let quote = pendingQuote {
+            outgoingText = quotedPrefix(for: quote) + text
+            recordDiagnostic("发送带引用：引用 #\(quote.sequence)")
+            pendingQuote = nil
+        }
         // 立刻清空：不等异步 performSend 的 guard，也避免中文输入法把 marked text 留在框里。
         clearDraftImmediately()
-        sendTask = Task { await self.performSend(text: text, attachments: attachments) }
+        sendTask = Task { await self.performSend(text: outgoingText, attachments: attachments) }
     }
 
     /// 同步清空当前输入框 + 该会话的持久化草稿；下一轮 runloop 再清一次，兜住输入法回填。
@@ -4115,6 +4147,34 @@ struct ConversationView: View {
 
     private var inputBar: some View {
         VStack(spacing: 8) {
+            if let quote = model.pendingQuote {
+                HStack(alignment: .top, spacing: 8) {
+                    Rectangle().fill(Color(red: 0.08, green: 0.48, blue: 0.37)).frame(width: 3)
+                        .clipShape(Capsule())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("引用 \(quote.sender) · #\(quote.sequence)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        Text(quote.text)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    Button { model.cancelQuote() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("取消引用")
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
             if !model.draftImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
