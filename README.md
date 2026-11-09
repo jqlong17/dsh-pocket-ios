@@ -126,6 +126,8 @@ docs/architecture-review-2026-11-09.md  # 架构评审（对比开源聊天客�
 
 ## 配套 DSH 插件（可选）
 
+更新记录见 [`CHANGELOG.md`](CHANGELOG.md)。
+
 仓库里的 [`plugin/`](plugin/) 是一个 DSH 插件 `dsh-pocket-ios`：在 **设置 → 手机访问** 里加入 iOS
 客户端下载二维码与连接引导，并依赖 `dsh-pocket`（一条命令装齐电脑端）。
 
