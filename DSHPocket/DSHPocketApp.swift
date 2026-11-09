@@ -19,6 +19,31 @@ private func timingLog(_ message: String) {
     NSLog("%@", line)
 }
 
+/// Textual 没有公开清除选区的 API：直接定位当前第一响应者的文本输入视图，
+/// 把它选中的范围置空（不重建视图，避免列表闪动/跳到底部）。
+enum TextSelectionDismisser {
+    static func clear() {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                if let responder = findFirstResponder(in: window), let input = responder as? UITextInput {
+                    input.selectedTextRange = nil
+                    responder.resignFirstResponder()
+                    return
+                }
+            }
+        }
+    }
+
+    private static func findFirstResponder(in view: UIView) -> UIResponder? {
+        if view.isFirstResponder { return view }
+        for subview in view.subviews {
+            if let responder = findFirstResponder(in: subview) { return responder }
+        }
+        return nil
+    }
+}
+
 /// 会话完成提醒：本地通知（前台也会弹 banner + 声音），支持在通知/Apple Watch 上直接文字回复。
 final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = CompletionNotifier()
@@ -648,14 +673,6 @@ final class ConnectionModel {
     /// 引用一条消息后递增，用于让输入框自动聚焦。
     var focusComposerTick = 0
 
-    /// 点击空白处时递增：Textual 没有公开的清除选区 API，
-    /// 通过重建 Markdown 视图让选区自然消失。
-    var textSelectionResetTick = 0
-
-    @MainActor
-    func clearTextSelection() {
-        textSelectionResetTick &+= 1
-    }
 
     struct PendingQuote: Identifiable, Equatable {
         let id: String
@@ -3946,7 +3963,7 @@ struct ConversationView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded {
                     composerFocused = false
-                    model.clearTextSelection()
+                    TextSelectionDismisser.clear()
                 })
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 6)
@@ -4364,7 +4381,7 @@ struct MessageRow: View {
                 }
             }
         }
-        .id(model.textSelectionResetTick)
+        
     }
 
     @ViewBuilder
@@ -4452,7 +4469,7 @@ struct MessageRow: View {
                     if message.isUser, hasUserImages {
                         // 用户发送的图片：作为小缩略图放在气泡内的左下角。
                         VStack(alignment: .leading, spacing: 8) {
-                            if !message.text.isEmpty { markdownContent.id(model.textSelectionResetTick) }
+                            if !message.text.isEmpty { markdownContent }
                             userImageThumbnails
                         }
                         .padding(.horizontal, 14).padding(.vertical, 11)
@@ -4476,7 +4493,7 @@ struct MessageRow: View {
                         }
                         if !message.text.isEmpty {
                             markdownContent
-                                .id(model.textSelectionResetTick)
+                                
                                 .padding(.horizontal, 14).padding(.vertical, 11)
                                 .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                                 .foregroundStyle(message.isUser ? .white : .primary)
