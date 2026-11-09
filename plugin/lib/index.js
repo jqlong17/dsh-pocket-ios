@@ -9,6 +9,7 @@ import { randomInt } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
+import { createServer, request as httpRequest } from 'node:http'
 import { promisify } from 'node:util'
 import QRCode from 'qrcode'
 
@@ -20,6 +21,8 @@ export const inject = ['connection', 'webServer']
 const CHANNEL = '/dsh-pocket-ios'
 const TAILSCALE_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
 const BODY_MAX = 64 * 1024
+/** 稳定本地入口端口：Tailscale Serve 指向它；默认 3081（与 dsh-pocket 代理端口一致）。 */
+const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3081)
 
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
 async function logLine(line) {
@@ -141,6 +144,69 @@ function send(res, status, payload) {
   res.end(JSON.stringify(payload))
 }
 
+
+/**
+ * 稳定本地入口：HTTP/WS 代理到当前 DSH web 端口（端口每次重启可能变化）。
+ * 外部 Tailscale HTTPS 只需固定指向本端口，不依赖 dsh-pocket。
+ */
+function attachStableProxy(ctx, handler) {
+  const dshPort = ctx.webServer?.port
+  if (!dshPort) {
+    ctx?.logger?.warn?.('dsh-pocket-ios: 拿不到 DSH web 端口，稳定入口未启动')
+    return () => {}
+  }
+  const forwardHeaders = (headers) => {
+    const copy = { ...headers }
+    delete copy['x-forwarded-for']
+    return copy
+  }
+  const server = createServer((req, res) => {
+    try {
+      if ((req.url ?? '').startsWith(`${CHANNEL}/`)) {
+        handler(req, res)
+        return
+      }
+      const proxyReq = httpRequest({
+        host: '127.0.0.1', port: dshPort, method: req.method,
+        path: req.url, headers: forwardHeaders(req.headers),
+      }, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
+        proxyRes.pipe(res)
+      })
+      proxyReq.on('error', () => {
+        try { res.writeHead(502, { 'content-type': 'text/plain' }); res.end('bad gateway') } catch { /* 已结束 */ }
+      })
+      req.pipe(proxyReq)
+    } catch {
+      try { res.writeHead(502); res.end() } catch { /* 已结束 */ }
+    }
+  })
+  server.on('upgrade', (req, socket, head) => {
+    const proxyReq = httpRequest({
+      host: '127.0.0.1', port: dshPort, method: req.method,
+      path: req.url, headers: forwardHeaders(req.headers),
+    })
+    proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+      const lines = [`HTTP/1.1 101 Switching Protocols`]
+      for (const [key, value] of Object.entries(proxyRes.headers)) {
+        if (value !== undefined) lines.push(`${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+      }
+      socket.write(lines.join('\r\n') + '\r\n\r\n')
+      if (proxyHead?.length) socket.write(proxyHead)
+      if (head?.length) proxySocket.write(head)
+      proxySocket.pipe(socket)
+      socket.pipe(proxySocket)
+    })
+    proxyReq.on('error', () => socket.destroy())
+    proxyReq.end()
+  })
+  server.on('error', (error) => ctx?.logger?.warn?.(`dsh-pocket-ios: 稳定入口端口 ${PROXY_PORT} 不可用（${error?.message ?? error}）`))
+  server.listen(PROXY_PORT, '127.0.0.1', () => {
+    ctx?.logger?.info?.(`dsh-pocket-ios: 稳定入口 http://127.0.0.1:${PROXY_PORT} → DSH ${dshPort}`)
+  })
+  return () => { try { server.close() } catch { /* 已关闭 */ } }
+}
+
 /**
  * 挂载 RPC 路由。auth 用 connection.requestRejection（必须绑定 this，否则丢失 trustedHosts）。
  * @param ctx - cordis 插件上下文。
@@ -223,4 +289,5 @@ export function apply(ctx) {
   } catch (error) {
     ctx?.logger?.warn?.(`dsh-pocket-ios: 挂载 RPC 失败：${String(error?.message ?? error)}`)
   }
+  return attachStableProxy(ctx, route.handler)
 }
