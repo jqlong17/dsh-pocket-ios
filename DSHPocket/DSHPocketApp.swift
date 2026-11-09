@@ -4314,6 +4314,8 @@ struct MessageRow: View {
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
     @State private var copied = false
+    /// 只在"复制成功"时递增，避免图标恢复时再触发一次触感。
+    @State private var copyHapticTick = 0
 
     private var hasUserImages: Bool {
         message.isUser && (!message.localImages.isEmpty || !message.images.isEmpty)
@@ -4439,6 +4441,7 @@ struct MessageRow: View {
                 if !message.text.isEmpty {
                     Button {
                         UIPasteboard.general.string = message.text
+                        copyHapticTick &+= 1
                         withAnimation(.easeInOut(duration: 0.15)) { copied = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.2))
@@ -4454,7 +4457,7 @@ struct MessageRow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(copied ? "已复制" : "复制整条消息")
-                    .sensoryFeedback(.success, trigger: copied)
+                    .sensoryFeedback(.success, trigger: copyHapticTick)
                     Button {
                         model.beginQuote(message)
                     } label: {
