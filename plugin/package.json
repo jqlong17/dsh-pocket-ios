@@ -1,7 +1,7 @@
 {
   "name": "dsh-pocket-ios",
   "version": "0.2.1",
-  "description": "在 DSH 设置页加入 iOS 客户端下载二维码与连接引导（配合 dsh-pocket + DSH Pocket iOS）",
+  "description": "在 DSH 设置页新增原生「手机访问（iOS）」：App Store 下载二维码、Tailscale 固定地址/二维码、访问密码管理；自带稳定入口代理与登录端点，不依赖 dsh-pocket。",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -13,6 +13,7 @@
     "lib",
     "client",
     "cordis.patch.yml",
+    "market-entry.yml",
     "README.md",
     "LICENSE"
   ],
@@ -43,7 +44,8 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "dsh": ">=0.2.2-rc.1"
   },
   "license": "GPL-2.0",
   "repository": {
