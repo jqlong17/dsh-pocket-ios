@@ -362,15 +362,20 @@ final class ConnectionModel {
     // MARK: - 演示模式（App Store 审核 / 没有电脑时体验）
 
     private static let demoSessionList: [PocketSession] = [
-        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970, running: true, blank: false,
-                      title: "给项目加一个登录页", cwd: "~/projects/demo-app"),
+        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970 - 60, running: true, blank: false,
+                      title: "整理 v1.0.2 发布说明", cwd: "~/projects/dsh-pocket-ios"),
         PocketSession(sessionId: "demo-2", updatedAt: Date().timeIntervalSince1970 - 3600, running: false, blank: false,
-                      title: "图片识别示例", cwd: "~/projects/demo-app"),
+                      title: "分析 App Store 截图", cwd: "~/projects/dsh-pocket-ios"),
         PocketSession(sessionId: "demo-3", updatedAt: Date().timeIntervalSince1970 - 7200, running: false, blank: false,
-                      title: "重构 Agent 上下文", cwd: "~/projects/demo-app")
+                      title: "对比余额插件差异", cwd: "~/projects/plugin-research"),
+        PocketSession(sessionId: "demo-4", updatedAt: Date().timeIntervalSince1970 - 86400, running: false, blank: false,
+                      title: "重构 Agent 上下文拼接", cwd: "~/projects/ds-agents"),
+        PocketSession(sessionId: "demo-5", updatedAt: Date().timeIntervalSince1970 - 172800, running: false, blank: false,
+                      title: "排查 WebSocket 断线", cwd: "~/projects/dsh-pocket-ios")
     ]
 
     private static let demoPicture: UIImage = {
+        if let cover = UIImage(named: "DemoHarnessCover") { return cover }
         let size = CGSize(width: 640, height: 420)
         return UIGraphicsImageRenderer(size: size).image { context in
             let colors = [UIColor(red: 0.12, green: 0.30, blue: 0.82, alpha: 1).cgColor,
@@ -469,56 +474,93 @@ final class ConnectionModel {
         switch sessionId {
         case "demo-1":
             return [
-                PocketMessage(demoText: "帮我看看这个项目结构，然后给登录页加个入口。", isUser: true, sequence: 1),
+                PocketMessage(demoText: "帮我把这次发布整理成 Release Notes，顺便标一下风险。", isUser: true, sequence: 1),
                 PocketMessage(demoText: """
-                我看了一下项目结构，主要目录如下：
+                ## v1.0.2 发布说明
 
-                - `src/` — 业务代码
-                - `src/pages/` — 页面组件
-                - `public/` — 静态资源
+                本次更新集中在**连接稳定性**与**消息可靠性**，建议所有用户升级。
 
-                登录页入口可以加在 `src/router.ts`，需要我直接改吗？
-                """, isUser: false, sequence: 4),
-                PocketMessage(demoText: "好，先加一个 /login 路由。", isUser: true, sequence: 5),
-                PocketMessage(demoText: """
-                已加好：
+                ### 亮点
 
-                ```ts
-                { path: "/login", component: LoginPage }
+                - 生成中发送改为 **steer**：不再排队，直接引导当前回复
+                - 消息顺序回归服务端 `seq`，修复偶发乱序
+                - 断线自动重连，状态栏可见「重连中」
+
+                | 模块 | 改动 | 风险 |
+                | --- | --- | --- |
+                | 实时同步 | 迁移到 DSHKit | 中 |
+                | 消息顺序 | 移除 turn 重排 | 低 |
+                | 滚动 | followsLatest | 低 |
+
+                ```swift
+                let sync = SessionSyncCoordinator(
+                    sessionId: id, transport: client)
                 ```
 
-                另外在导航栏的「登录」按钮上补了跳转。需要我顺手加个表单校验吗？
-                """, isUser: false, sequence: 6)
+                风险中等的「实时同步」迁移已在下面展开。
+                """, isUser: false, sequence: 4)
             ]
         case "demo-2":
             return [
-                PocketMessage(demoText: "这张图里是什么？", isUser: true, sequence: 1, localImages: [demoPicture]),
-                PocketMessage(demoText: "图片里是一个深蓝色渐变背景上的白色圆形图案，像是某个 App 的图标或占位图。", isUser: false, sequence: 2)
+                PocketMessage(demoText: "看下这张图，帮我提炼 3 个卖点，再写一句 App Store 副标题。",
+                              isUser: true, sequence: 1, localImages: [demoPicture]),
+                PocketMessage(demoText: """
+                这是 **DeepSeek Harness** 的官网首屏截图，公开预览、开源、插件化。
+
+                ### 三个卖点
+
+                1. **随时可用** — 公开预览，下载即用，无需额外配置
+                2. **可组合** — 插件体系把能力扩展到日常开发、写作与研究
+                3. **开源本地** — 跑在自己电脑上，数据不离开设备
+
+                ### 副标题候选
+
+                - 「你的 Harness，装进手机里。」
+                - 「电脑上的 DSH，走到哪都能用。」
+                """, isUser: false, sequence: 2)
             ]
-        default:
+        case "demo-3":
             return [
-                PocketMessage(demoText: "帮我重构一下 Agent 的上下文拼接逻辑，太长就总结一下。", isUser: true, sequence: 1),
+                PocketMessage(demoText: "这三个余额插件有什么差异？给个对比表。", isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                三者都解决「余额可见」，但侧重点不同：
+
+                | 插件 | 展示位置 | 能力 |
+                | --- | --- | --- |
+                | chenzhexi/dsh-api-usage | 侧边栏常驻 | 余额、今日消费、Token、请求数、24h 柱状图 |
+                | cailikelog/account-balance | 输入框读数旁 | 剩余余额 |
+                | Witherwithwinter/Whale-Widget | 右下角挂件 | 多平台余额（DeepSeek / OpenRouter / Kimi / GLM） |
+
+                想要**信息密度**选第一个；只想**快速看余额**选第二个；**多平台**选第三个。
+                """, isUser: false, sequence: 2)
+            ]
+        case "demo-4":
+            return [
+                PocketMessage(demoText: "帮我把 Agent 上下文拼接拆成可测试的模块。", isUser: true, sequence: 1),
                 PocketMessage(demoText: """
                 改动思路分三步：
 
-                1. **拆**：把 system prompt、workspace 上下文、会话历史拆成独立 builder；
-                2. **合**：统一在 request 组装时按优先级拼接；
-                3. **测**：补一个快照测试，固定输入下的输出。
+                1. **拆**：把 system prompt、workspace 上下文、会话历史拆成独立 builder
+                2. **合**：统一在 request 组装时按优先级拼接
+                3. **测**：补快照测试，固定输入下的输出
 
-                这样可以避免上下文重复注入，也方便以后按模型做裁剪。
-                """, isUser: false, sequence: 2),
-                PocketMessage(demoText: "先把第一步做掉，改完给我 diff。", isUser: true, sequence: 3),
+                这样避免上下文重复注入，也方便以后按模型裁剪。
+                """, isUser: false, sequence: 2)
+            ]
+        default:
+            return [
+                PocketMessage(demoText: "WebSocket 偶尔假死，怎么排查？", isUser: true, sequence: 1),
                 PocketMessage(demoText: """
-                ## 改动概览
+                先确认「假死」的特征：UI 显示已连接，但长时间没有任何增量帧。
 
-                已完成三个 builder，保留了旧入口做兼容：
+                ### 排查顺序
 
-                | 插件 | 形式 | 功能 |
-                | --- | --- | --- |
-                | chenzhexi/dsh-api-usage | GitHub | 侧边栏常驻小部件：余额、今日消费、Token 数、请求数、24h 消费柱状图，一键直达充值页。 |
-                | cailikelog/dsh-plugin-account-balance | GitHub | 在输入框 cache-hit 读数旁显示账户剩余余额 |
-                | Witherwithwinter/DeepSeek-Balance-Whale-Widget-Bowl | GitHub | 右下角常驻余额挂件（鲸鱼娘版），支持 DeepSeek、OpenRouter、Kimi、GLM 等多个平台 |
-                """, isUser: false, sequence: 4)
+                1. 看是否有心跳/看门狗：生成中 25 秒无帧应主动断开重连
+                2. 检查隧道是否被中间设备静默断开：对比 `session/page` 与实时帧
+                3. 兜底：轮询最近 30 条消息，确认消息是否已经落库
+
+                最后把「重连中/已断开」状态显式展示给用户，避免误以为在回复。
+                """, isUser: false, sequence: 2)
             ]
         }
     }
