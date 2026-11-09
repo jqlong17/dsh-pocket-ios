@@ -93,6 +93,7 @@ public enum DSHDecoding {
         return DSHImageRef(
             attachmentId: attachmentId,
             mediaType: attachment["mediaType"] as? String,
+            bytes: (attachment["bytes"] as? NSNumber)?.intValue,
             width: (attachment["width"] as? NSNumber)?.intValue,
             height: (attachment["height"] as? NSNumber)?.intValue,
             name: attachment["name"] as? String

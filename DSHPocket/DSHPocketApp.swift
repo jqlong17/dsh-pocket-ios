@@ -2016,6 +2016,7 @@ final class ConnectionModel {
                     steps[index].images = images.map {
                         PocketImageRef(attachmentId: $0.attachmentId,
                                        mediaType: $0.mediaType,
+                                       bytes: $0.bytes ?? 0,
                                        width: $0.width,
                                        height: $0.height,
                                        name: $0.name)
@@ -2103,6 +2104,7 @@ final class ConnectionModel {
                       images: message.images.map {
                           PocketImageRef(attachmentId: $0.attachmentId,
                                          mediaType: $0.mediaType,
+                                         bytes: $0.bytes ?? 0,
                                          width: $0.width,
                                          height: $0.height,
                                          name: $0.name)
@@ -2557,11 +2559,11 @@ struct OutboxEntry: Codable, Identifiable {
 
 /// 一张已落到电脑端附件库的图片引用（会话历史 / 工具结果里的图片）。
 struct PocketImageRef: Identifiable, Hashable {
-    init(attachmentId: String, mediaType: String? = nil, width: Int? = nil,
+    init(attachmentId: String, mediaType: String? = nil, bytes: Int = 0, width: Int? = nil,
          height: Int? = nil, name: String? = nil) {
         self.attachmentId = attachmentId
         self.mediaType = mediaType ?? "image/jpeg"
-        self.bytes = 0
+        self.bytes = bytes
         self.width = width ?? 0
         self.height = height ?? 0
         self.name = name
@@ -3574,6 +3576,9 @@ struct ConversationView: View {
                     }
                 }
                 }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
             if let question = model.pendingQuestion {
                 UserQuestionCard(request: question, model: model)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -3608,6 +3613,7 @@ struct ConversationView: View {
             }
             Divider()
             inputBar
+            }
         }
         .navigationTitle(model.currentConversationTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -3795,6 +3801,7 @@ struct MessageRow: View {
                 }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// 用户消息的图片缩略图（气泡内左下角，小尺寸）。
@@ -3916,12 +3923,21 @@ struct AttachmentThumbnail: View {
     @Bindable var model: ConnectionModel
     var size: CGFloat = 140
     @State private var image: UIImage?
+    @State private var failed = false
     @State private var showsPreview = false
 
     var body: some View {
         Group {
             if let image {
                 Image(uiImage: image).resizable().scaledToFill()
+            } else if failed {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .tertiarySystemFill))
+                    VStack(spacing: 4) {
+                        Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
+                        Text("图片加载失败").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .tertiarySystemFill))
@@ -3936,7 +3952,12 @@ struct AttachmentThumbnail: View {
         .fullScreenCover(isPresented: $showsPreview) {
             if let image { FullscreenImageViewer(image: image) }
         }
-        .task { if image == nil { image = await model.loadImage(ref) } }
+        .task {
+            if image == nil {
+                image = await model.loadImage(ref)
+                if image == nil { failed = true }
+            }
+        }
     }
 }
 

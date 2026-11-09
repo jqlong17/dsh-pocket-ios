@@ -44,14 +44,16 @@ public struct DSHSession: Identifiable, Hashable, Sendable {
 public struct DSHImageRef: Hashable, Sendable {
     public let attachmentId: String
     public let mediaType: String?
+    public let bytes: Int?
     public let width: Int?
     public let height: Int?
     public let name: String?
 
-    public init(attachmentId: String, mediaType: String? = nil, width: Int? = nil,
-                height: Int? = nil, name: String? = nil) {
+    public init(attachmentId: String, mediaType: String? = nil, bytes: Int? = nil,
+                width: Int? = nil, height: Int? = nil, name: String? = nil) {
         self.attachmentId = attachmentId
         self.mediaType = mediaType
+        self.bytes = bytes
         self.width = width
         self.height = height
         self.name = name
