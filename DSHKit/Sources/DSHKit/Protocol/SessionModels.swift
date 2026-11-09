@@ -82,8 +82,8 @@ public struct DSHMessage: Identifiable, Equatable, Sendable {
 
 /// 工具过程事件（用例 P23–P24）。
 public enum DSHStepEvent: Equatable, Sendable {
-    case toolCall(seq: Int, turn: Int, callId: String, name: String, detail: String)
-    case toolResult(seq: Int, turn: Int, callId: String, text: String, isError: Bool)
+    case toolCall(seq: Int, turn: Int, callId: String, name: String, detail: String, arguments: String)
+    case toolResult(seq: Int, turn: Int, callId: String, text: String, isError: Bool, images: [DSHImageRef])
     case turnStart(seq: Int, turn: Int)
     case turnEnd(seq: Int, turn: Int)
 }

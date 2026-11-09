@@ -39,18 +39,7 @@ public enum DSHDecoding {
             guard block["type"] as? String == "text" else { return nil }
             return block["text"] as? String
         }.joined()
-        let images = content.compactMap { block -> DSHImageRef? in
-            guard block["type"] as? String == "image",
-                  let attachment = block["attachment"] as? [String: Any],
-                  let attachmentId = attachment["attachmentId"] as? String else { return nil }
-            return DSHImageRef(
-                attachmentId: attachmentId,
-                mediaType: attachment["mediaType"] as? String,
-                width: (attachment["width"] as? NSNumber)?.intValue,
-                height: (attachment["height"] as? NSNumber)?.intValue,
-                name: attachment["name"] as? String
-            )
-        }
+        let images = content.compactMap(imageRef(from:))
         guard !text.isEmpty || !images.isEmpty else { return nil }
         return DSHMessage(
             id: "event-\(sequence)",
@@ -76,14 +65,17 @@ public enum DSHDecoding {
                   let name = data["name"] as? String else { return nil }
             let arguments = (data["arguments"] as? String) ?? ""
             return .toolCall(seq: sequence, turn: turn, callId: callId, name: name,
-                             detail: argumentDetail(name: name, arguments: arguments))
+                             detail: argumentDetail(name: name, arguments: arguments),
+                             arguments: arguments)
         case "tool/result":
             let message = data["message"] as? [String: Any]
             let content = message?["content"] as? [[String: Any]] ?? []
             let text = content.compactMap { $0["text"] as? String }.joined()
             let isError = data["isError"] as? Bool ?? false
+            let images = content.compactMap { DSHDecoding.imageRef(from: $0) }
             return .toolResult(seq: sequence, turn: turn,
-                               callId: data["toolCallId"] as? String ?? "", text: text, isError: isError)
+                               callId: data["toolCallId"] as? String ?? "", text: text,
+                               isError: isError, images: images)
         case "turn/start":
             return .turnStart(seq: sequence, turn: turn)
         case "turn/end":
@@ -91,6 +83,20 @@ public enum DSHDecoding {
         default:
             return nil
         }
+    }
+
+    /// 解析 `{type:"image", attachment:{attachmentId, mediaType, width, height, name}}`。
+    static func imageRef(from block: [String: Any]) -> DSHImageRef? {
+        guard block["type"] as? String == "image",
+              let attachment = block["attachment"] as? [String: Any],
+              let attachmentId = attachment["attachmentId"] as? String else { return nil }
+        return DSHImageRef(
+            attachmentId: attachmentId,
+            mediaType: attachment["mediaType"] as? String,
+            width: (attachment["width"] as? NSNumber)?.intValue,
+            height: (attachment["height"] as? NSNumber)?.intValue,
+            name: attachment["name"] as? String
+        )
     }
 
     /// 工具调用的"一句话说明"：bash 取命令首行，其余取参数里的路径。

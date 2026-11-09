@@ -249,8 +249,8 @@ public actor SessionSyncCoordinator {
     private func mergeStep(_ step: DSHStepEvent) {
         let seq: Int
         switch step {
-        case .toolCall(let s, _, _, _, _): seq = s
-        case .toolResult(let s, _, _, _, _): seq = s
+        case .toolCall(let s, _, _, _, _, _): seq = s
+        case .toolResult(let s, _, _, _, _, _): seq = s
         case .turnStart(let s, _): seq = s
         case .turnEnd(let s, _): seq = s
         }
@@ -271,7 +271,7 @@ public actor SessionSyncCoordinator {
 extension DSHStepEvent {
     var sortSeq: Int {
         switch self {
-        case .toolCall(let s, _, _, _, _), .toolResult(let s, _, _, _, _),
+        case .toolCall(let s, _, _, _, _, _), .toolResult(let s, _, _, _, _, _),
              .turnStart(let s, _), .turnEnd(let s, _):
             return s
         }

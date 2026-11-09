@@ -45,7 +45,7 @@ final class DecodingExtraTests: XCTestCase {
                 "message": ["content": [["type": "text", "text": "boom"]]]
             ]
         ]
-        guard case .toolResult(let seq, let turn, let callId, let text, let isError)? = DSHDecoding.stepEvent(fromEvent: event) else {
+        guard case .toolResult(let seq, let turn, let callId, let text, let isError, _)? = DSHDecoding.stepEvent(fromEvent: event) else {
             return XCTFail("expected toolResult")
         }
         XCTAssertEqual(seq, 11)
@@ -53,6 +53,33 @@ final class DecodingExtraTests: XCTestCase {
         XCTAssertEqual(callId, "call-x")
         XCTAssertEqual(text, "boom")
         XCTAssertTrue(isError)
+    }
+
+
+    // 回归：tool/result 里的截图（type=image + attachment）必须被解码出来
+    func testToolResultImagesDecoded() {
+        let event: [String: Any] = [
+            "type": "tool/result", "seq": 2783,
+            "data": [
+                "turn": 28, "toolCallId": "call-x",
+                "message": ["role": "tool", "content": [
+                    ["type": "text", "text": "screenshot saved"],
+                    ["type": "image", "attachment": [
+                        "attachmentId": "sha256:1b65b320",
+                        "mediaType": "image/png", "bytes": 343367,
+                        "width": 2160, "height": 1350, "name": "shot.png"
+                    ]]
+                ]]
+            ]
+        ]
+        guard case .toolResult(_, _, _, _, _, let images)? = DSHDecoding.stepEvent(fromEvent: event) else {
+            return XCTFail("expected toolResult")
+        }
+        XCTAssertEqual(images.count, 1)
+        XCTAssertEqual(images.first?.attachmentId, "sha256:1b65b320")
+        XCTAssertEqual(images.first?.mediaType, "image/png")
+        XCTAssertEqual(images.first?.width, 2160)
+        XCTAssertEqual(images.first?.name, "shot.png")
     }
 
     func testArgumentDetailFallsBackToPathAndRawArguments() {

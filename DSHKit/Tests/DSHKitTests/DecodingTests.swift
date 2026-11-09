@@ -45,7 +45,7 @@ final class DecodingTests: XCTestCase {
             return nil
         }
         let toolCalls = steps.filter { if case .toolCall = $0 { return true }; return false }
-        guard case .toolCall(_, _, let callId, let name, let detail)? = toolCalls.first else {
+        guard case .toolCall(_, _, let callId, let name, let detail, _)? = toolCalls.first else {
             return XCTFail("tool/call missing")
         }
         XCTAssertEqual(callId, "call-1")
@@ -53,7 +53,7 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(detail, "ls -la")
 
         let toolResults = steps.filter { if case .toolResult = $0 { return true }; return false }
-        guard case .toolResult(_, _, let resultCallId, let text, let isError)? = toolResults.first else {
+        guard case .toolResult(_, _, let resultCallId, let text, let isError, let images)? = toolResults.first else {
             return XCTFail("tool/result missing")
         }
         XCTAssertEqual(resultCallId, "call-1")

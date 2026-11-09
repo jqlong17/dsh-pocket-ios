@@ -56,6 +56,8 @@ final class ConversationState {
     var isLoadingOlder = false
     /// 打开会话后是否收到过实时 turn/start、turn/end（用于区分历史快照与实时状态）。
     var liveTurnEventsSeen = false
+    /// 正在等待回答的问题（ask_user_question）。
+    var pendingQuestion: PendingUserQuestion?
     var olderAnchorID: String?
     var olderLoadTick = 0
     var conversationToken = UUID()
@@ -167,6 +169,10 @@ final class ConnectionModel {
     var liveTurnEventsSeen: Bool {
         get { activeConversation?.liveTurnEventsSeen ?? false }
         set { activeConversation?.liveTurnEventsSeen = newValue }
+    }
+    var pendingQuestion: PendingUserQuestion? {
+        get { activeConversation?.pendingQuestion }
+        set { activeConversation?.pendingQuestion = newValue }
     }
     /// 实时连接状态机（替代原来的字符串状态）。
     enum LiveConnectionState: Equatable {
@@ -1694,17 +1700,33 @@ final class ConnectionModel {
     @MainActor
     private func applyDSHStep(_ step: DSHStepEvent, historical: Bool = false) {
         switch step {
-        case .toolCall(let sequence, let turn, let callId, let name, let detail):
-            guard !steps.contains(where: { $0.id == callId }) else { return }
-            steps.append(PocketStep(id: callId, sequence: sequence, turn: turn, number: 0,
-                                    name: name, detail: detail))
-            steps.sort { $0.sequence < $1.sequence }
-            recordDiagnostic("过程：\(name)\(detail.isEmpty ? "" : "（\(detail)）")")
-        case .toolResult(_, _, let callId, let text, let isError):
-            guard let index = steps.firstIndex(where: { $0.id == callId }) else { return }
-            steps[index].resultText = text
-            steps[index].isError = isError
-            steps[index].finished = true
+        case .toolCall(let sequence, let turn, let callId, let name, let detail, let arguments):
+            if !steps.contains(where: { $0.id == callId }) {
+                steps.append(PocketStep(id: callId, sequence: sequence, turn: turn, number: 0,
+                                        name: name, detail: detail))
+                steps.sort { $0.sequence < $1.sequence }
+                recordDiagnostic("过程：\(name)\(detail.isEmpty ? "" : "（\(detail)）")")
+            }
+            if name == "ask_user_question" {
+                pendingQuestion = Self.parsePendingQuestion(callId: callId, arguments: arguments)
+            }
+        case .toolResult(_, _, let callId, let text, let isError, let images):
+            if let index = steps.firstIndex(where: { $0.id == callId }) {
+                steps[index].resultText = text
+                steps[index].isError = isError
+                steps[index].finished = true
+                if !images.isEmpty {
+                    recordDiagnostic("工具结果包含图片：\(images.count) 张")
+                    steps[index].images = images.map {
+                        PocketImageRef(attachmentId: $0.attachmentId,
+                                       mediaType: $0.mediaType,
+                                       width: $0.width,
+                                       height: $0.height,
+                                       name: $0.name)
+                    }
+                }
+            }
+            if pendingQuestion?.callId == callId { pendingQuestion = nil }
         case .turnStart(let sequence, _):
             if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
             isTurnRunning = true
@@ -1714,6 +1736,65 @@ final class ConnectionModel {
             if !turnEnds.contains(sequence) { turnEnds.append(sequence) }
             isTurnRunning = false
             Task { await activeConversation?.coordinator?.setExpectingActivity(false) }
+        }
+    }
+
+    /// 解析 `ask_user_question` 的 arguments（questions/options）。
+    private static func parsePendingQuestion(callId: String, arguments: String) -> PendingUserQuestion? {
+        guard let data = arguments.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawQuestions = object["questions"] as? [[String: Any]] else { return nil }
+        let items: [PendingUserQuestion.Item] = rawQuestions.compactMap { raw in
+            guard let id = raw["id"] as? String,
+                  let question = raw["question"] as? String else { return nil }
+            let options: [PendingUserQuestion.Option] = (raw["options"] as? [[String: Any]] ?? []).compactMap { opt in
+                guard let label = opt["label"] as? String else { return nil }
+                return PendingUserQuestion.Option(label: label, description: opt["description"] as? String)
+            }
+            return PendingUserQuestion.Item(id: id,
+                                            header: raw["header"] as? String,
+                                            question: question,
+                                            detail: raw["detail"] as? String,
+                                            options: options,
+                                            multiSelect: raw["multiSelect"] as? Bool ?? false)
+        }
+        guard !items.isEmpty else { return nil }
+        return PendingUserQuestion(callId: callId, questions: items)
+    }
+
+    /// 回答 `ask_user_question`（userQuestions/answer）。
+    @MainActor
+    func answerQuestion(_ request: PendingUserQuestion,
+                        selected: [String: Set<String>],
+                        custom: [String: String]) {
+        guard let session = selectedSession else { return }
+        let answers: [[String: Any]] = request.questions.map { item in
+            var answer: [String: Any] = [
+                "id": item.id,
+                "selected": Array(selected[item.id] ?? [])
+            ]
+            let text = (custom[item.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { answer["custom"] = text }
+            return answer
+        }
+        let args: [String: Any] = [
+            "agentId": session.sessionId,
+            "callId": request.callId,
+            "answer": ["answers": answers]
+        ]
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await self.rpc("userQuestions/answer", args: args)
+                await MainActor.run {
+                    if self.pendingQuestion?.callId == request.callId { self.pendingQuestion = nil }
+                    self.recordDiagnostic("已回答用户问题：\(request.callId)")
+                }
+            } catch {
+                await MainActor.run {
+                    self.conversationError = "回答问题失败：\(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -1873,6 +1954,25 @@ final class ConnectionModel {
         }
         return result["value"] as? [String: Any] ?? [:]
     }
+}
+
+/// 桌面端 `ask_user_question` 正在等待用户选择的问题。
+struct PendingUserQuestion: Equatable {
+    struct Option: Identifiable, Equatable {
+        let label: String
+        let description: String?
+        var id: String { label }
+    }
+    struct Item: Identifiable, Equatable {
+        let id: String
+        let header: String?
+        let question: String
+        let detail: String?
+        let options: [Option]
+        let multiSelect: Bool
+    }
+    let callId: String
+    let questions: [Item]
 }
 
 /// 按会话保存输入框草稿（退出/切换会话后回来还能接着写）。
@@ -2964,6 +3064,10 @@ struct ConversationView: View {
                     }
                 }
             }
+            if let question = model.pendingQuestion {
+                UserQuestionCard(request: question, model: model)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             Divider()
             inputBar
         }
@@ -3321,6 +3425,102 @@ struct FullscreenImageViewer: View {
 }
 
 /// 一步或一轮的工具过程，折叠成一行，展开看细节和图片。
+/// 电脑端 `ask_user_question` 等待选择时显示的问题卡片。
+struct UserQuestionCard: View {
+    let request: PendingUserQuestion
+    @Bindable var model: ConnectionModel
+    @State private var selected: [String: Set<String>] = [:]
+    @State private var custom: [String: String] = [:]
+
+    private var complete: Bool {
+        request.questions.allSatisfy { question in
+            if !(selected[question.id]?.isEmpty ?? true) { return true }
+            return !(custom[question.id]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.bubble.fill").foregroundStyle(.orange)
+                Text("需要你确认").font(.footnote.weight(.semibold))
+                Spacer()
+                Text("来自电脑端 DSH").font(.caption2).foregroundStyle(.secondary)
+            }
+
+            ForEach(request.questions) { question in
+                VStack(alignment: .leading, spacing: 6) {
+                    if let header = question.header, !header.isEmpty {
+                        Text(header).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(question.question).font(.subheadline.weight(.medium))
+                    if let detail = question.detail, !detail.isEmpty {
+                        Text(detail).font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(question.options) { option in
+                        Button { toggle(question, option) } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: isSelected(question, option) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(isSelected(question, option) ? Color.green : .secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.label).font(.footnote)
+                                    if let description = option.description, !description.isEmpty {
+                                        Text(description).font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(8)
+                            .background(isSelected(question, option) ? Color.green.opacity(0.08) : Color(uiColor: .tertiarySystemBackground),
+                                        in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    TextField("其他答案（可选）", text: Binding(
+                        get: { custom[question.id] ?? "" },
+                        set: { custom[question.id] = $0 }
+                    ))
+                    .font(.footnote)
+                    .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            Button {
+                model.answerQuestion(request, selected: selected, custom: custom)
+            } label: {
+                Text("提交回答")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 42)
+                    .foregroundStyle(.white)
+                    .background(Color(red: 0.08, green: 0.48, blue: 0.37).opacity(complete ? 1 : 0.35),
+                                in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .disabled(!complete)
+        }
+        .padding(12)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private func isSelected(_ question: PendingUserQuestion.Item, _ option: PendingUserQuestion.Option) -> Bool {
+        selected[question.id]?.contains(option.label) ?? false
+    }
+
+    private func toggle(_ question: PendingUserQuestion.Item, _ option: PendingUserQuestion.Option) {
+        var set = selected[question.id] ?? []
+        if question.multiSelect {
+            if set.contains(option.label) { set.remove(option.label) } else { set.insert(option.label) }
+        } else {
+            set = [option.label]
+            custom[question.id] = ""
+        }
+        selected[question.id] = set
+    }
+}
+
 struct ProcessRow: View {
     let group: PocketStepGroup
     let expanded: Bool
