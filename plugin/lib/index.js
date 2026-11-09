@@ -155,9 +155,21 @@ function attachStableProxy(ctx, handler) {
     ctx?.logger?.warn?.('dsh-pocket-ios: 拿不到 DSH web 端口，稳定入口未启动')
     return () => {}
   }
+  // DSH 的 browser-auth/可信 Host 校验只认 loopback：Tailscale 进来的公网 Host 必须改写，
+  // 否则 token 换完 cookie 后继续访问仍会 403（dsh-pocket 的代理同样做这件事）。
   const forwardHeaders = (headers) => {
     const copy = { ...headers }
+    copy.host = `127.0.0.1:${dshPort}`
+    if (typeof copy.origin === 'string') copy.origin = `http://127.0.0.1:${dshPort}`
+    if (typeof copy.referer === 'string') {
+      try {
+        const referer = new URL(copy.referer)
+        copy.referer = `http://127.0.0.1:${dshPort}${referer.pathname}${referer.search}`
+      } catch { /* 非法 Referer 直接丢弃 */ }
+    }
     delete copy['x-forwarded-for']
+    delete copy['x-forwarded-host']
+    delete copy['x-forwarded-proto']
     return copy
   }
   const server = createServer((req, res) => {
