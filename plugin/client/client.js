@@ -448,14 +448,33 @@ window.__ModuleLoader__.load({
       loadTailscaleIntoCard(card);
     }
 
-    var observer = null;
+    // 不再使用 MutationObserver / 定时全量扫描（会拖死设置页）。
+    // 只在用户点击设置入口/切换设置导航后，按需刷新一次。
+    var refreshScheduled = false;
+    function scheduleRefresh(delay) {
+      if (refreshScheduled) return;
+      refreshScheduled = true;
+      setTimeout(function () {
+        refreshScheduled = false;
+        try { insertCardInPocketPage(); } catch (e) {}
+        try { ensureMobileAccessNavEntry(); } catch (e) {}
+      }, delay == null ? 350 : delay);
+    }
+
     function startObserver() {
-      if (typeof document === "undefined" || typeof MutationObserver === "undefined" || observer) return;
-      var run = function () { try { insertCardInPocketPage(); } catch (e) {} try { ensureMobileAccessNavEntry(); } catch (e) {} };
-      observer = new MutationObserver(run);
-      observer.observe(document.body, { childList: true, subtree: true });
-      run();
-      var timer = setInterval(run, 1200);
+      if (typeof document === "undefined") return;
+      document.addEventListener("click", function (event) {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        var clicked = target.closest("button,a,[role='button'],[role='tab']");
+        var text = clicked ? (clicked.textContent || "").trim() : "";
+        if (text === "设置" || text === "通用设置" || text === "模型" || text === "手机访问" || text.indexOf("设置") !== -1) {
+          scheduleRefresh(400);
+        } else {
+          // 设置面板内的其它点击（如切 tab）也刷新一次，成本低。
+          if (document.getElementById(MOBILE_NAV_ID)) scheduleRefresh(250);
+        }
+      }, true);
     }
 
     function apply(ctx) {
