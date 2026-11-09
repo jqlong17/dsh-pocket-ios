@@ -1298,6 +1298,7 @@ final class ConnectionModel {
 
     @MainActor
     func open(_ session: PocketSession) {
+        pruneStaleOutbox()
         if isDemoMode { openDemo(session); return }
         if selectedSession?.sessionId == session.sessionId,
            activeConversation?.coordinatorStarted == true { return }
@@ -1422,6 +1423,7 @@ final class ConnectionModel {
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
             mergeSteps(from: records)
+            confirmInboxOutbox(in: records)
             isLoadingConversation = false
             if wasEmpty { requestScrollToBottom() }
         } catch {
@@ -1479,6 +1481,7 @@ final class ConnectionModel {
         }
         messages = (Array(bySequence.values) + pending).sorted { $0.sequence < $1.sequence }
         restoreMissingOutboxMessages()
+        pruneStaleOutbox()
         timingLog("model_update incoming=\(incoming.count) total=\(messages.count)")
     }
 
@@ -1495,6 +1498,58 @@ final class ConnectionModel {
         if parts.count >= 2, parts[0] == "Users" { return "/Users/\(parts[1])" }
         if parts.count >= 2, parts[0] == "home" { return "/home/\(parts[1])" }
         return "~"
+    }
+
+    /// 从历史记录里提取 steer 的 inbox rpcId（agent/inbox/spliced），用于确认发件箱。
+    private func inboxRpcIds(in records: [[String: Any]]) -> Set<String> {
+        var ids = Set<String>()
+        for record in records {
+            guard let event = record["event"] as? [String: Any],
+                  event["type"] as? String == "agent/inbox/spliced",
+                  let data = event["data"] as? [String: Any],
+                  let inserted = data["inserted"] as? [[String: Any]] else { continue }
+            for item in inserted {
+                if let rpcId = (item["source"] as? [String: Any])?["rpcId"] as? String, !rpcId.isEmpty {
+                    ids.insert(rpcId.lowercased())
+                }
+            }
+        }
+        return ids
+    }
+
+    @MainActor
+    private func confirmInboxOutbox(in records: [[String: Any]]) {
+        let ids = inboxRpcIds(in: records)
+        guard !ids.isEmpty else { return }
+        confirmOutbox(rpcIds: ids)
+        ackedSendRpcIds.subtract(ids)
+        failedSendRpcIds.subtract(ids)
+        if conversationError?.contains("服务端没有收到") == true { conversationError = nil }
+        recordDiagnostic("历史中确认 steer 已送达（\(ids.count) 条）")
+    }
+
+    /// 发件箱超时清理：
+    /// - 已 ACK 的旧条目 → 视为已送达，移除（避免 steer 永远"发送中"）；
+    /// - 未 ACK 且超时的 → 标为失败，让用户看到「重新发送」而不是无限转圈。
+    @MainActor
+    private func pruneStaleOutbox(maxAge: TimeInterval = 120) {
+        loadOutboxIfNeeded()
+        let now = Date().timeIntervalSince1970
+        var changed = false
+        for entry in outboxEntries where now - entry.createdAt > maxAge {
+            let rpcId = entry.id.lowercased()
+            if ackedSendRpcIds.contains(rpcId) || ackedSendRpcIds.contains(entry.id) {
+                confirmOutbox(rpcIds: [rpcId])
+                ackedSendRpcIds.remove(rpcId)
+                recordDiagnostic("发件箱超时清理（已 ACK，视为送达）：\(rpcId)")
+            } else {
+                failedSendRpcIds.insert(rpcId)
+                removeOutbox(rpcIds: [rpcId])
+                recordDiagnostic("发件箱超时清理（未确认，标为失败）：\(rpcId)")
+            }
+            changed = true
+        }
+        if changed { persistOutbox() }
     }
 
     /// 会话页标题：优先用列表中最新标题，避免打开后改标题不刷新。
@@ -1841,6 +1896,7 @@ final class ConnectionModel {
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
                 mergeMessages(incoming)
                 mergeSteps(from: records)
+                confirmInboxOutbox(in: records)
                 if let reply = incoming.first(where: { !$0.isUser && !$0.isPending && $0.sequence > afterSequence }) {
                     timingLog("reply_available source=history seq=\(reply.sequence) chars=\(reply.text.count) total_elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
                     recordDiagnostic("历史轮询找到本次助手回复，等待 \(Int(Date().timeIntervalSince(started) * 1000)) 毫秒；内容：\(reply.text)")
@@ -1990,6 +2046,7 @@ final class ConnectionModel {
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
             mergeSteps(from: records)
+            confirmInboxOutbox(in: records)
             recordDiagnostic("收到历史快照：\(history.count) 条消息")
             isLoadingConversation = false
             if messages.isEmpty { requestScrollToBottom() }
