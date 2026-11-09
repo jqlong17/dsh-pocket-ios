@@ -104,6 +104,120 @@ window.__ModuleLoader__.load({
       );
     }
 
+
+    // ------------------------------------------------------------------
+    // 独立入口：不依赖 settings.section 插槽，也不依赖 dsh-pocket。
+    // 在设置左侧导航注入「手机访问（iOS）」，点击打开自有弹窗（App Store + Tailscale 二维码）。
+    // ------------------------------------------------------------------
+    var MOBILE_NAV_ID = "dsh-pocket-ios-nav-entry";
+    var MOBILE_MODAL_ID = "dsh-pocket-ios-modal";
+
+    function closeMobileAccessModal() {
+      var modal = document.getElementById(MOBILE_MODAL_ID);
+      if (modal) modal.remove();
+    }
+
+    function fillTailscaleSlot(slot) {
+      if (!slot) return;
+      slot.innerHTML = '<div style="font-size:13px;opacity:.6">正在检测 Tailscale…</div>';
+      var rpcId = "ts-" + Math.random().toString(36).slice(2);
+      fetch("/dsh-pocket-ios/tailscale.status", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rpcId: rpcId, method: "tailscale.status", payload: {} })
+      }).then(function (r) { return r.json(); }).then(function (json) {
+        var result = json && json.result;
+        var value = result && result.ok ? result.value : null;
+        if (!value || !value.httpsUrl) {
+          slot.innerHTML = '<div style="font-size:12px;opacity:.6;line-height:1.6">未读取到 Tailscale 地址。可继续使用 dsh-pocket 的局域网/公网二维码；或在 <code>~/.dsh/dsh-pocket-ios/tailscale.json</code> 写入 <code>{"url":"https://你的机器.tailnet.ts.net"}</code>。</div>';
+          return;
+        }
+        slot.innerHTML =
+          '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">' +
+            (value.qr ? '<img alt="Tailscale 二维码" src="' + value.qr + '" style="width:158px;height:158px;border-radius:10px;background:#fff;padding:6px;border:1px solid rgba(0,0,0,.06);box-sizing:border-box" />' : '') +
+            '<div style="flex:1 1 220px;min-width:0">' +
+              '<div style="font-size:12px;opacity:.6;margin-bottom:4px">固定地址</div>' +
+              '<div style="font-size:13px;word-break:break-all;margin-bottom:10px">' + value.httpsUrl + '</div>' +
+              '<div style="font-size:12px;opacity:.65;line-height:1.65">手机装好 Tailscale（同一账号、开启 VPN）后，用 DSH Pocket 扫左侧二维码：已包含地址与访问密码，扫完自动连接；换 Wi-Fi / 切 4G 都不用重扫。</div>' +
+            '</div>' +
+          '</div>';
+      }).catch(function () {
+        slot.innerHTML = '<div style="font-size:12px;opacity:.6">未读取到 Tailscale 状态（插件 host 未重启或未配置）。</div>';
+      });
+    }
+
+    function openMobileAccessModal() {
+      if (document.getElementById(MOBILE_MODAL_ID)) return;
+      var modal = document.createElement("div");
+      modal.id = MOBILE_MODAL_ID;
+      modal.style.cssText = "position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box";
+      modal.addEventListener("click", function (event) { if (event.target === modal) closeMobileAccessModal(); });
+      var card = document.createElement("div");
+      card.style.cssText = "width:min(720px,94vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;padding:22px;box-sizing:border-box;box-shadow:0 24px 60px rgba(0,0,0,.25);text-align:left;color:#111";
+      card.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+          '<div style="font-weight:700;font-size:18px">手机访问（iOS）</div>' +
+          '<button type="button" data-close="1" style="border:0;background:transparent;font-size:20px;cursor:pointer;color:#666">×</button>' +
+        '</div>' +
+        '<div style="padding:18px;border-radius:14px;border:1px solid rgba(0,0,0,.08);background:rgba(20,122,94,.04);margin-bottom:16px">' +
+          '<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">' +
+            '<div style="width:132px;height:132px;flex:0 0 132px;background:#fff;border-radius:10px;padding:8px;border:1px solid rgba(0,0,0,.06);box-sizing:border-box">' + QR_SVG + '</div>' +
+            '<div style="flex:1 1 240px;min-width:0">' +
+              '<div style="font-weight:600;font-size:16px;margin-bottom:6px">在 iPhone 上使用 DSH</div>' +
+              '<div style="font-size:13px;opacity:.72;line-height:1.65;margin-bottom:12px">用手机扫描二维码从 App Store 安装 DSH Pocket iOS；装好后扫描下方 Tailscale 二维码即可连接（无需公网暴露）。</div>' +
+              '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+                '<a href="' + APP_STORE_URL + '" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;color:#fff;background:#147A5E">在 App Store 下载</a>' +
+                '<a href="' + REPO_URL + '" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;text-decoration:none;color:#147A5E;background:rgba(20,122,94,.08);border:1px solid rgba(20,122,94,.25)">GitHub 仓库</a>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="padding:18px;border-radius:14px;border:1px solid rgba(0,0,0,.08)">' +
+          '<div style="font-weight:600;font-size:16px;margin-bottom:10px">Tailscale 连接（推荐，地址固定且更稳定）</div>' +
+          '<div data-tailscale-slot="1"></div>' +
+        '</div>' +
+        '<div style="margin-top:14px;font-size:12px;opacity:.6;line-height:1.6">局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。</div>';
+      modal.appendChild(card);
+      card.querySelector('[data-close]').addEventListener('click', closeMobileAccessModal);
+      document.body.appendChild(modal);
+      fillTailscaleSlot(card.querySelector('[data-tailscale-slot]'));
+    }
+
+    function ensureMobileAccessNavEntry() {
+      if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+      var existing = document.getElementById(MOBILE_NAV_ID);
+      // 只在设置面板打开时保留入口。
+      var navLabel = null;
+      var candidates = Array.prototype.slice.call(document.querySelectorAll("button,div,span"));
+      for (var i = 0; i < candidates.length; i++) {
+        var text = (candidates[i].textContent || "").trim();
+        if (text === "通用设置" || text === "模型") { navLabel = candidates[i]; break; }
+      }
+      if (!navLabel) {
+        if (existing) existing.remove();
+        closeMobileAccessModal();
+        return;
+      }
+      // 找到导航列容器（包含多个 nav 项的那个父级）。
+      var container = navLabel.parentElement;
+      for (var depth = 0; depth < 5 && container && container !== document.body; depth++) {
+        if (container.querySelectorAll("button").length >= 2) break;
+        container = container.parentElement;
+      }
+      if (!container) return;
+      if (document.getElementById(MOBILE_NAV_ID)) return;
+      var entry = document.createElement("button");
+      entry.id = MOBILE_NAV_ID;
+      entry.type = "button";
+      entry.style.cssText = "display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;margin:2px 0;border:0;border-radius:8px;background:transparent;font-size:14px;color:inherit;cursor:pointer;text-align:left;box-sizing:border-box";
+      entry.innerHTML = '<span style="font-size:15px">📱</span><span>手机访问（iOS）</span>';
+      entry.addEventListener("mouseenter", function () { entry.style.background = "rgba(0,0,0,.05)"; });
+      entry.addEventListener("mouseleave", function () { entry.style.background = "transparent"; });
+      entry.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); openMobileAccessModal(); });
+      container.appendChild(entry);
+    }
+
     var CARD_ID = "dsh-pocket-ios-card";
 
     function linkStyle(primary) {
@@ -241,10 +355,11 @@ window.__ModuleLoader__.load({
     var observer = null;
     function startObserver() {
       if (typeof document === "undefined" || typeof MutationObserver === "undefined" || observer) return;
-      var run = function () { try { insertCardInPocketPage(); } catch (e) {} };
+      var run = function () { try { insertCardInPocketPage(); } catch (e) {} try { ensureMobileAccessNavEntry(); } catch (e) {} };
       observer = new MutationObserver(run);
       observer.observe(document.body, { childList: true, subtree: true });
       run();
+      var timer = setInterval(run, 1200);
     }
 
     function apply(ctx) {
