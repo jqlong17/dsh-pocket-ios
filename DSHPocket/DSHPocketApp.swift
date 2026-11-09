@@ -3877,6 +3877,14 @@ struct ConversationView: View {
         }
     }
 
+    /// 消息列表的垂直节奏：同人连续 8、换角色 18、过程行相邻 10、turn 切换 24。
+    private static func messageSpacing(previous: TimelineEntry, current: TimelineEntry) -> CGFloat {
+        if previous.group != nil || current.group != nil { return 10 }
+        guard let prevMessage = previous.message, let currentMessage = current.message else { return 10 }
+        if prevMessage.isUser != currentMessage.isUser { return 18 }
+        return 8
+    }
+
     private var canSend: Bool {
         !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftImages.isEmpty
     }
@@ -3886,27 +3894,31 @@ struct ConversationView: View {
             if let error = model.conversationError {
                 Text(error).font(.footnote).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal).padding(.vertical, 8).background(.red.opacity(0.06))
             }
-            HStack(spacing: 6) {
-                if model.isDemoMode {
-                    Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
-                    Text("演示模式 · 示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                } else {
-                    Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 7, height: 7)
-                    Text("实时连接：\(model.liveConnection.label)").font(.caption).foregroundStyle(.secondary)
-                    if model.liveConnection.isDisconnected {
-                        Button("重连") { model.manualReconnect() }
-                            .font(.caption2.weight(.semibold))
+            if model.isDemoMode || model.liveConnection != .connected {
+                HStack(spacing: 6) {
+                    if model.isDemoMode {
+                        Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
+                        Text("演示模式 · 示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    } else {
+                        Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 6, height: 6)
+                        Text(model.liveConnection.label).font(.caption2).foregroundStyle(.secondary)
+                        if model.liveConnection.isDisconnected {
+                            Button("重连") { model.manualReconnect() }
+                                .font(.caption2.weight(.semibold))
+                        }
+                        Spacer()
                     }
-                    Spacer()
                 }
-            }.padding(.horizontal).padding(.vertical, 6)
+                .padding(.horizontal).padding(.vertical, 4)
+                .transition(.opacity)
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {
                     // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
                     // LazyVStack 会缓存旧高度导致行重叠；会话窗口只有 30 条消息，直接布局代价可忽略。
-                    VStack(spacing: 14) {
+                    VStack(spacing: 0) {
                         if model.isLoadingOlder {
                             HStack(spacing: 6) {
                                 ProgressView().scaleEffect(0.7)
@@ -3921,9 +3933,10 @@ struct ConversationView: View {
                         if entries.isEmpty && !model.isLoadingConversation {
                             ContentUnavailableView("开始对话", systemImage: "text.bubble", description: Text("发送第一条消息。"))
                         }
-                        ForEach(entries) { entry in
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            let topGap = index == 0 ? 0 : Self.messageSpacing(previous: entries[index - 1], current: entry)
                             if let message = entry.message {
-                                MessageRow(message: message, model: model).id(entry.id)
+                                MessageRow(message: message, model: model).id(entry.id).padding(.top, topGap)
                             } else if let group = entry.group {
                                 ProcessRow(group: group, expanded: expandedTurns.contains(group.turn), model: model) {
                                     suppressAutoScrollUntil = Date().addingTimeInterval(0.5)
@@ -3934,7 +3947,7 @@ struct ConversationView: View {
                                             expandedTurns.insert(group.turn)
                                         }
                                     }
-                                }.id(entry.id)
+                                }.id(entry.id).padding(.top, topGap)
                             }
                         }
                         // 底部锚点：滚动到它比"最后一条消息"更可靠（能带上后面的过程行/占位）。
@@ -4231,13 +4244,13 @@ struct ConversationView: View {
                 PhotosPicker(selection: $photoItems, maxSelectionCount: 9, selectionBehavior: .ordered, matching: .images, photoLibrary: .shared()) {
                     Image(systemName: "photo").font(.system(size: 20))
                         .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                        .frame(width: 38, height: 38)
+                        .frame(width: 40, height: 40)
                 }
                 .accessibilityLabel("从相册选择图片，可多选")
                 Button { showingCamera = true } label: {
                     Image(systemName: "camera").font(.system(size: 20))
                         .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                        .frame(width: 38, height: 38)
+                        .frame(width: 40, height: 40)
                 }
                 .accessibilityLabel("拍照")
                 TextField("发送消息", text: $model.draft, axis: .vertical).lineLimit(1...5)
@@ -4361,15 +4374,15 @@ struct MessageRow: View {
     private func userQuotedContent(_ quoted: (quote: String, rest: String)) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
-                Capsule().fill(Color.white.opacity(0.55)).frame(width: 2.5)
+                Capsule().fill(Color.white.opacity(0.7)).frame(width: 3)
                 Text(quoted.quote)
                     .font(.caption)
-                    .foregroundStyle(Color.white.opacity(0.82))
+                    .foregroundStyle(Color.white.opacity(0.92))
                     .lineLimit(6)
                     .multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             if !quoted.rest.isEmpty {
                 ForEach(Array(model.markdownSegments(quoted.rest).enumerated()), id: \.offset) { _, segment in
                     switch segment {
@@ -4432,8 +4445,8 @@ struct MessageRow: View {
     }
 
     var body: some View {
-        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 5) {
-            HStack(spacing: 5) {
+        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 7) {
+            HStack(spacing: 8) {
                 if !message.isUser {
                     Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                 }
@@ -4449,7 +4462,7 @@ struct MessageRow: View {
                         }
                     } label: {
                         Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
-                            .font(.caption2)
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(copied ? Color(red: 0.08, green: 0.48, blue: 0.37) : .secondary)
                             .frame(width: 14, height: 14)
                             .scaleEffect(copied ? 1.15 : 1)
@@ -4461,14 +4474,14 @@ struct MessageRow: View {
                     Button {
                         model.beginQuote(message)
                     } label: {
-                        Image(systemName: "quote.bubble").font(.caption2).foregroundStyle(.secondary)
+                        Image(systemName: "quote.bubble").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).frame(width: 14, height: 14)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("引用这条消息")
                 }
             }.font(.caption2.weight(.semibold))
             HStack {
-                if message.isUser { Spacer(minLength: 40) }
+                if message.isUser { Spacer(minLength: 44) }
                 VStack(alignment: .leading, spacing: 8) {
                     if message.isUser, hasUserImages {
                         // 用户发送的图片：作为小缩略图放在气泡内的左下角。
@@ -4476,7 +4489,7 @@ struct MessageRow: View {
                             if !message.text.isEmpty { markdownContent }
                             userImageThumbnails
                         }
-                        .padding(.horizontal, 14).padding(.vertical, 11)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
                         .background(Color(red: 0.08, green: 0.48, blue: 0.37),
                                     in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                         .foregroundStyle(.white)
@@ -4499,12 +4512,16 @@ struct MessageRow: View {
                             markdownContent
                                 
                                 .padding(.horizontal, 14).padding(.vertical, 11)
-                                .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                                .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(red: 0.949, green: 0.949, blue: 0.965), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .stroke(Color.primary.opacity(message.isUser ? 0 : 0.05), lineWidth: 0.5)
+                                )
                                 .foregroundStyle(message.isUser ? .white : .primary)
                         }
                     }
                 }
-                if !message.isUser { Spacer(minLength: 24) }
+                if !message.isUser { Spacer(minLength: 44) }
             }
             if message.isPending, let state = model.pendingSendState(for: message) {
                 HStack(spacing: 5) {
