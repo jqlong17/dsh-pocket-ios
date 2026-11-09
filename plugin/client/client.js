@@ -25,6 +25,30 @@ window.__ModuleLoader__.load({
       };
     }
 
+    function copyText(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch (e) { /* 继续走兜底 */ }
+      try {
+        var area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.top = "-1000px";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        return ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
     function unwrapRpc(result) {
       if (result && typeof result === "object" && "ok" in result) {
         if (!result.ok) return Promise.reject(new Error((result.error && result.error.message) || "RPC 失败"));
@@ -41,6 +65,10 @@ window.__ModuleLoader__.load({
       var pinState = React.useState(false);
       var showPin = pinState[0];
       var setShowPin = pinState[1];
+      var copiedState = React.useState(null);
+      var copied = copiedState[0];
+      var setCopied = copiedState[1];
+      var copyLabel = function (field) { return copied === field ? "已复制" : (field === "pin" ? "复制密码" : "复制地址"); };
       React.useEffect(function () {
         var alive = true;
         if (!props.rpcCall) {
@@ -74,7 +102,12 @@ window.__ModuleLoader__.load({
             status.available ? React.createElement("code", null, "tailscale serve --bg 3081") : null,
             status.available ? "，刷新本页即可生成二维码。" : ""));
       }
-      var copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) {} };
+      var copy = function (text, field) {
+        if (!text) return;
+        copyText(text);
+        setCopied(field);
+        setTimeout(function () { setCopied(null); }, 1500);
+      };
       return React.createElement("div", { style: { padding: 18, borderRadius: 14, border: "1px solid rgba(0,0,0,.08)" } },
         React.createElement("div", { style: { fontWeight: 600, fontSize: 16, marginBottom: 8 } }, "Tailscale 连接（推荐，地址固定且更稳定）"),
         React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.65, marginBottom: 12 } },
@@ -85,12 +118,12 @@ window.__ModuleLoader__.load({
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "固定地址"),
             React.createElement("div", { style: { fontSize: 13, wordBreak: "break-all", marginBottom: 10 } }, status.httpsUrl),
             React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 } },
-              React.createElement("button", { type: "button", onClick: function () { copy(status.httpsUrl); }, style: linkStyle(false) }, "复制地址")),
+              React.createElement("button", { type: "button", onClick: function () { copy(status.httpsUrl, "url"); }, style: linkStyle(false) }, copyLabel("url"))),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "访问密码（手动输入）"),
             React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
               React.createElement("code", { style: { fontSize: 14, letterSpacing: 1 } }, showPin ? (status.pin || "—") : "••••••••"),
               React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: linkStyle(false) }, showPin ? "隐藏" : "显示"),
-              React.createElement("button", { type: "button", onClick: function () { if (status.pin) copy(status.pin); }, style: linkStyle(false) }, "复制密码")),
+              React.createElement("button", { type: "button", onClick: function () { copy(status.pin, "pin"); }, style: linkStyle(false) }, copyLabel("pin"))),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
               "这是本机的访问密码，只保存在本机；请勿截图或分享给他人。未安装 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
     }
