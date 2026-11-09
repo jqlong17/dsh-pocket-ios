@@ -8,12 +8,44 @@ import PhotosUI
 import UIKit
 import Photos
 import os
+import AudioToolbox
+import UserNotifications
 
 private let pocketLogger = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "conversation")
 
 private func timingLog(_ message: String) {
     let line = "\(ISO8601DateFormatter().string(from: Date())) DSH_TIMING \(message)"
     NSLog("%@", line)
+}
+
+/// 会话完成提醒：本地通知（前台也会弹 banner + 声音）。
+final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = CompletionNotifier()
+    private var configured = false
+
+    func configure() {
+        guard !configured else { return }
+        configured = true
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func requestPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    func notify(title: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "对话已完成"
+        content.body = title.isEmpty ? "等待你的回复" : "「\(title)」等待你的回复"
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
 }
 
 @main
@@ -77,8 +109,23 @@ final class ConversationState {
 final class ConnectionModel {
     private static let savedServerAddressKey = "dsh-pocket.server-address"
     private static let savedEndpointsKey = "dsh-pocket.saved-endpoints"
+    private static let finishedAwaitingKey = "dsh-pocket.finished-awaiting"
+    private static let completionAlertKey = "dsh-pocket.completion-alert"
+    private static let runningSnapshotKey = "dsh-pocket.session-running"
     /// 记住的地址列表（局域网 + 公网各一份），仅用于手动选择，不自动切换。
     var savedEndpoints: [SavedEndpoint] = []
+    /// 已完成、等待用户回复的会话（红点）。持久化，打开会话后清除。
+    var finishedAwaitingSessionIds: Set<String> = Set(
+        UserDefaults.standard.stringArray(forKey: ConnectionModel.finishedAwaitingKey) ?? []
+    )
+    /// 完成提醒总开关（声音 + 通知）。
+    var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
+    /// App 是否在前台；后台期间的完成只在回前台时提醒。
+    var isAppActive = true
+    /// session/list 的 running 状态机，用于识别"运行中 → 已结束"。
+    private var completionTracker = SessionCompletionTracker(
+        previous: (UserDefaults.standard.dictionary(forKey: ConnectionModel.runningSnapshotKey) as? [String: Bool]) ?? [:]
+    )
 
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     private static let conversationMessageLimit = 30
@@ -411,7 +458,16 @@ final class ConnectionModel {
     }
 
     init() {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["DSH_RESET"] == "1" {
+            // UI 测试用：每次启动清空持久化状态，保证用例可重复。
+            for key in ["dsh-pocket.drafts", "dsh-pocket.finished-awaiting", "dsh-pocket.session-running", "dsh-pocket.send-outbox"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+#endif
         loadSavedEndpoints()
+        CompletionNotifier.shared.configure()
     }
 
     // MARK: - 地址记忆与自动切换（局域网优先）
@@ -862,6 +918,65 @@ final class ConnectionModel {
         ]
     }
 
+    // MARK: - 完成提醒（红点 / 声音 / 通知）
+
+    /// 用最新 session 列表更新 running 状态机，识别"运行中 → 已结束"的会话。
+    @MainActor
+    private func detectSessionCompletions() {
+        let latest = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0.running) })
+        let completed = completionTracker.update(latest: latest)
+        UserDefaults.standard.set(latest, forKey: Self.runningSnapshotKey)
+
+        // 重新开始运行的会话不再算"等待回复"。
+        for session in sessions where session.running {
+            finishedAwaitingSessionIds.remove(session.sessionId)
+        }
+
+        guard !completed.isEmpty else { return }
+        for sessionId in completed {
+            guard let session = sessions.first(where: { $0.sessionId == sessionId }) else { continue }
+            let viewing = selectedSession?.sessionId == sessionId && isAppActive
+            if viewing {
+                finishedAwaitingSessionIds.remove(sessionId)
+            } else {
+                finishedAwaitingSessionIds.insert(sessionId)
+                if completionAlertsEnabled { playCompletionFeedback(for: session) }
+            }
+        }
+        persistFinishedAwaiting()
+    }
+
+    @MainActor
+    func markFinishedAwaitingRead(_ sessionId: String) {
+        if finishedAwaitingSessionIds.remove(sessionId) != nil {
+            persistFinishedAwaiting()
+        }
+    }
+
+    @MainActor
+    func toggleCompletionAlerts() {
+        completionAlertsEnabled.toggle()
+        UserDefaults.standard.set(completionAlertsEnabled, forKey: Self.completionAlertKey)
+        if completionAlertsEnabled {
+            CompletionNotifier.shared.requestPermission()
+        }
+        recordDiagnostic("完成提醒：\(completionAlertsEnabled ? "开启" : "关闭")")
+    }
+
+    @MainActor
+    private func playCompletionFeedback(for session: PocketSession) {
+        CompletionNotifier.shared.notify(title: session.displayTitle)
+        // 通知被关闭时也有声音兜底。
+        AudioServicesPlaySystemSound(1007)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        recordDiagnostic("完成提醒：\(session.displayTitle)")
+    }
+
+    @MainActor
+    private func persistFinishedAwaiting() {
+        UserDefaults.standard.set(Array(finishedAwaitingSessionIds), forKey: Self.finishedAwaitingKey)
+    }
+
     @MainActor
     func loadSessions(silently: Bool = false) async {
         if isDemoMode { return }
@@ -871,6 +986,7 @@ final class ConnectionModel {
         do {
             sessions = try await fetchSessions()
             syncSelectedSessionMetadata()
+            detectSessionCompletions()
             errorMessage = nil
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
@@ -1002,6 +1118,7 @@ final class ConnectionModel {
         }
 
         selectedSession = session
+        markFinishedAwaitingRead(session.sessionId)
         liveConnection = .connecting
         // 未确认消息重新挂到该会话（发件箱兜底）；已有 messages 的会话保留历史。
         let outboxPending = restoreOutboxPending(for: session)
@@ -1292,12 +1409,34 @@ final class ConnectionModel {
 
     /// 按 turn 分组的工具步骤，供会话页折叠成"过程"一行。
     var stepGroups: [PocketStepGroup] {
-        Dictionary(grouping: steps, by: \.turn)
-            .map { turn, list in
-                PocketStepGroup(turn: turn, sequence: list.map(\.sequence).min() ?? 0,
-                                steps: list.sorted { $0.sequence < $1.sequence })
-            }
-            .sorted { $0.sequence < $1.sequence }
+        let sortedSteps = steps.sorted { $0.sequence < $1.sequence }
+        // 助手文字消息（非 pending）是过程段之间的分隔点：桌面端会把工具活动拆成多段。
+        let boundaries = messages
+            .filter { !$0.isUser && !$0.isPending && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map(\.sequence)
+            .sorted()
+
+        var groups: [PocketStepGroup] = []
+        var current: [PocketStep] = []
+        var lastSeq = Int.min
+        var lastTurn: Int?
+
+        func flush() {
+            guard let first = current.first else { return }
+            groups.append(PocketStepGroup(turn: first.turn, sequence: first.sequence, steps: current))
+            current = []
+        }
+
+        for step in sortedSteps {
+            let turnChanged = lastTurn != nil && step.turn != lastTurn
+            let crossedText = boundaries.contains { $0 > lastSeq && $0 < step.sequence }
+            if turnChanged || crossedText { flush() }
+            current.append(step)
+            lastSeq = step.sequence
+            lastTurn = step.turn
+        }
+        flush()
+        return groups
     }
 
     @MainActor
@@ -1639,6 +1778,8 @@ final class ConnectionModel {
             recordDiagnostic("发送前纠正会话：期望 \(session.displayTitle)")
             selectedSession = session
             open(session)
+            // 继续发送，避免"点了发送但输入框内容还在、也没发出去"。
+            sendMessage()
             return
         }
         sendMessage()
@@ -1921,6 +2062,7 @@ final class ConnectionModel {
     @MainActor
     private func performSend(text: String, attachments: [PocketDraftImage]) async {
         guard let session = selectedSession, !isSending else { return }
+        let sendConversation = conversations[session.sessionId]
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let requestId = UUID().uuidString.lowercased()
         let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId)
@@ -1935,6 +2077,11 @@ final class ConnectionModel {
         cancelledImages = attachments
         draft = ""
         draftImages = []
+        if let sendConversation {
+            sendConversation.draft = ""
+            sendConversation.draftImages = []
+        }
+        DraftStore.save("", for: session.sessionId)
         isSending = true
         defer {
             isSending = false
@@ -1959,7 +2106,7 @@ final class ConnectionModel {
             // 不再用 queue（queue 会把消息排到本轮之后，形成 inbox 排队）。
             let promptMode = isTurnRunning ? "steer" : "queue"
             recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
-            _ = try await rpc("session/prompt", args: ["request": [
+            _ = try await rpcWithRetry("session/prompt", args: ["request": [
                 "requestId": requestId,
                 "sessionId": session.sessionId,
                 "mode": promptMode,
@@ -1981,12 +2128,19 @@ final class ConnectionModel {
             // 否则实时回复先到、轮询提前退出时，待确认消息会带着临时序号排在回复后面。
             await loadHistory(session)
             await pollForReply(session, after: text, afterSequence: lastSequence)
-            // 服务端 ACK 了但消息始终没有落库（steer 在部分运行状态下会被丢弃）：
-            // 标记失败让用户可重发，而不是永远显示"发送中"。
+            // 服务端 ACK 后如果还没收到确认，先主动核验一次（网络抖动时 WS/轮询可能错过确认），
+            // 核验不到再标记失败，避免误报吓人。
             if ackedSendRpcIds.contains(requestId) {
-                failedSendRpcIds.insert(requestId)
-                conversationError = "消息已发出但服务端未确认（可能被丢弃），点消息下方「重新发送」重试。"
-                recordDiagnostic("发送未被确认，标记失败：\(requestId)")
+                let landed = await verifySendLanded(session: session, requestId: requestId)
+                if landed {
+                    confirmOutbox(rpcIds: [requestId])
+                    ackedSendRpcIds.remove(requestId)
+                    recordDiagnostic("发送核验成功：\(requestId)")
+                } else {
+                    failedSendRpcIds.insert(requestId)
+                    conversationError = "网络不稳定，这条消息暂时没拿到服务端确认。可点消息下方「重新发送」（按 requestId 去重，不会重复）。"
+                    recordDiagnostic("发送未确认（核验失败）：\(requestId)")
+                }
             }
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled {
@@ -1998,6 +2152,59 @@ final class ConnectionModel {
             failedSendRpcIds.insert(requestId)
             conversationError = "发送失败：\(error.localizedDescription)（点消息气泡下方「重新发送」可重试）"
         }
+    }
+
+    /// 对网络抖动做有限重试（仅用于幂等请求：session/prompt 按 requestId 去重、session/page 只读）。
+    private func rpcWithRetry(_ endpoint: String, args: [String: Any], attempts: Int = 3) async throws -> [String: Any] {
+        var lastError: Error?
+        for attempt in 0..<attempts {
+            if Task.isCancelled { throw CancellationError() }
+            do {
+                return try await rpc(endpoint, args: args)
+            } catch {
+                lastError = error
+                guard isTransientNetworkError(error), attempt < attempts - 1 else { throw error }
+                await MainActor.run { [weak self] in
+                    self?.recordDiagnostic("网络抖动，重试 \(endpoint)（第 \(attempt + 2) 次）")
+                }
+                try? await Task.sleep(for: .milliseconds(attempt == 0 ? 800 : 2000))
+            }
+        }
+        throw lastError ?? ConnectionError.server(-1)
+    }
+
+    private func isTransientNetworkError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+             .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// 主动核验消息是否真的落库：在最近会话历史里按 rpcId 精确查找。
+    private func verifySendLanded(session: PocketSession, requestId: String) async -> Bool {
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(attempt == 1 ? 1.5 : 3))
+            }
+            guard let value = try? await rpc("session/page", args: ["request": [
+                "address": ["kind": "session", "sessionId": session.sessionId],
+                "maxMessages": 20
+            ]]) else { continue }
+            let records = value["records"] as? [[String: Any]] ?? []
+            for record in records {
+                guard let event = record["event"] as? [String: Any],
+                      event["type"] as? String == "user/message",
+                      let data = event["data"] as? [String: Any],
+                      let source = data["source"] as? [String: Any],
+                      let rpcId = source["rpcId"] as? String else { continue }
+                if RPCId.matches(rpcId, requestId) { return true }
+            }
+        }
+        return false
     }
 
     private func rpc(_ endpoint: String, args: [String: Any]) async throws -> [String: Any] {
@@ -2342,7 +2549,8 @@ struct PocketStepGroup: Identifiable {
     let turn: Int
     let sequence: Int
     let steps: [PocketStep]
-    var id: Int { turn }
+    /// 同一 turn 里可能有多段"过程"（被助手文字分隔），用起始 seq 作为唯一 id。
+    var id: String { "steps-\(sequence)" }
 }
 
 private struct StreamOpen: Encodable {
@@ -2451,9 +2659,19 @@ struct RootView: View {
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
         .task { await model.restoreConnection() }
         .onChange(of: scenePhase) { _, phase in
+            model.isAppActive = (phase == .active)
             // 回到前台只静默刷新列表，不自动切换网络，避免打断当前会话。
             guard phase == .active, model.isConnected else { return }
             Task { await model.loadSessions(silently: true) }
+        }
+        .task(id: model.isConnected) {
+            // 周期刷新会话列表，识别"其他会话跑完了"（完成提醒的红点/通知）。
+            guard model.isConnected, !model.isDemoMode else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                if Task.isCancelled { break }
+                await model.loadSessions(silently: true)
+            }
         }
     }
 }
@@ -2803,16 +3021,26 @@ struct ConnectedView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(model.sessions) { session in
+                let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
                 NavigationLink(value: session) {
                     HStack(spacing: 12) {
-                        Image(systemName: session.running ? "ellipsis.bubble.fill" : "bubble.left").foregroundStyle(session.running ? .green : .secondary).frame(width: 28)
+                        Image(systemName: session.running ? "ellipsis.bubble.fill" : (finishedAwaiting ? "bell.badge.fill" : "bubble.left"))
+                            .foregroundStyle(session.running ? .green : (finishedAwaiting ? .red : .secondary))
+                            .frame(width: 28)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
-                            Text(session.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (session.running ? "正在运行" : "对话记录"))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Text(finishedAwaiting ? "已完成，等待你的回复"
+                                 : (session.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (session.running ? "正在运行" : "对话记录")))
+                                .font(.caption)
+                                .foregroundStyle(finishedAwaiting ? Color.red : .secondary)
+                                .lineLimit(1)
                         }
                         Spacer()
-                        if session.running { Circle().fill(.green).frame(width: 7, height: 7) }
+                        if session.running {
+                            Circle().fill(.green).frame(width: 7, height: 7)
+                        } else if finishedAwaiting {
+                            Circle().fill(.red).frame(width: 7, height: 7)
+                        }
                     }.padding(.vertical, 4)
                 }
             }
@@ -2829,6 +3057,10 @@ struct ConnectedView: View {
                 }
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { model.toggleCompletionAlerts() } label: {
+                    Image(systemName: model.completionAlertsEnabled ? "bell" : "bell.slash")
+                }
+                .accessibilityLabel(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒")
                 if !model.savedEndpoints.isEmpty {
                     Menu {
                         ForEach(model.savedEndpoints) { endpoint in
@@ -3000,7 +3232,7 @@ struct ConversationView: View {
             TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), sequence: $0.sequence, message: $0, group: nil)
         }
         for group in model.stepGroups {
-            result.append(TimelineEntry(id: "steps-\(group.turn)", sortKey: group.sequence, sequence: group.sequence, message: nil, group: group))
+            result.append(TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence, message: nil, group: group))
         }
         return result.sorted { lhs, rhs in
             if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
@@ -3440,6 +3672,46 @@ struct MessageRow: View {
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
 
+    private var hasUserImages: Bool {
+        message.isUser && (!message.localImages.isEmpty || !message.images.isEmpty)
+    }
+
+    /// 气泡内的 Markdown（含原位置插图）。
+    @ViewBuilder
+    private var markdownContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(model.markdownSegments(message.text).enumerated()), id: \.offset) { _, segment in
+                switch segment {
+                case .text(let markdown):
+                    MarkdownBody(text: markdown, foreground: message.isUser ? .white : .primary)
+                        .textSelection(.enabled)
+                case .image(let url, let caption):
+                    RemoteMarkdownImage(url: url, caption: caption)
+                }
+            }
+        }
+    }
+
+    /// 用户消息的图片缩略图（气泡内左下角，小尺寸）。
+    @ViewBuilder
+    private var userImageThumbnails: some View {
+        HStack(spacing: 6) {
+            if !message.localImages.isEmpty {
+                ForEach(Array(message.localImages.enumerated()), id: \.offset) { _, image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .contentShape(Rectangle())
+                        .onTapGesture { previewItem = PreviewImageItem(image: image) }
+                }
+            } else {
+                ForEach(message.images) { ref in
+                    AttachmentThumbnail(ref: ref, model: model, size: 88)
+                }
+            }
+        }
+    }
+
     private func pendingStateColor(_ state: ConnectionModel.PendingSendState) -> Color {
         if case .failed = state { return Color.red.opacity(0.85) }
         return Color.secondary
@@ -3465,34 +3737,37 @@ struct MessageRow: View {
             HStack {
                 if message.isUser { Spacer(minLength: 40) }
                 VStack(alignment: .leading, spacing: 8) {
-                    if !message.localImages.isEmpty {
-                        ForEach(Array(message.localImages.enumerated()), id: \.offset) { _, image in
-                            Image(uiImage: image).resizable().scaledToFill()
-                                .frame(width: 150, height: 150)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .contentShape(Rectangle())
-                                .onTapGesture { previewItem = PreviewImageItem(image: image) }
-                        }
-                    } else if !message.images.isEmpty {
-                        ForEach(message.images) { ref in
-                            AttachmentThumbnail(ref: ref, model: model, size: 150)
-                        }
-                    }
-                    if !message.text.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(Array(model.markdownSegments(message.text).enumerated()), id: \.offset) { _, segment in
-                                switch segment {
-                                case .text(let markdown):
-                                    MarkdownBody(text: markdown, foreground: message.isUser ? .white : .primary)
-                                        .textSelection(.enabled)
-                                case .image(let url, let caption):
-                                    RemoteMarkdownImage(url: url, caption: caption)
-                                }
-                            }
+                    if message.isUser, hasUserImages {
+                        // 用户发送的图片：作为小缩略图放在气泡内的左下角。
+                        VStack(alignment: .leading, spacing: 8) {
+                            if !message.text.isEmpty { markdownContent }
+                            userImageThumbnails
                         }
                         .padding(.horizontal, 14).padding(.vertical, 11)
-                        .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                        .foregroundStyle(message.isUser ? .white : .primary)
+                        .background(Color(red: 0.08, green: 0.48, blue: 0.37),
+                                    in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                        .foregroundStyle(.white)
+                    } else {
+                        // 助手消息里的 attachment 图片仍显示在气泡上方。
+                        if !message.isUser, !message.localImages.isEmpty {
+                            ForEach(Array(message.localImages.enumerated()), id: \.offset) { _, image in
+                                Image(uiImage: image).resizable().scaledToFill()
+                                    .frame(width: 150, height: 150)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { previewItem = PreviewImageItem(image: image) }
+                            }
+                        } else if !message.isUser, !message.images.isEmpty {
+                            ForEach(message.images) { ref in
+                                AttachmentThumbnail(ref: ref, model: model, size: 150)
+                            }
+                        }
+                        if !message.text.isEmpty {
+                            markdownContent
+                                .padding(.horizontal, 14).padding(.vertical, 11)
+                                .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                                .foregroundStyle(message.isUser ? .white : .primary)
+                        }
                     }
                 }
                 if !message.isUser { Spacer(minLength: 24) }
@@ -3741,7 +4016,12 @@ struct ProcessRow: View {
     let toggle: () -> Void
 
     private var summary: String {
-        let labels = Array(Set(group.steps.map(\.label)))
+        var seen = Set<String>()
+        var labels: [String] = []
+        for step in group.steps where !seen.contains(step.label) {
+            seen.insert(step.label)
+            labels.append(step.label)
+        }
         let joined = labels.prefix(3).joined(separator: "、")
         return "过程 · \(group.steps.count) 步 · \(joined)"
     }
@@ -3857,7 +4137,7 @@ extension ConnectionModel {
                                  content: .message(message))
         }
         for group in stepGroups {
-            result.append(ConversationListItem(id: "steps-\(group.turn)",
+            result.append(ConversationListItem(id: group.id,
                                                sortKey: group.sequence,
                                                sequence: group.sequence,
                                                content: .steps(group)))
@@ -3923,7 +4203,7 @@ struct UIKitMessageList: UIViewRepresentable {
         private var lookup: [String: ConversationListItem] = [:]
         private var orderedIDs: [String] = []          // 从旧到新
         private var snapshotIDs: [String] = []         // 翻转后：从新到旧
-        private var expandedTurns: Set<Int> = []
+        private var expandedGroupIDs: Set<String> = []
         private var fingerprints: [String: String] = [:]
         private var isAtBottom = true
         private var isApplying = false
@@ -3966,9 +4246,9 @@ struct UIKitMessageList: UIViewRepresentable {
                 let turn = group.turn
                 return AnyView(
                     ProcessRow(group: group,
-                               expanded: expandedTurns.contains(turn),
+                               expanded: expandedGroupIDs.contains(group.id),
                                model: parent.model) { [weak self] in
-                        self?.toggleExpanded(turn)
+                        self?.toggleExpanded(group.id)
                     }
                     .id(item.id)
                     .transaction { transaction in
@@ -3982,10 +4262,9 @@ struct UIKitMessageList: UIViewRepresentable {
             return AnyView(Color.clear)
         }
 
-        private func toggleExpanded(_ turn: Int) {
-            if expandedTurns.contains(turn) { expandedTurns.remove(turn) } else { expandedTurns.insert(turn) }
+        private func toggleExpanded(_ id: String) {
+            if expandedGroupIDs.contains(id) { expandedGroupIDs.remove(id) } else { expandedGroupIDs.insert(id) }
             guard let tableView else { return }
-            let id = "steps-\(turn)"
             if let item = lookup[id] { fingerprints[id] = fingerprint(for: item) }
             reconfigure(id: id, in: tableView)
         }
@@ -4012,7 +4291,7 @@ struct UIKitMessageList: UIViewRepresentable {
                 let steps = group.steps.map { step in
                     "\(step.id):\(step.name):\(step.detail):\(step.resultText.count):\(step.images.count):\(step.finished ? 1 : 0)"
                 }.joined(separator: ",")
-                return "s|\(group.turn)|\(steps)|\(expandedTurns.contains(group.turn) ? 1 : 0)"
+                return "s|\(group.turn)|\(steps)|\(expandedGroupIDs.contains(group.id) ? 1 : 0)"
             }
         }
 

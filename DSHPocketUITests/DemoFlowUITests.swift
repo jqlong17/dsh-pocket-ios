@@ -9,6 +9,7 @@ final class DemoFlowUITests: XCTestCase {
     private func launchDemo(session: String = "demo-1") -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["DSH_DEMO"] = "1"
+        app.launchEnvironment["DSH_RESET"] = "1"
         app.launchEnvironment["DSH_OPEN"] = session
         app.launch()
         return app
