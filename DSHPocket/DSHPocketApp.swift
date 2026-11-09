@@ -3926,6 +3926,9 @@ struct UIKitMessageList: UIViewRepresentable {
         private var fingerprints: [String: String] = [:]
         private var isAtBottom = true
         private var isApplying = false
+        private var isDragging = false
+        private var isDecelerating = false
+        private var pendingItems: [ConversationListItem]?
         private var lastNearTopLoad = Date.distantPast
         private weak var tableView: UITableView?
         var lastScrollTick = Int.min
@@ -4013,7 +4016,23 @@ struct UIKitMessageList: UIViewRepresentable {
             dataSource.apply(snapshot, animatingDifferences: false)
         }
 
+        /// 参考 Element X：拖动/惯性滚动期间不更新数据源，等滚动停止后再统一应用，
+        /// 避免滚动中行高变化造成"气泡里的文字在滚动/抖动"。
         func apply(items: [ConversationListItem], in tableView: UITableView) {
+            if isDragging || isDecelerating {
+                pendingItems = items
+                return
+            }
+            applyNow(items: items, in: tableView)
+        }
+
+        private func flushPendingApply() {
+            guard let items = pendingItems, let tableView else { return }
+            pendingItems = nil
+            applyNow(items: items, in: tableView)
+        }
+
+        private func applyNow(items: [ConversationListItem], in tableView: UITableView) {
             let newIDs = items.map(\.id)
             lookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
@@ -4066,6 +4085,28 @@ struct UIKitMessageList: UIViewRepresentable {
 
         // MARK: UIScrollViewDelegate
 
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            isDragging = true
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            isDragging = false
+            if decelerate {
+                isDecelerating = true
+            } else {
+                flushPendingApply()
+            }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            isDecelerating = false
+            flushPendingApply()
+        }
+
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            flushPendingApply()
+        }
+
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             guard !isApplying else { return }
             // 翻转表：offset 0 = 视觉底部；越大越接近视觉顶部。
@@ -4086,11 +4127,6 @@ struct UIKitMessageList: UIViewRepresentable {
 
 final class UIKitMessageCell: UITableViewCell {
     static let reuseID = "UIKitMessageCell"
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        contentConfiguration = nil
-    }
 
     func configure(view: AnyView) {
         contentConfiguration = UIHostingConfiguration {
