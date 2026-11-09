@@ -22,7 +22,7 @@ const CHANNEL = '/dsh-pocket-ios'
 const TAILSCALE_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
 const BODY_MAX = 64 * 1024
 /** 稳定本地入口端口：Tailscale Serve 指向它；默认 3081（与 dsh-pocket 代理端口一致）。 */
-const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3081)
+const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3091)
 
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
 async function logLine(line) {

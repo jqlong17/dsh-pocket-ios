@@ -57,11 +57,11 @@ App：<https://apps.apple.com/app/id6832288744>（DSH Pocket iOS）。
 
 ## 端口说明
 
-稳定入口默认 **3081**，与 `dsh-pocket` 的代理端口相同，两者不能同时启用。需要共存时：
+稳定入口默认 **3091**（避开 dsh-pocket 的 3081），可与 dsh-pocket 同时启用：
 
-```bash
-DSH_POCKET_IOS_PROXY_PORT=3091 dsh start   # 并把 tailscale serve 指向 3091
-```
+- Tailscale Serve 指向 3091：`tailscale serve --bg 3091`
+- dsh-pocket 继续占用 3081 提供局域网/公网二维码
+- 如需改端口：`DSH_POCKET_IOS_PROXY_PORT=<port> dsh start`，并同步 `tailscale serve`
 
 ## 安全
 
