@@ -4,7 +4,8 @@
  * 2) 读取 dsh-pocket 的访问密码，生成带 `?pin=` 的二维码（App 扫码即连）；
  * 3) 通过 webServer 暴露 `/dsh-pocket-ios/tailscale.status` 给设置页卡片。
  */
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { randomInt } from 'node:crypto'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
@@ -38,14 +39,20 @@ async function tailscale(args) {
   }
 }
 
+const PIN_FILE = join(LOG_DIR, 'pin')
+
+/** 读取（或首次生成）本插件自己的访问密码，不依赖 dsh-pocket。 */
 async function readPin() {
-  for (const file of ['token-lan', 'token']) {
-    try {
-      const value = (await readFile(join(homedir(), '.dsh', 'dsh-pocket', file), 'utf8')).trim()
-      if (value) return value
-    } catch { /* 文件不存在时继续尝试下一个 */ }
-  }
-  return null
+  try {
+    const existing = (await readFile(PIN_FILE, 'utf8')).trim()
+    if (/^[A-Za-z0-9]{8,64}$/.test(existing)) return existing
+  } catch { /* 首次运行：下面生成 */ }
+  const pin = String(randomInt(10_000_000, 100_000_000))
+  try {
+    await mkdir(LOG_DIR, { recursive: true })
+    await writeFile(PIN_FILE, pin, { mode: 0o600 })
+  } catch { /* 写失败仍返回内存值 */ }
+  return pin
 }
 
 /** 读取配置文件里的 Tailscale 地址（DSH 宿主进程往往访问不到 Tailscale GUI 的 IPC，
@@ -101,9 +108,10 @@ export async function tailscaleStatus() {
   }
 
   const pin = await readPin()
-  const qrUrl = httpsUrl && pin ? `${httpsUrl}?pin=${encodeURIComponent(pin)}` : httpsUrl
+  // 产品安全：二维码只包含连接地址，绝不把访问密码写进二维码/图片。
+  const qrUrl = httpsUrl
   const qr = qrUrl ? await QRCode.toDataURL(qrUrl, { margin: 1, width: 360 }) : null
-  return { available: Boolean(dnsName) || Boolean(httpsUrl), dnsName, httpsUrl, pinSet: Boolean(pin), qrUrl, qr, serveRaw, source }
+  return { available: Boolean(dnsName) || Boolean(httpsUrl), dnsName, httpsUrl, pin, pinSet: Boolean(pin), qrUrl, qr, serveRaw, source }
 }
 
 function endpointFromPath(pathname) {
@@ -145,15 +153,42 @@ export function apply(ctx) {
     path: CHANNEL,
     handler: async (req, res) => {
       try {
-        if (typeof connection?.requestRejection === 'function') {
+        const rawPath = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
+        const isLogin = rawPath === `${CHANNEL}/login`
+        if (!isLogin && typeof connection?.requestRejection === 'function') {
           const rejection = connection.requestRejection(req)
           if (rejection !== undefined) {
             send(res, rejection, { ok: false })
             return
           }
         }
-        const endpoint = endpointFromPath(new URL(req.url ?? '/', 'http://127.0.0.1').pathname)
-        if (req.method !== 'POST' || endpoint === undefined) {
+        const urlObject = new URL(req.url ?? '/', 'http://127.0.0.1')
+        const endpoint = endpointFromPath(urlObject.pathname)
+        if (endpoint === undefined) {
+          send(res, 404, { ok: false })
+          return
+        }
+        // 登录端点：不需要已有浏览器会话，用本插件自己的 PIN 换 DSH 的认证 cookie。
+        if (endpoint === 'login') {
+          if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
+          let pinAttempt = urlObject.searchParams.get('token') ?? ''
+          if (req.method === 'POST') {
+            const body = await readBody(req)
+            pinAttempt = (body && (body.token ?? body.pin)) ?? pinAttempt
+          }
+          const expected = await readPin()
+          if (String(pinAttempt) !== expected) { send(res, 401, { ok: false }); return }
+          const base = (await readConfiguredUrl()) ?? null
+          if (!base || typeof connection?.authenticatedUrl !== 'function') {
+            send(res, 503, { ok: false })
+            return
+          }
+          const target = connection.authenticatedUrl(`${base}/`)
+          res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+          res.end()
+          return
+        }
+        if (req.method !== 'POST') {
           send(res, 404, { ok: false })
           return
         }

@@ -71,19 +71,28 @@ window.__ModuleLoader__.load({
             status.available ? React.createElement("code", null, "tailscale serve --bg 3081") : null,
             status.available ? "，刷新本页即可生成二维码。" : ""));
       }
-      var copy = function () { try { navigator.clipboard.writeText(status.httpsUrl); } catch (e) {} };
+      var copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) {} };
+      var pinState = React.useState(false);
+      var showPin = pinState[0];
+      var setShowPin = pinState[1];
       return React.createElement("div", { style: { padding: 18, borderRadius: 14, border: "1px solid rgba(0,0,0,.08)" } },
         React.createElement("div", { style: { fontWeight: 600, fontSize: 16, marginBottom: 8 } }, "Tailscale 连接（推荐，地址固定且更稳定）"),
         React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.65, marginBottom: 12 } },
-          "手机装好 Tailscale（同一账号、开启 VPN）后，用 DSH Pocket 扫下面的二维码即可连接：二维码里已包含地址与访问密码，扫完自动连接。换 Wi‑Fi / 切 4G 都不用重新扫码。"),
+          "手机装好 Tailscale（同一账号、开启 VPN）后，用 DSH Pocket 扫下面的二维码即可填入地址，再输入本机访问密码连接。换 Wi‑Fi / 切 4G 都不用重新扫码。二维码只包含地址，不包含密码。"),
         React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" } },
           status.qr ? React.createElement("img", { src: status.qr, alt: "Tailscale 连接二维码", style: { width: 158, height: 158, borderRadius: 10, background: "#fff", padding: 6, border: "1px solid rgba(0,0,0,.06)" } }) : null,
           React.createElement("div", { style: { flex: "1 1 220px", minWidth: 0 } },
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "固定地址"),
             React.createElement("div", { style: { fontSize: 13, wordBreak: "break-all", marginBottom: 10 } }, status.httpsUrl),
-            React.createElement("button", { type: "button", onClick: copy, style: linkStyle(false) }, "复制地址"),
+            React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 } },
+              React.createElement("button", { type: "button", onClick: function () { copy(status.httpsUrl); }, style: linkStyle(false) }, "复制地址")),
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "访问密码（手动输入）"),
+            React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
+              React.createElement("code", { style: { fontSize: 14, letterSpacing: 1 } }, showPin ? (status.pin || "—") : "••••••••"),
+              React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: linkStyle(false) }, showPin ? "隐藏" : "显示"),
+              React.createElement("button", { type: "button", onClick: function () { if (status.pin) copy(status.pin); }, style: linkStyle(false) }, "复制密码")),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
-              "如果二维码里没有密码，也可以手动输入访问密码；未安装 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
+              "这是本机的访问密码，只保存在本机；请勿截图或分享给他人。未安装 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
     }
 
     function MobileAccessPanel(props) {

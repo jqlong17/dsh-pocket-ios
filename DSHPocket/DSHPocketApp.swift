@@ -362,27 +362,45 @@ final class ConnectionModel {
         let loginSession = URLSession(configuration: .default, delegate: recorder, delegateQueue: nil)
         defer { loginSession.finishTasksAndInvalidate() }
         do {
-            var request = URLRequest(url: url.appending(path: "pocket-login"))
-            request.httpMethod = "POST"
-            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            var body = URLComponents()
-            body.queryItems = [URLQueryItem(name: "token", value: pin)]
-            request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
-            request.httpShouldHandleCookies = true
-            let (_, response) = try await loginSession.data(for: request)
-            guard let http = response as? HTTPURLResponse else { throw ConnectionError.unexpectedResponse }
-            let hasPocketCookie = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name == "dsh_pocket_token" } ?? false
-            recordDiagnostic("登录响应：HTTP \(http.statusCode)，重定向=\(recorder.redirected ? "是" : "否")，pocket cookie=\(hasPocketCookie ? "有" : "无")")
-            if http.statusCode == 429 {
-                let retryAfter = Int(http.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 60
-                throw ConnectionError.rateLimited(retryAfter)
+            // 登录优先走本插件自带的端点（不依赖 dsh-pocket）：
+            //   POST /dsh-pocket-ios/login  form: token=<PIN>
+            //   校验通过 → 302 到 DSH 的 browser-auth token URL，种 dsh-auth cookie。
+            // 若插件不存在（404/405），回退到 dsh-pocket 的 /pocket-login。
+            func postForm(_ path: String) async throws -> (HTTPURLResponse, Bool) {
+                var request = URLRequest(url: url.appending(path: path))
+                request.httpMethod = "POST"
+                request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+                var body = URLComponents()
+                body.queryItems = [URLQueryItem(name: "token", value: pin)]
+                request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
+                request.httpShouldHandleCookies = true
+                let (_, response) = try await loginSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else { throw ConnectionError.unexpectedResponse }
+                return (http, recorder.redirected)
             }
-            if http.statusCode == 401 || http.statusCode == 403 { throw ConnectionError.invalidPin }
-            guard (200..<400).contains(http.statusCode) else { throw ConnectionError.server(http.statusCode) }
-            // DSH Pocket 协议：密码正确 → 302 到 `/?dsh-pocket-auth=1` 并种 dsh_pocket_token
-            // cookie；密码错误 → 200 + 登录页。以前把 200 当成功，导致错误密码也"连上"
-            // 然后在 session/list 上撞 401，提示完全误导。
-            guard recorder.redirected || hasPocketCookie else { throw ConnectionError.invalidPin }
+
+            var loginOK = false
+            let (pluginHTTP, pluginRedirected) = try await postForm("dsh-pocket-ios/login")
+            let hasDSHAuth = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name.hasPrefix("dsh-auth") } ?? false
+            recordDiagnostic("插件登录：HTTP \(pluginHTTP.statusCode)，重定向=\(pluginRedirected ? "是" : "否")，dsh-auth cookie=\(hasDSHAuth ? "有" : "无")")
+            if (200..<400).contains(pluginHTTP.statusCode), hasDSHAuth || pluginRedirected {
+                loginOK = true
+            } else if pluginHTTP.statusCode == 404 || pluginHTTP.statusCode == 405 || pluginHTTP.statusCode == 503 {
+                // 没有安装本插件：回退 dsh-pocket 的登录协议。
+                let (pocketHTTP, pocketRedirected) = try await postForm("pocket-login")
+                recordDiagnostic("dsh-pocket 登录回退：HTTP \(pocketHTTP.statusCode)")
+                if pocketHTTP.statusCode == 429 {
+                    let retryAfter = Int(pocketHTTP.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 60
+                    throw ConnectionError.rateLimited(retryAfter)
+                }
+                if pocketHTTP.statusCode == 401 || pocketHTTP.statusCode == 403 { throw ConnectionError.invalidPin }
+                let hasPocketCookie = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name == "dsh_pocket_token" } ?? false
+                loginOK = (200..<400).contains(pocketHTTP.statusCode) && (pocketRedirected || hasPocketCookie)
+            } else if pluginHTTP.statusCode == 401 {
+                throw ConnectionError.invalidPin
+            }
+            guard loginOK else { throw ConnectionError.invalidPin }
+
             sessions = try await fetchSessions()
             isConnected = true
             UserDefaults.standard.set(serverAddress, forKey: Self.savedServerAddressKey)
