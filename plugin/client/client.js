@@ -261,6 +261,17 @@ window.__ModuleLoader__.load({
 
     function ensureMobileAccessNavEntry() {
       if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+      // 如果官方 settings.section 已渲染出同名原生 tab，就不再注入我们的兜底入口，避免重复。
+      var natives = Array.prototype.slice.call(document.querySelectorAll("button,div,span"));
+      for (var i = 0; i < natives.length; i++) {
+        var node = natives[i];
+        if (node.id === MOBILE_NAV_ID) continue;
+        if ((node.textContent || "").trim() === "手机访问（iOS）" && node.childElementCount <= 2) {
+          var injected = document.getElementById(MOBILE_NAV_ID);
+          if (injected) injected.remove();
+          return;
+        }
+      }
       var existing = document.getElementById(MOBILE_NAV_ID);
       // 只在设置面板打开时保留入口。
       var navLabel = null;
