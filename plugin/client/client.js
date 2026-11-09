@@ -458,20 +458,34 @@ window.__ModuleLoader__.load({
       function MobileAccessSection() {
         return React.createElement(MobileAccessPanel, { rpcCall: rpcCall });
       }
-      try {
-        ctx.slots.inject("settings.section", function () {
-          return ctx.slots.register(
-            {
-              name: "settings.section",
-              id: "pocket-ios",
-              order: 0,
-              label: function () { return "手机访问（iOS）"; },
-              inject: function () { return { rpcCall: rpcCall }; }
-            },
-            MobileAccessSection
-          );
-        });
-      } catch (e) {}
+      // 官方 settings.section：等 slots 服务就绪后再注册（启动早期可能还不可用）。
+      var sectionRegistered = false;
+      var sectionAttempts = 0;
+      function registerSettingsSection() {
+        if (sectionRegistered || sectionAttempts > 40) return;
+        sectionAttempts += 1;
+        try {
+          if (!ctx.slots || typeof ctx.slots.inject !== "function") throw new Error("ctx.slots unavailable");
+          ctx.slots.inject("settings.section", function () {
+            return ctx.slots.register(
+              {
+                name: "settings.section",
+                id: "pocket-ios",
+                order: 0,
+                label: function () { return "手机访问（iOS）"; },
+                inject: function () { return { rpcCall: rpcCall }; }
+              },
+              MobileAccessSection
+            );
+          });
+          sectionRegistered = true;
+          try { window.__dshPocketIosSection = "registered"; } catch (e) {}
+        } catch (error) {
+          try { window.__dshPocketIosSection = "error: " + String((error && error.message) || error); } catch (e) {}
+          setTimeout(registerSettingsSection, 1000);
+        }
+      }
+      registerSettingsSection();
       startObserver();
     }
 
