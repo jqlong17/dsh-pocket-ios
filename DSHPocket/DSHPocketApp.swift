@@ -495,26 +495,44 @@ final class ConnectionModel {
         }
     }
 
-    /// 把回复里的本地图片（相对 cwd 的路径）解析成 `api/file` 可访问 URL，并把图片行从 Markdown 中移除。
-    func renderedMarkdown(_ markdown: String) -> (text: String, imageURLs: [URL]) {
-        guard markdown.contains("![") else { return (markdown, []) }
-        var kept: [String] = []
-        var urls: [URL] = []
-        let regex = try? NSRegularExpression(pattern: #"^!\[[^\]]*\]\(([^)\s]+)\)$"#)
+    enum MarkdownSegment: Equatable {
+        case text(String)
+        case image(URL, caption: String?)
+    }
+
+    /// 把回复切成有序片段：文本段与图片段交替，图片按 Markdown 中的原位置渲染。
+    func markdownSegments(_ markdown: String) -> [MarkdownSegment] {
+        guard markdown.contains("![") else { return [.text(markdown)] }
+        var segments: [MarkdownSegment] = []
+        var buffer: [String] = []
+        let regex = try? NSRegularExpression(pattern: #"^!\[([^\]]*)\]\(([^)\s]+)\)$"#)
+
+        func flushText() {
+            let joined = buffer.joined(separator: "\n").trimmingCharacters(in: .newlines)
+            if !joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                segments.append(.text(joined))
+            }
+            buffer.removeAll()
+        }
+
         for line in markdown.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let regex,
                let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
-               let range = Range(match.range(at: 1), in: trimmed) {
-                let destination = String(trimmed[range])
+               let captionRange = Range(match.range(at: 1), in: trimmed),
+               let destinationRange = Range(match.range(at: 2), in: trimmed) {
+                let caption = String(trimmed[captionRange])
+                let destination = String(trimmed[destinationRange])
                 if let url = markdownImageURL(for: destination) {
-                    urls.append(url)
+                    flushText()
+                    segments.append(.image(url, caption: caption.isEmpty ? nil : caption))
                     continue
                 }
             }
-            kept.append(line)
+            buffer.append(line)
         }
-        return (kept.joined(separator: "\n"), urls)
+        flushText()
+        return segments.isEmpty ? [.text(markdown)] : segments
     }
 
     private func markdownImageURL(for destination: String) -> URL? {
@@ -1003,10 +1021,14 @@ final class ConnectionModel {
                 }
             }
 #if DEBUG
-            if DebugLaunch.loadOlder {
+            let olderLoads = DebugLaunch.loadOlderCount
+            if olderLoads > 0 {
                 Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(4))
-                    self?.loadOlderMessages()
+                    try? await Task.sleep(for: .seconds(3))
+                    for _ in 0..<olderLoads {
+                        self?.loadOlderMessages()
+                        try? await Task.sleep(for: .seconds(2))
+                    }
                 }
             }
 #endif
@@ -2390,7 +2412,10 @@ enum DebugLaunch {
     static var pin: String? { environment["DSH_PIN"] ?? value(for: "--dsh-pin") }
     static var sessionId: String? { environment["DSH_OPEN"] ?? value(for: "--dsh-open") }
     static var sendText: String? { environment["DSH_SEND"] ?? value(for: "--dsh-send") }
-    static var loadOlder: Bool { environment["DSH_LOAD_OLDER"] == "1" }
+    static var loadOlderCount: Int {
+        guard let raw = environment["DSH_LOAD_OLDER"] else { return 0 }
+        return Int(raw) ?? (raw == "1" ? 1 : 0)
+    }
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
     static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
     static var demoMode: Bool { environment["DSH_DEMO"] == "1" }
@@ -2860,6 +2885,7 @@ struct ChatHeadingStyle: StructuredText.HeadingStyle {
 /// 远程 Markdown 图片（相对 cwd 的本地截图通过 `api/file` 读取）。
 struct RemoteMarkdownImage: View {
     let url: URL
+    var caption: String? = nil
     @State private var image: UIImage?
     @State private var failed = false
     @State private var showsPreview = false
@@ -2890,6 +2916,16 @@ struct RemoteMarkdownImage: View {
         .onTapGesture { if image != nil { showsPreview = true } }
         .fullScreenCover(isPresented: $showsPreview) {
             if let image { FullscreenImageViewer(image: image) }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if let caption, !caption.isEmpty {
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+                    .padding(6)
+            }
         }
         .task {
             guard image == nil else { return }
@@ -3334,12 +3370,6 @@ struct MessageRow: View {
     @Bindable var model: ConnectionModel
     @State private var previewItem: PreviewImageItem?
 
-    private var renderedMarkdown: (text: String, imageURLs: [URL]) {
-        model.renderedMarkdown(message.text)
-    }
-    private var markdownText: String { renderedMarkdown.text }
-    private var markdownImageURLs: [URL] { renderedMarkdown.imageURLs }
-
     private func pendingStateColor(_ state: ConnectionModel.PendingSendState) -> Color {
         if case .failed = state { return Color.red.opacity(0.85) }
         return Color.secondary
@@ -3378,15 +3408,21 @@ struct MessageRow: View {
                             AttachmentThumbnail(ref: ref, model: model, size: 150)
                         }
                     }
-                    if !markdownText.isEmpty {
-                        MarkdownBody(text: markdownText, foreground: message.isUser ? .white : .primary)
-                            .textSelection(.enabled)
-                            .padding(.horizontal, 14).padding(.vertical, 11)
-                            .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-                            .foregroundStyle(message.isUser ? .white : .primary)
-                    }
-                    ForEach(markdownImageURLs, id: \.absoluteString) { url in
-                        RemoteMarkdownImage(url: url)
+                    if !message.text.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(Array(model.markdownSegments(message.text).enumerated()), id: \.offset) { _, segment in
+                                switch segment {
+                                case .text(let markdown):
+                                    MarkdownBody(text: markdown, foreground: message.isUser ? .white : .primary)
+                                        .textSelection(.enabled)
+                                case .image(let url, let caption):
+                                    RemoteMarkdownImage(url: url, caption: caption)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 11)
+                        .background(message.isUser ? Color(red: 0.08, green: 0.48, blue: 0.37) : Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                        .foregroundStyle(message.isUser ? .white : .primary)
                     }
                 }
                 if !message.isUser { Spacer(minLength: 24) }
