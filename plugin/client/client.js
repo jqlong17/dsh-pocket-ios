@@ -68,6 +68,18 @@ window.__ModuleLoader__.load({
       var copiedState = React.useState(null);
       var copied = copiedState[0];
       var setCopied = copiedState[1];
+      var editingState = React.useState(false);
+      var editing = editingState[0];
+      var setEditing = editingState[1];
+      var customState = React.useState("");
+      var customPin = customState[0];
+      var setCustomPin = customState[1];
+      var busyState = React.useState(false);
+      var busy = busyState[0];
+      var setBusy = busyState[1];
+      var errorState = React.useState(null);
+      var actionError = errorState[0];
+      var setActionError = errorState[1];
       var copyLabel = function (field) { return copied === field ? "已复制" : (field === "pin" ? "复制密码" : "复制地址"); };
       React.useEffect(function () {
         var alive = true;
@@ -124,7 +136,46 @@ window.__ModuleLoader__.load({
             React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
               React.createElement("code", { style: { fontSize: 14, letterSpacing: 1 } }, showPin ? (status.pin || "—") : mask),
               React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: linkStyle(false) }, showPin ? "隐藏" : "显示"),
-              React.createElement("button", { type: "button", onClick: function () { copy(status.pin, "pin"); }, style: linkStyle(false) }, copyLabel("pin"))),
+              React.createElement("button", { type: "button", onClick: function () { copy(status.pin, "pin"); }, style: linkStyle(false) }, copyLabel("pin")),
+              React.createElement("button", {
+                type: "button", disabled: busy,
+                onClick: function () {
+                  if (!props.rpcCall) return;
+                  setBusy(true); setActionError(null);
+                  Promise.resolve(props.rpcCall("pin.refresh", {})).then(unwrapRpc).then(function (next) {
+                    setValue({ loading: false, error: null, status: next });
+                    setShowPin(true);
+                    setBusy(false);
+                  }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
+                },
+                style: linkStyle(false)
+              }, busy ? "生成中…" : "随机更换"),
+              React.createElement("button", {
+                type: "button", disabled: busy,
+                onClick: function () { setEditing(!editing); setActionError(null); },
+                style: linkStyle(false)
+              }, editing ? "取消自定义" : "自定义")),
+            editing ? React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 } },
+              React.createElement("input", {
+                value: customPin, placeholder: "8-64 位字母或数字",
+                onChange: function (event) { setCustomPin(event.target.value); },
+                style: { padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(0,0,0,.15)", fontSize: 13, minWidth: 180 }
+              }),
+              React.createElement("button", {
+                type: "button", disabled: busy,
+                onClick: function () {
+                  if (!props.rpcCall) return;
+                  if (!/^[A-Za-z0-9]{8,64}$/.test(customPin)) { setActionError("密码需为 8-64 位英文字母或数字"); return; }
+                  setBusy(true); setActionError(null);
+                  Promise.resolve(props.rpcCall("pin.set", { pin: customPin })).then(unwrapRpc).then(function (next) {
+                    setValue({ loading: false, error: null, status: next });
+                    setShowPin(true); setEditing(false); setCustomPin(""); setBusy(false);
+                  }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
+                },
+                style: linkStyle(true)
+              }, "保存"),
+              React.createElement("span", { style: { fontSize: 12, opacity: 0.6 } }, "保存后旧密码立即失效")) : null,
+            actionError ? React.createElement("div", { style: { fontSize: 12, color: "#b91c1c", marginTop: 8 } }, actionError) : null,
             React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
               "这是本机的访问密码，只保存在本机；请勿截图或分享给他人。未安装 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
     }
@@ -165,8 +216,8 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
-      var rpcCall = function () {
-        return Promise.resolve(ctx.connection.rpc.call("/dsh-pocket-ios", "tailscale.status", {}));
+      var rpcCall = function (endpoint, payload) {
+        return Promise.resolve(ctx.connection.rpc.call("/dsh-pocket-ios", endpoint || "tailscale.status", payload || {}));
       };
       function MobileAccessSection() {
         return React.createElement(MobileAccessPanel, { rpcCall: rpcCall });

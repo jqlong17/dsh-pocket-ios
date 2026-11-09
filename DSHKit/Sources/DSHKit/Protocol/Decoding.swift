@@ -71,10 +71,14 @@ public enum DSHDecoding {
             let message = data["message"] as? [String: Any]
             let content = message?["content"] as? [[String: Any]] ?? []
             let text = content.compactMap { $0["text"] as? String }.joined()
-            let isError = data["isError"] as? Bool ?? false
+            let isError = (data["isError"] as? Bool) ?? (message?["isError"] as? Bool) ?? false
             let images = content.compactMap { DSHDecoding.imageRef(from: $0) }
+            let callId = (data["toolCallId"] as? String)
+                ?? (message?["toolCallId"] as? String)
+                ?? ((message?["source"] as? [String: Any])?["callId"] as? String)
+                ?? ""
             return .toolResult(seq: sequence, turn: turn,
-                               callId: data["toolCallId"] as? String ?? "", text: text,
+                               callId: callId, text: text,
                                isError: isError, images: images)
         case "turn/start":
             return .turnStart(seq: sequence, turn: turn)

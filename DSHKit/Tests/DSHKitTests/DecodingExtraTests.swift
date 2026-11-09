@@ -115,3 +115,35 @@ final class DecodingExtraTests: XCTestCase {
         XCTAssertThrowsError(try RPCRequest.value(from: Data(#"{"result":{}}"#.utf8)))
     }
 }
+
+    // 回归：tool/result 的 callId/isError 可能在 message/source 里（字段位置兜底）
+    func testToolResultCallIdAndIsErrorFallbacks() {
+        let event: [String: Any] = [
+            "type": "tool/result", "seq": 9,
+            "data": [
+                "turn": 2,
+                "message": [
+                    "role": "tool",
+                    "isError": true,
+                    "toolCallId": "call-from-message",
+                    "source": ["kind": "tool", "callId": "call-from-message"],
+                    "content": [["type": "text", "text": "boom"]]
+                ]
+            ]
+        ]
+        guard case .toolResult(_, _, let callId, let text, let isError, _)? = DSHDecoding.stepEvent(fromEvent: event) else {
+            return XCTFail("expected toolResult")
+        }
+        XCTAssertEqual(callId, "call-from-message")
+        XCTAssertEqual(text, "boom")
+        XCTAssertTrue(isError)
+    }
+
+    // 回归：session/list 的标题在 projections.values.title
+    func testSessionTitleReadsProjectionValues() {
+        let json: [String: Any] = [
+            "sessionId": "s1", "updatedAt": 1, "running": false, "blank": false,
+            "projections": ["values": ["title": "嵌套标题"]]
+        ]
+        XCTAssertEqual(DSHDecoding.session(fromJSON: json)?.title, "嵌套标题")
+    }

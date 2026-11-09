@@ -45,6 +45,14 @@ async function tailscale(args) {
 const PIN_FILE = join(LOG_DIR, 'pin')
 
 /** 读取（或首次生成）本插件自己的访问密码，不依赖 dsh-pocket。 */
+const PIN_PATTERN = /^[A-Za-z0-9]{8,64}$/
+
+/** 写入访问密码（自定义或随机刷新）；返回写入后的状态。 */
+async function setPin(nextPin) {
+  await mkdir(LOG_DIR, { recursive: true })
+  await writeFile(PIN_FILE, nextPin, { mode: 0o600 })
+}
+
 async function readPin() {
   try {
     const existing = (await readFile(PIN_FILE, 'utf8')).trim()
@@ -267,7 +275,12 @@ export function apply(ctx) {
             }
           }
           const expected = await readPin()
-          if (String(pinAttempt) !== expected) { send(res, 401, { ok: false }); return }
+          const attempt = String(pinAttempt ?? '')
+          if (attempt !== expected) {
+            await logLine(`login 401 host=${String(req.headers.host ?? '')} attemptLen=${attempt.length}`)
+            send(res, 401, { ok: false })
+            return
+          }
           // 重定向必须回到“客户端正在使用的地址”（localhost / 局域网 / Tailscale 都可），
           // 不能固定用配置里的 Tailscale 地址，否则局域网登录会被带到不可达的域名。
           const host = String(req.headers.host ?? '')
@@ -289,6 +302,26 @@ export function apply(ctx) {
         }
         const body = await readBody(req)
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
+        if (endpoint === 'pin.refresh') {
+          const nextPin = String(randomInt(10_000_000, 100_000_000))
+          await setPin(nextPin)
+          await logLine('pin refreshed')
+          const value = await tailscaleStatus()
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })
+          return
+        }
+        if (endpoint === 'pin.set') {
+          const requested = String(body?.pin ?? '')
+          if (!PIN_PATTERN.test(requested)) {
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'bad-request', message: '密码需为 8-64 位英文字母或数字' } } })
+            return
+          }
+          await setPin(requested)
+          await logLine('pin set by user')
+          const value = await tailscaleStatus()
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })
+          return
+        }
         if (endpoint !== 'tailscale.status') {
           send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'bad-request', message: `unknown endpoint ${endpoint}` } } })
           return
