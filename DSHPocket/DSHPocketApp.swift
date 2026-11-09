@@ -8,7 +8,6 @@ import PhotosUI
 import UIKit
 import Photos
 import os
-import Network
 
 private let pocketLogger = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "conversation")
 
@@ -68,12 +67,9 @@ final class ConversationState {
 final class ConnectionModel {
     private static let savedServerAddressKey = "dsh-pocket.server-address"
     private static let savedEndpointsKey = "dsh-pocket.saved-endpoints"
-    /// 记住的地址列表（局域网 + 公网各一份），启动时优先局域网。
+    /// 记住的地址列表（局域网 + 公网各一份），仅用于手动选择，不自动切换。
     var savedEndpoints: [SavedEndpoint] = []
-    private let pathMonitor = NWPathMonitor()
-    private var networkMonitorStarted = false
-    private var lastAutoSelectAt = Date.distantPast
-    private var autoSelectRetryTask: Task<Void, Never>?
+
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     private static let conversationMessageLimit = 30
     var serverAddress = UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
@@ -406,10 +402,22 @@ final class ConnectionModel {
     private func loadSavedEndpoints() {
         guard let data = UserDefaults.standard.data(forKey: Self.savedEndpointsKey),
               let list = try? JSONDecoder().decode([SavedEndpoint].self, from: data) else { return }
-        savedEndpoints = list
+        savedEndpoints = Self.dedupEndpoints(list)
     }
 
-    /// 连接成功后记录地址；同一地址只保留一条。
+    /// 每种类型只保留最近使用的一个（公网地址很容易失效，没必要存很多）。
+    private static func dedupEndpoints(_ list: [SavedEndpoint]) -> [SavedEndpoint] {
+        var kept: [SavedEndpoint] = []
+        var seen = Set<SavedEndpoint.Kind>()
+        for endpoint in list.sorted(by: { $0.lastUsedAt > $1.lastUsedAt }) {
+            guard !seen.contains(endpoint.kind) else { continue }
+            seen.insert(endpoint.kind)
+            kept.append(endpoint)
+        }
+        return kept
+    }
+
+    /// 连接成功后记录地址；同一地址只保留一条（供连接页手动选择）。
     func recordEndpoint(_ address: String) {
         guard let url = try? Self.serverURL(from: address) else { return }
         let normalized = url.absoluteString
@@ -417,108 +425,9 @@ final class ConnectionModel {
         list.append(SavedEndpoint(address: normalized,
                                   kind: Self.endpointKind(of: normalized),
                                   lastUsedAt: Date().timeIntervalSince1970))
-        list.sort { $0.lastUsedAt > $1.lastUsedAt }
-        savedEndpoints = Array(list.prefix(6))
+        savedEndpoints = Self.dedupEndpoints(list)
         if let data = try? JSONEncoder().encode(savedEndpoints) {
             UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
-        }
-    }
-
-    /// 轻量探测：能正常返回 session/list 才认为该地址可用（cookie 失效会返回 401）。
-    @MainActor
-    private func probeEndpoint(_ address: String, timeout: TimeInterval = 2) async -> Bool {
-        guard let root = try? Self.serverURL(from: address) else { return false }
-        var request = URLRequest(url: root.appending(path: "api/session/list"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = timeout
-        request.httpShouldHandleCookies = true
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
-            "type": "client-request",
-            "rpcId": UUID().uuidString,
-            "method": "session/list",
-            "payload": ["args": ["_request": ["excludeArchived": true]]]
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: body) else { return false }
-        request.httpBody = data
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse else { return false }
-        return (200..<300).contains(http.statusCode)
-    }
-
-    /// 网络变化（Wi-Fi/蜂窝切换、回到前台）时自动选择可用地址：
-    /// 能连局域网就切局域网，离开后自动回公网。
-    func startNetworkMonitor() {
-        guard !networkMonitorStarted else { return }
-        networkMonitorStarted = true
-        pathMonitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
-            Task { @MainActor [weak self] in
-                await self?.autoSelectEndpointIfNeeded()
-            }
-        }
-        pathMonitor.start(queue: DispatchQueue(label: "dsh-pocket.network-monitor"))
-    }
-
-    @MainActor
-    func autoSelectEndpointIfNeeded() async {
-        guard !isDemoMode, !savedEndpoints.isEmpty else { return }
-        if isTurnRunning {
-            // 生成中不打断当前连接，稍后重试。
-            guard autoSelectRetryTask == nil else { return }
-            autoSelectRetryTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(20))
-                await self?.autoSelectEndpointIfNeeded()
-                await MainActor.run { self?.autoSelectRetryTask = nil }
-            }
-            return
-        }
-        guard Date().timeIntervalSince(lastAutoSelectAt) > 3 else { return }
-        lastAutoSelectAt = Date()
-
-        // 1) 优先局域网
-        if let lan = savedEndpoints.first(where: { $0.kind == .lan }),
-           await probeEndpoint(lan.address, timeout: 1.5) {
-            if serverAddress != lan.address || !isConnected {
-                await activateEndpoint(lan)
-            }
-            return
-        }
-        // 2) 当前在局域网但连不上（离开了公司/家）→ 切到可用的公网地址
-        if Self.endpointKind(of: serverAddress) == .lan {
-            for endpoint in savedEndpoints where endpoint.kind != .lan {
-                if await probeEndpoint(endpoint.address, timeout: 2) {
-                    await activateEndpoint(endpoint)
-                    return
-                }
-            }
-        }
-    }
-
-    /// 静默激活某个地址（失败回滚，不影响现有连接）。
-    @MainActor
-    private func activateEndpoint(_ endpoint: SavedEndpoint) async {
-        let previous = serverAddress
-        serverAddress = endpoint.address
-        do {
-            sessions = try await fetchSessions()
-            isConnected = true
-            errorMessage = nil
-            addressNeedsRescan = false
-            recordEndpoint(endpoint.address)
-            recordDiagnostic("自动切换连接：\(endpoint.kind.label) \(endpoint.address)")
-            // 已打开的会话需要重连到新地址。
-            if let current = selectedSession {
-                if let conversation = conversations[current.sessionId] {
-                    conversation.coordinatorTask?.cancel()
-                    if let coordinator = conversation.coordinator { Task { await coordinator.stop() } }
-                    conversation.coordinatorStarted = false
-                }
-                open(current)
-            }
-        } catch {
-            serverAddress = previous
-            recordDiagnostic("自动切换失败（\(endpoint.kind.label)）：\(error.localizedDescription)")
         }
     }
 
@@ -555,29 +464,6 @@ final class ConnectionModel {
             return
         }
 #endif
-        // 有多个已保存地址时：优先局域网（最近用过的在前），失败再回公网。
-        if !savedEndpoints.isEmpty {
-            let ordered = savedEndpoints.sorted { lhs, rhs in
-                if lhs.kind == .lan, rhs.kind != .lan { return true }
-                if rhs.kind == .lan, lhs.kind != .lan { return false }
-                return lhs.lastUsedAt > rhs.lastUsedAt
-            }
-            for endpoint in ordered {
-                guard await probeEndpoint(endpoint.address) else { continue }
-                serverAddress = endpoint.address
-                do {
-                    sessions = try await fetchSessions()
-                    isConnected = true
-                    errorMessage = nil
-                    addressNeedsRescan = false
-                    recordEndpoint(endpoint.address)
-                    recordDiagnostic("自动连接：\(endpoint.kind.label) \(endpoint.address)")
-                    return
-                } catch {
-                    continue
-                }
-            }
-        }
         guard UserDefaults.standard.string(forKey: Self.savedServerAddressKey) != nil,
               (try? Self.serverURL(from: serverAddress)) != nil else { return }
         do {
@@ -1879,7 +1765,7 @@ final class ConnectionModel {
     }
 }
 
-/// 记住连接过的地址：启动时优先局域网，连不上自动回公网，避免每次扫码。
+/// 记住连接过的地址（局域网/公网），供用户手动切换，避免每次重新扫码。
 struct SavedEndpoint: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case lan
@@ -2251,17 +2137,11 @@ struct RootView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
-        .task {
-            await model.restoreConnection()
-            model.startNetworkMonitor()
-        }
+        .task { await model.restoreConnection() }
         .onChange(of: scenePhase) { _, phase in
-            // 回到前台：重新评估网络（比如回到公司 Wi-Fi 自动切局域网），并静默刷新列表。
-            guard phase == .active else { return }
-            Task { await model.autoSelectEndpointIfNeeded() }
-            if model.isConnected {
-                Task { await model.loadSessions(silently: true) }
-            }
+            // 回到前台只静默刷新列表，不自动切换网络，避免打断当前会话。
+            guard phase == .active, model.isConnected else { return }
+            Task { await model.loadSessions(silently: true) }
         }
     }
 }
@@ -2348,7 +2228,7 @@ struct ConnectView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("优先局域网")
+                Text("点按切换")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -2391,7 +2271,7 @@ struct ConnectView: View {
                 .buttonStyle(.plain)
             }
 
-            Text("启动时优先尝试局域网，连不上自动切公网；也可在会话页右上角切换。")
+            Text("每种类型只保留最近使用的一个地址；公网地址变化后需要重新扫码更新。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
