@@ -8,6 +8,63 @@ window.__ModuleLoader__.load({
     var APP_STORE_URL = "https://apps.apple.com/app/id6832288744";
     var REPO_URL = "https://github.com/jqlong17/dsh-pocket-ios";
     var QR_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" viewBox=\"0 0 37 37\" shape-rendering=\"crispEdges\"><path fill=\"#ffffff\" d=\"M0 0h37v37H0z\"/><path stroke=\"#000000\" d=\"M4 4.5h7m3 0h1m4 0h5m2 0h7M4 5.5h1m5 0h1m2 0h1m7 0h1m2 0h1m1 0h1m5 0h1M4 6.5h1m1 0h3m1 0h1m1 0h1m5 0h1m1 0h1m3 0h1m1 0h1m1 0h3m1 0h1M4 7.5h1m1 0h3m1 0h1m1 0h2m7 0h1m1 0h1m2 0h1m1 0h3m1 0h1M4 8.5h1m1 0h3m1 0h1m1 0h8m2 0h3m1 0h1m1 0h3m1 0h1M4 9.5h1m5 0h1m1 0h2m1 0h5m2 0h1m1 0h1m1 0h1m5 0h1M4 10.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M12 11.5h1m1 0h1m1 0h2m1 0h2m2 0h2M4 12.5h1m1 0h5m5 0h1m1 0h2m1 0h1m1 0h1m2 0h5M8 13.5h1m5 0h2m7 0h4m1 0h1m3 0h1M5 14.5h1m3 0h2m1 0h1m1 0h3m5 0h1m1 0h1m1 0h2M4 15.5h5m6 0h2m1 0h1m1 0h1m1 0h2m1 0h2m1 0h2m1 0h1M5 16.5h3m1 0h2m1 0h2m5 0h3m5 0h1m1 0h2M4 17.5h4m3 0h3m1 0h1m1 0h2m4 0h6m3 0h1M8 18.5h3m3 0h1m2 0h4m1 0h1m2 0h1m2 0h3M5 19.5h2m2 0h1m1 0h1m3 0h1m1 0h1m1 0h1m2 0h3m3 0h1m2 0h1M4 20.5h2m2 0h1m1 0h6m2 0h1m1 0h4m3 0h1m1 0h2M4 21.5h6m1 0h1m1 0h3m5 0h3m2 0h3m1 0h1m1 0h1M4 22.5h1m4 0h3m2 0h2m3 0h3m2 0h2m2 0h1m1 0h1M4 23.5h1m2 0h3m3 0h1m1 0h2m1 0h1m5 0h2m2 0h1m2 0h1M4 24.5h1m1 0h3m1 0h1m3 0h3m4 0h1m2 0h5m1 0h3M12 25.5h3m1 0h3m2 0h2m1 0h1m3 0h5M4 26.5h7m6 0h2m3 0h3m1 0h1m1 0h3M4 27.5h1m5 0h1m1 0h6m5 0h2m3 0h1M4 28.5h1m1 0h3m1 0h1m1 0h5m1 0h1m2 0h1m2 0h5m1 0h1m1 0h1M4 29.5h1m1 0h3m1 0h1m1 0h2m8 0h1m4 0h1m1 0h2M4 30.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m3 0h2m1 0h6M4 31.5h1m5 0h1m3 0h2m3 0h1m2 0h1m1 0h2m1 0h3m1 0h1M4 32.5h7m1 0h2m1 0h1m1 0h4m1 0h2m1 0h1m2 0h1m1 0h1\"/></svg>";
+
+    function unwrapRpc(result) {
+      if (result && typeof result === "object" && "ok" in result) {
+        if (!result.ok) return Promise.reject(new Error((result.error && result.error.message) || "RPC 失败"));
+        return result.value !== undefined ? result.value : result;
+      }
+      if (result && typeof result === "object" && result.result) return unwrapRpc(result.result);
+      return result;
+    }
+
+    function TailscaleCard(props) {
+      var state = React.useState({ loading: true, error: null, status: null });
+      var value = state[0];
+      var setValue = state[1];
+      React.useEffect(function () {
+        var alive = true;
+        if (!props.rpcCall) { setValue({ loading: false, error: "客户端 RPC 不可用", status: null }); return undefined; }
+        Promise.resolve(props.rpcCall())
+          .then(unwrapRpc)
+          .then(function (status) { if (alive) setValue({ loading: false, error: null, status: status || null }); })
+          .catch(function (error) { if (alive) setValue({ loading: false, error: String((error && error.message) || error), status: null }); });
+        return function () { alive = false; };
+      }, []);
+
+      var box = { marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(0,0,0,.08)" };
+      if (value.loading) {
+        return React.createElement("div", { style: box }, React.createElement("div", { style: { fontSize: 13, opacity: 0.72 } }, "正在检测 Tailscale…"));
+      }
+      if (value.error || !value.status) {
+        return React.createElement("div", { style: box },
+          React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } }, "Tailscale 连接（可选）"),
+          React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.6 } }, "未读取到 Tailscale 状态；可继续使用局域网/公网二维码。"));
+      }
+      var status = value.status;
+      if (!status.httpsUrl) {
+        return React.createElement("div", { style: box },
+          React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } }, "Tailscale 连接（推荐，地址固定）"),
+          React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.6 } },
+            "检测到 Tailscale，但还没开启 HTTPS 代理。在 Tailscale 后台 DNS 页开启 HTTPS Certificates，然后在终端执行 ",
+            React.createElement("code", null, "tailscale serve --bg 3081"),
+            "，刷新本页即可生成二维码。"));
+      }
+      var copy = function () { try { navigator.clipboard.writeText(status.httpsUrl); } catch (e) {} };
+      return React.createElement("div", { style: box },
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } }, "Tailscale 连接（推荐，地址固定且更稳定）"),
+        React.createElement("div", { style: { fontSize: 13, opacity: 0.72, lineHeight: 1.6, marginBottom: 10 } },
+          "手机装好 Tailscale 并开启 VPN 后，用 DSH Pocket 扫下面的二维码即可连接：二维码里已包含地址与访问密码，扫完自动连接。换 Wi‑Fi / 切 4G 都不用重新扫码。"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" } },
+          status.qr ? React.createElement("img", { src: status.qr, alt: "Tailscale 连接二维码", style: { width: 150, height: 150, borderRadius: 10, background: "#fff", padding: 6, border: "1px solid rgba(0,0,0,.06)" } }) : null,
+          React.createElement("div", { style: { flex: "1 1 220px", minWidth: 0 } },
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "固定地址"),
+            React.createElement("div", { style: { fontSize: 13, wordBreak: "break-all", marginBottom: 10 } }, status.httpsUrl),
+            React.createElement("button", { type: "button", onClick: copy, style: linkStyle(false) }, "复制地址"),
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginTop: 10, lineHeight: 1.6 } },
+              "如果二维码里没有密码，也可以手动输入访问密码；未安装 Tailscale 时请使用下方局域网/公网二维码。"))));
+    }
+
     var CARD_ID = "dsh-pocket-ios-card";
 
     function linkStyle(primary) {
@@ -110,11 +167,26 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      var rpcCall = function () {
+        try {
+          return Promise.resolve(ctx.connection.rpc.call("/dsh-pocket-ios", "tailscale.status", {}));
+        } catch (error) {
+          return Promise.reject(error);
+        }
+      };
+      function IOSSection() {
+        return React.createElement(
+          "div",
+          { style: { width: "100%" } },
+          React.createElement(IOSCard),
+          React.createElement(TailscaleCard, { rpcCall: rpcCall })
+        );
+      }
       try {
         ctx.slots.inject("settings.section", function () {
           return ctx.slots.register(
             { name: "settings.section", id: "pocket-ios", order: 0, label: function () { return "iOS 客户端"; } },
-            IOSCard
+            IOSSection
           );
         });
       } catch (e) {}

@@ -1,6 +1,6 @@
 {
   "name": "dsh-pocket-ios",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "在 DSH 设置页加入 iOS 客户端下载二维码与连接引导（配合 dsh-pocket + DSH Pocket iOS）",
   "type": "module",
   "main": "lib/index.js",
@@ -36,7 +36,8 @@
     }
   },
   "dependencies": {
-    "dsh-pocket": "^2.12.0"
+    "dsh-pocket": "^2.12.0",
+    "qrcode": "^1.5.4"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"

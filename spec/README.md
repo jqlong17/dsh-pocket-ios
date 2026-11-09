@@ -78,3 +78,5 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 | 单元测试 | `DSHKit/Tests/`、`DSHPocketTests/` | 协议编解码、状态机、排序、对账、分页、ViewModel |
 | 集成测试 | `DSHKit/Tests/Integration/` | 用 MockTransport 跑 sync coordinator 全流程 |
 | 端到端测试 | `DSHPocketUITests/`（XCUITest）+ Demo 模式 | 登录/演示/收发/切换/断线重连 |
+
+- [06 · 后台完成推送（APNs）](06-apns-background-notifications.md) — 设计稿

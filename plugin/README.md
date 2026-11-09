@@ -41,3 +41,7 @@ iOS App 已上架 App Store（免费）：
 GPL-2.0（与上游 dsh-pocket 一致），见 [LICENSE](LICENSE)。
 
 注意：本仓库根目录的 `LICENSE`（MIT）只覆盖 `DSHPocket/` iOS 客户端，不覆盖本插件目录。
+
+## Tailscale 连接卡片（0.1.5+）
+
+设置页「iOS 客户端」会检测本机 Tailscale：若已开启 `tailscale serve` HTTPS，卡片会显示固定地址与**带访问密码的二维码**，手机扫码即可自动填写地址+密码并连接。未安装 Tailscale 时不影响局域网/公网二维码。

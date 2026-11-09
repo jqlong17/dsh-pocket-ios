@@ -324,6 +324,11 @@ final class ConnectionModel {
             errorMessage = "二维码中没有有效的 HTTP 或 HTTPS 地址。"
             return false
         }
+        // 支持二维码携带访问密码（插件生成的 Tailscale 二维码：https://host?pin=xxxx）
+        if let scannedPin = components.queryItems?.first(where: { $0.name == "pin" })?.value,
+           !scannedPin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pin = scannedPin
+        }
         components.path = ""
         components.query = nil
         components.fragment = nil
@@ -1241,7 +1246,12 @@ final class ConnectionModel {
         let pending = messages.filter { message in
             guard message.isPending else { return false }
             if let rpcId = message.rpcId {
-                if incomingRpcIds.contains(rpcId.lowercased()) { return false }
+                if incomingRpcIds.contains(rpcId.lowercased()) {
+                    if failedSendRpcIds.remove(rpcId) != nil {
+                        conversationError = nil
+                    }
+                    return false
+                }
                 // 兜底：服务端没回填 rpcId（steer 偶发丢确认），但本次新出现了同文本用户消息。
                 if incoming.contains(where: {
                     $0.isUser && !$0.isPending && $0.rpcId == nil
@@ -1548,6 +1558,34 @@ final class ConnectionModel {
             return image
         } catch {
             return nil
+        }
+    }
+
+    /// 网络恢复后继续核验（最多 5 次，退避 5/10/20/40/60s）。
+    private func scheduleSendReverification(session: PocketSession, requestId: String, attempt: Int) {
+        guard attempt <= 5 else { return }
+        let delay = [5.0, 10.0, 20.0, 40.0, 60.0][attempt - 1]
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self else { return }
+            guard await MainActor.run(body: { self.ackedSendRpcIds.contains(requestId) }) else { return }
+            switch await self.verifySendLanded(session: session, requestId: requestId) {
+            case .landed:
+                await MainActor.run {
+                    self.confirmOutbox(rpcIds: [requestId])
+                    self.ackedSendRpcIds.remove(requestId)
+                    self.failedSendRpcIds.remove(requestId)
+                    self.conversationError = nil
+                    self.recordDiagnostic("发送延迟核验成功：\(requestId)")
+                }
+            case .absent:
+                await MainActor.run {
+                    self.failedSendRpcIds.insert(requestId)
+                    self.conversationError = "这条消息服务端没有收到，点消息下方「重新发送」可重试。"
+                }
+            case .unreachable:
+                self.scheduleSendReverification(session: session, requestId: requestId, attempt: attempt + 1)
+            }
         }
     }
 
@@ -2163,15 +2201,21 @@ final class ConnectionModel {
             // 服务端 ACK 后如果还没收到确认，先主动核验一次（网络抖动时 WS/轮询可能错过确认），
             // 核验不到再标记失败，避免误报吓人。
             if ackedSendRpcIds.contains(requestId) {
-                let landed = await verifySendLanded(session: session, requestId: requestId)
-                if landed {
+                switch await verifySendLanded(session: session, requestId: requestId) {
+                case .landed:
                     confirmOutbox(rpcIds: [requestId])
                     ackedSendRpcIds.remove(requestId)
+                    failedSendRpcIds.remove(requestId)
+                    conversationError = nil
                     recordDiagnostic("发送核验成功：\(requestId)")
-                } else {
+                case .absent:
                     failedSendRpcIds.insert(requestId)
-                    conversationError = "网络不稳定，这条消息暂时没拿到服务端确认。可点消息下方「重新发送」（按 requestId 去重，不会重复）。"
-                    recordDiagnostic("发送未确认（核验失败）：\(requestId)")
+                    conversationError = "这条消息服务端没有收到，点消息下方「重新发送」可重试（按 requestId 去重，不会重复）。"
+                    recordDiagnostic("发送核验失败（服务端无此消息）：\(requestId)")
+                case .unreachable:
+                    // 网络抖动导致核验请求本身失败：不能误报失败，保持"已发出，等待处理"，后台再核验。
+                    recordDiagnostic("发送核验网络不可达，稍后重试：\(requestId)")
+                    scheduleSendReverification(session: session, requestId: requestId, attempt: 1)
                 }
             }
         } catch {
@@ -2216,16 +2260,24 @@ final class ConnectionModel {
         }
     }
 
+    private enum SendVerification {
+        case landed
+        case absent        // 请求成功但历史里确实没有这条消息
+        case unreachable   // 网络失败，无法判断——不能当作失败提示用户
+    }
+
     /// 主动核验消息是否真的落库：在最近会话历史里按 rpcId 精确查找。
-    private func verifySendLanded(session: PocketSession, requestId: String) async -> Bool {
-        for attempt in 0..<3 {
+    private func verifySendLanded(session: PocketSession, requestId: String) async -> SendVerification {
+        var sawReachableResponse = false
+        for attempt in 0..<4 {
             if attempt > 0 {
-                try? await Task.sleep(for: .seconds(attempt == 1 ? 1.5 : 3))
+                try? await Task.sleep(for: .seconds(attempt == 1 ? 1 : attempt == 2 ? 2 : 4))
             }
             guard let value = try? await rpc("session/page", args: ["request": [
                 "address": ["kind": "session", "sessionId": session.sessionId],
-                "maxMessages": 20
+                "maxMessages": 30
             ]]) else { continue }
+            sawReachableResponse = true
             let records = value["records"] as? [[String: Any]] ?? []
             for record in records {
                 guard let event = record["event"] as? [String: Any],
@@ -2233,10 +2285,10 @@ final class ConnectionModel {
                       let data = event["data"] as? [String: Any],
                       let source = data["source"] as? [String: Any],
                       let rpcId = source["rpcId"] as? String else { continue }
-                if RPCId.matches(rpcId, requestId) { return true }
+                if RPCId.matches(rpcId, requestId) { return .landed }
             }
         }
-        return false
+        return sawReachableResponse ? .absent : .unreachable
     }
 
     private func rpc(_ endpoint: String, args: [String: Any]) async throws -> [String: Any] {
@@ -2766,7 +2818,15 @@ struct ConnectView: View {
         .background(pageBackground.ignoresSafeArea())
         .sheet(isPresented: $showingScanner) {
             NavigationStack {
-                QRScannerView { value in if model.useScannedAddress(value) { showingScanner = false } }
+                QRScannerView { value in
+                    if model.useScannedAddress(value) {
+                        showingScanner = false
+                        // 二维码带了 PIN（如 Tailscale 卡片）：扫码即连。
+                        if !model.pin.isEmpty {
+                            Task { await model.connect() }
+                        }
+                    }
+                }
                     .navigationTitle("扫描二维码")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingScanner = false } } }
