@@ -127,6 +127,22 @@ scrollTick/liveTask/token/turnSeqs/发送状态），`ConnectionModel` 只保留
 - 新增任何会写 `messages`/`steps` 的异步路径，都要走同样的双重校验，不要只依赖 Task.cancel
   （取消是协作式的，可能晚一拍）。
 
+## 消息顺序：steer 模式不要按 turn 区间重排（2026-11-09 真机验证）
+
+- 曾为"排队消息"按 turn 区间把用户消息排到本轮回复之后；但 **steer 会打断当前轮**，
+  用户消息 seq 本来就在回复之前，重排会把「用户消息 → 回复」颠倒成「回复 → 用户消息」。
+- 结论：**展示排序 = 服务端 seq 升序**（pending 固定末尾即可）；不要用 turn 区间兜底排序。
+- 验证方法：`session/page` 打印 seq，对比 UI 中气泡顺序（本次真实会话 seq 8/29/30 用户消息、
+  32 回复，重排 bug 表现为回复跑到用户消息上方）。
+
+## 回到底部与 followsLatest（2026-11-09）
+
+- 点「回到底部」后的补滚必须可被用户滚动取消：`scrollGeneration` 捕获后，**force 也不能豁免**
+  generation 校验；补滚次数限制为 [0, 0.15]，否则立刻上滑会被再次拉回底部（已用 XCUITest 覆盖）。
+- 行高异步变化（Textual 表格/图片晚渲染）会让内容变高、底部留白；用 `followsLatest`（用户上滑
+  置 false，回底/点箭头置 true）在高度变化时补贴底，而不是只靠几何 `isAtBottom`。
+- 已知：长回复首次渲染后仍可能短暂留白，待后续用 contentOffset 校准。
+
 ## 发送模式：steer 代替 queue（消除排队）
 
 - DSH `session/prompt` 的 `mode`：`queue` = 追加到当前轮之后（进 inbox 排队，本轮结束后才处理）；

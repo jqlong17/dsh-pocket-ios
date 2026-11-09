@@ -792,18 +792,11 @@ final class ConnectionModel {
         return (sessions.first(where: { $0.sessionId == id }) ?? selectedSession)?.displayTitle ?? "对话"
     }
 
-    /// 消息展示排序键。
-    /// 常规消息按 seq；若用户消息落在某个 turn 区间内（生成中排队发送），
-    /// 说明它属于下一轮、但 seq 小于本轮正在生成的助手回复，需要排到该轮结束之后。
+    /// 消息展示排序键：服务端 seq 即唯一真相。
+    /// 曾按 turn 区间把"生成中发送的用户消息"重排到本轮回复之后，但 steer 模式下这些消息
+    /// 本身会打断当前轮、seq 就在回复之前；重排反而把用户消息和回复顺序弄反，故移除该启发式。
     func displaySortKey(for message: PocketMessage) -> Int {
-        guard message.isUser else { return message.sequence }
-        for (index, start) in turnStarts.enumerated() {
-            let end = index < turnEnds.count ? turnEnds[index] : Int.max
-            if message.sequence > start && message.sequence < end {
-                return end
-            }
-        }
-        return message.sequence
+        message.sequence
     }
 
     // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
@@ -2104,6 +2097,8 @@ struct ConversationView: View {
     /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
     @State private var isAtBottom = true
     @State private var unreadWhileScrolled = 0
+    /// 是否仍"跟随最新"：用户主动上滑后置 false；回到底部/点箭头后置 true。
+    @State private var followsLatest = true
     /// 用户上滑时递增，用于让待执行的补滚任务失效。
     @State private var scrollGeneration = 0
     @State private var didAutoSend = false
@@ -2215,7 +2210,9 @@ struct ConversationView: View {
                     )
                 }
                 .onPreferenceChange(ConversationHeightKey.self) { _ in
-                    guard isSettlingScroll else { return }
+                    // 行高异步变化（Textual 表格/图片晚渲染）会让内容变高；只要仍在跟随最新，
+                    // 就补一次贴底，避免"最后一条消息下方留出空白"。
+                    guard isSettlingScroll || followsLatest else { return }
                     DispatchQueue.main.async {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                     }
@@ -2223,6 +2220,12 @@ struct ConversationView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 6)
+                        .onChanged { value in
+                            if value.translation.height > 10 { followsLatest = false }
+                        }
+                )
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
                 .onAppear {
                     isSettlingScroll = true
@@ -2250,15 +2253,24 @@ struct ConversationView: View {
                     let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
                     return distance <= 48
                 } action: { _, atBottom in
-                    if !atBottom { scrollGeneration &+= 1 }
-                    isAtBottom = atBottom
-                    if atBottom { unreadWhileScrolled = 0 }
+                    if atBottom {
+                        isAtBottom = true
+                        unreadWhileScrolled = 0
+                        followsLatest = true
+                    } else if !followsLatest {
+                        // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
+                        isAtBottom = false
+                    } else {
+                        scrollGeneration &+= 1
+                        isAtBottom = false
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if !isAtBottom, !entries.isEmpty {
                         Button {
                             unreadWhileScrolled = 0
                             isAtBottom = true
+                            followsLatest = true
                             scrollToBottom(proxy: proxy, force: true)
                         } label: {
                             HStack(spacing: 5) {
