@@ -122,6 +122,10 @@ enum L10n {
         "待发送": "Pending",
         "已复制": "Copied",
         "访问密码": "Access PIN",
+        "删除连接": "Delete connection",
+        "删除连接？": "Delete this connection?",
+        "删除": "Delete",
+        "取消": "Cancel",
         "局域网": "LAN",
         "公网": "Public",
         "未连接": "Not connected",
@@ -1025,6 +1029,15 @@ final class ConnectionModel {
     }
 
     /// 给已保存地址设置/清除自定义标签（如「公司」「家」）。
+    /// 删除一条已保存的连接（只删记录，不影响当前正在使用的地址）。
+    @MainActor
+    func removeEndpoint(_ address: String) {
+        savedEndpoints.removeAll { $0.address == address }
+        if let data = try? JSONEncoder().encode(savedEndpoints) {
+            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        }
+    }
+
     func renameEndpoint(_ address: String, label: String?) {
         guard let index = savedEndpoints.firstIndex(where: { $0.address == address }) else { return }
         let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3482,6 +3495,7 @@ struct ConnectView: View {
     @State private var showingScanner = false
     @State private var renamingEndpoint: SavedEndpoint?
     @State private var renameText = ""
+    @State private var deletingEndpoint: SavedEndpoint?
 
     /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
     private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
@@ -3552,6 +3566,18 @@ struct ConnectView: View {
             Button("取消", role: .cancel) { renamingEndpoint = nil }
         } message: {
             Text("给这个地址起一个有辨识度的名字，例如「公司」或「家」。")
+        }
+        .alert(L10n.t("删除连接？"), isPresented: Binding(
+            get: { deletingEndpoint != nil },
+            set: { if !$0 { deletingEndpoint = nil } }
+        ), presenting: deletingEndpoint) { endpoint in
+            Button(L10n.t("删除"), role: .destructive) {
+                model.removeEndpoint(endpoint.address)
+                deletingEndpoint = nil
+            }
+            Button(L10n.t("取消"), role: .cancel) { deletingEndpoint = nil }
+        } message: { endpoint in
+            Text("\(endpoint.displayName)：\(endpoint.address)")
         }
     }
 
@@ -3642,6 +3668,17 @@ struct ConnectView: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 28, height: 28)
                         }
+                        .buttonStyle(.plain)
+                        Button {
+                            deletingEndpoint = endpoint
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.t("删除连接"))
                         .buttonStyle(.plain)
                         .accessibilityLabel("重命名\(endpoint.kind.label)地址")
                         if model.serverAddress == endpoint.address {
