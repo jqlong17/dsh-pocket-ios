@@ -1,6 +1,6 @@
 {
   "name": "dsh-pocket-ios",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "在 DSH 设置页加入 iOS 客户端下载二维码与连接引导（配合 dsh-pocket + DSH Pocket iOS）",
   "type": "module",
   "main": "lib/index.js",

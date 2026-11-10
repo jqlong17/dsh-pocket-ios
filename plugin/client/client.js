@@ -11,42 +11,26 @@ window.__ModuleLoader__.load({
 
     function linkStyle(primary) {
       return {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "7px 12px",
-        borderRadius: 999,
-        fontSize: 13,
-        fontWeight: 600,
-        textDecoration: "none",
-        color: primary ? "#fff" : "#147A5E",
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "7px 12px", borderRadius: 999, fontSize: 13, fontWeight: 600,
+        textDecoration: "none", color: primary ? "#fff" : "#147A5E",
         background: primary ? "#147A5E" : "rgba(20,122,94,.08)",
         border: primary ? "1px solid #147A5E" : "1px solid rgba(20,122,94,.25)"
       };
     }
+    var chipStyle = { display: "inline-flex", alignItems: "center", padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 500, color: "#147A5E", background: "rgba(20,122,94,.08)", border: "1px solid rgba(20,122,94,.22)", cursor: "pointer" };
+    var chipPrimary = { ...chipStyle, color: "#fff", background: "#147A5E", border: "1px solid #147A5E" };
 
     function copyText(text) {
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(text);
-          return true;
-        }
-      } catch (e) { /* 继续走兜底 */ }
+      try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text); return true; } } catch (e) {}
       try {
         var area = document.createElement("textarea");
-        area.value = text;
-        area.style.position = "fixed";
-        area.style.top = "-1000px";
-        area.style.opacity = "0";
-        document.body.appendChild(area);
-        area.focus();
-        area.select();
+        area.value = text; area.style.position = "fixed"; area.style.top = "-1000px"; area.style.opacity = "0";
+        document.body.appendChild(area); area.focus(); area.select();
         var ok = document.execCommand("copy");
         document.body.removeChild(area);
         return ok;
-      } catch (e) {
-        return false;
-      }
+      } catch (e) { return false; }
     }
 
     function unwrapRpc(result) {
@@ -58,16 +42,24 @@ window.__ModuleLoader__.load({
       return result;
     }
 
-    var chipStyle = { display: "inline-flex", alignItems: "center", padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 500, textDecoration: "none", color: "#147A5E", background: "rgba(20,122,94,.08)", border: "1px solid rgba(20,122,94,.22)", cursor: "pointer" };
-    var chipPrimary = { ...chipStyle, color: "#fff", background: "#147A5E", border: "1px solid #147A5E" };
+    // ===== 单个连接卡片：配对二维码 + 地址 + 密码管理 =====
+    function AccessPanelCard(props) {
+      var pairState = React.useState({ loading: true, error: null, data: null });
+      var pairValue = pairState[0];
+      var setPair = pairState[1];
+      var remainingState = React.useState(0);
+      var remaining = remainingState[0];
+      var setRemaining = remainingState[1];
+      var statusState = React.useState(null);
+      var status = statusState[0];
+      var setStatus = statusState[1];
+      var loadingState = React.useState(true);
+      var loading = loadingState[0];
+      var setLoading = loadingState[1];
 
-    function TailscaleCard(props) {
-      var state = React.useState({ loading: true, error: null, status: null });
-      var value = state[0];
-      var setValue = state[1];
-      var pinState = React.useState(false);
-      var showPin = pinState[0];
-      var setShowPin = pinState[1];
+      var showPinState = React.useState(false);
+      var showPin = showPinState[0];
+      var setShowPin = showPinState[1];
       var copiedState = React.useState(null);
       var copied = copiedState[0];
       var setCopied = copiedState[1];
@@ -84,199 +76,137 @@ window.__ModuleLoader__.load({
       var actionError = errorState[0];
       var setActionError = errorState[1];
 
-      React.useEffect(function () {
-        var alive = true;
-        if (!props.rpcCall) { setValue({ loading: false, error: "客户端 RPC 不可用", status: null }); return undefined; }
-        Promise.resolve(props.rpcCall())
-          .then(unwrapRpc)
-          .then(function (status) { if (alive) setValue({ loading: false, error: null, status: status || null }); })
-          .catch(function (error) { if (alive) setValue({ loading: false, error: String((error && error.message) || error), status: null }); });
-        return function () { alive = false; };
-      }, []);
-
-      var copy = function (text, field) {
-        if (!text) return;
-        copyText(text);
-        setCopied(field);
-        setTimeout(function () { setCopied(null); }, 1500);
+      var refreshStatus = function () {
+        if (!props.rpcCall) { setLoading(false); return; }
+        Promise.resolve(props.rpcCall("tailscale.status", {})).then(unwrapRpc).then(function (s) {
+          setStatus(s || null); setLoading(false);
+        }).catch(function () { setLoading(false); });
       };
 
-      if (value.loading) {
-        return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-          React.createElement("div", { style: { fontSize: 12, opacity: 0.6 } }, "正在检测 Tailscale…"));
-      }
-      if (value.error || !value.status) {
-        return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-          React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "Tailscale 连接（可选）"),
-          React.createElement("div", { style: { fontSize: 12, opacity: 0.6, lineHeight: 1.5 } }, "未读取到 Tailscale 状态；可继续使用 dsh-pocket 的局域网/公网二维码。"));
-      }
-      var status = value.status;
-      if (!status.httpsUrl) {
-        return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-          React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "Tailscale 连接（推荐，地址固定）"),
-          React.createElement("div", { style: { fontSize: 12, opacity: 0.62, lineHeight: 1.55 } },
-            status.available
-              ? "检测到 Tailscale，但还没开启 HTTPS 代理。在 Tailscale 后台 DNS 页开启 HTTPS Certificates，然后执行 tailscale serve --bg 3081，刷新本页即可生成二维码。"
-              : "未读取到 Tailscale 地址。请在 ~/.dsh/dsh-pocket-ios/tailscale.json 写入 {\"url\":\"https://你的机器.tailnet.ts.net\"}。"));
-      }
-
-      var mask = new Array(status.pin ? status.pin.length : 8).fill("•").join("");
-      var savePin = function (nextPin) {
+      var generatePair = function () {
         if (!props.rpcCall) return;
-        setBusy(true); setActionError(null);
-        Promise.resolve(props.rpcCall("pin.set", { pin: nextPin })).then(unwrapRpc).then(function (next) {
-          setValue({ loading: false, error: null, status: next });
-          setShowPin(true); setEditing(false); setCustomPin(""); setBusy(false);
-        }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
-      };
-      var refreshPin = function () {
-        if (!props.rpcCall) return;
-        setBusy(true); setActionError(null);
-        Promise.resolve(props.rpcCall("pin.refresh", {})).then(unwrapRpc).then(function (next) {
-          setValue({ loading: false, error: null, status: next });
-          setShowPin(true); setBusy(false);
-        }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
-      };
-      var pinRow = function () {
-        return React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
-          React.createElement("code", { style: { fontSize: 13, letterSpacing: 0.5, minWidth: 68 } }, showPin ? (status.pin || "—") : mask),
-          React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: chipStyle }, showPin ? "隐藏" : "显示"),
-          React.createElement("button", { type: "button", onClick: function () { copy(status.pin, "pin"); }, style: chipStyle }, copied === "pin" ? "已复制" : "复制"),
-          React.createElement("button", { type: "button", disabled: busy, onClick: refreshPin, style: chipStyle }, busy ? "生成中…" : "随机更换"),
-          React.createElement("button", { type: "button", disabled: busy, onClick: function () { setEditing(!editing); setActionError(null); }, style: chipStyle }, editing ? "收起" : "自定义"));
-      };
-
-      return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "Tailscale 连接（推荐，地址固定且更稳定）"),
-        React.createElement("div", { style: { fontSize: 12, opacity: 0.65, lineHeight: 1.5, marginBottom: 10 } },
-          "手机装好 Tailscale 并开启 VPN → 扫码填入地址 → 输入下方访问密码。二维码只含地址，不含密码。"),
-        React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
-          status.qr ? React.createElement("img", { src: status.qr, alt: "Tailscale 连接二维码", style: { width: 132, height: 132, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 132px" } }) : null,
-          React.createElement("div", { style: { flex: "1 1 240px", minWidth: 0 } },
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, "固定地址"),
-            React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
-              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 180px", minWidth: 0 } }, status.httpsUrl),
-              React.createElement("button", { type: "button", onClick: function () { copy(status.httpsUrl, "url"); }, style: chipStyle }, copied === "url" ? "已复制" : "复制")),
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 4 } }, "访问密码"),
-            pinRow(),
-            editing ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 } },
-              React.createElement("input", {
-                value: customPin, placeholder: "8-64 位字母或数字",
-                onChange: function (event) { setCustomPin(event.target.value); },
-                style: { padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(0,0,0,.15)", fontSize: 12, minWidth: 160 }
-              }),
-              React.createElement("button", { type: "button", disabled: busy, onClick: function () { if (!/^[A-Za-z0-9]{8,64}$/.test(customPin)) { setActionError("密码需为 8-64 位英文字母或数字"); return; } savePin(customPin); }, style: chipPrimary }, "保存"),
-              React.createElement("span", { style: { fontSize: 11, opacity: 0.55 } }, "保存后旧密码失效")) : null,
-            actionError ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, actionError) : null,
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5, marginTop: 10 } },
-              "密码只保存在本机，请勿截图分享。未开启 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
-    }
-
-
-    function PairingCard(props) {
-      var state = React.useState({ loading: true, error: null, data: null });
-      var value = state[0];
-      var setValue = state[1];
-      var remainingState = React.useState(0);
-      var remaining = remainingState[0];
-      var setRemaining = remainingState[1];
-
-      var generate = function () {
-        if (!props.rpcCall) return;
-        setValue(function (prev) { return { loading: !prev.data, error: null, data: prev.data } });
         Promise.resolve(props.rpcCall("pair.create", {})).then(unwrapRpc).then(function (data) {
-          setValue({ loading: false, error: null, data: data });
+          setPair({ loading: false, error: null, data: data });
           setRemaining(data && data.expiresIn ? data.expiresIn : 60);
         }).catch(function (e) {
-          setValue({ loading: false, error: String((e && e.message) || e), data: null });
+          var msg = String((e && e.message) || e);
+          if (msg.indexOf("unknown endpoint") >= 0) msg = "配对服务未就绪：请重启 DSH 后再刷新本页。";
+          setPair({ loading: false, error: msg, data: null });
         });
       };
 
       React.useEffect(function () {
-        generate();
+        refreshStatus();
+        generatePair();
         var timer = setInterval(function () {
           setRemaining(function (prev) {
             var next = prev - 1;
-            if (next <= 8) { generate(); return 60; }
+            if (next <= 8) { generatePair(); return 60; }
             return next;
           });
         }, 1000);
         return function () { clearInterval(timer); };
       }, []);
 
+      var mask = new Array(status && status.pin ? status.pin.length : 8).fill("•").join("");
+      var copy = function (text, field) {
+        if (!text) return;
+        copyText(text); setCopied(field);
+        setTimeout(function () { setCopied(null); }, 1500);
+      };
+      var savePin = function (nextPin) {
+        if (!props.rpcCall) return;
+        if (!/^[A-Za-z0-9]{8,64}$/.test(nextPin)) { setActionError("密码需为 8-64 位英文字母或数字"); return; }
+        setBusy(true); setActionError(null);
+        Promise.resolve(props.rpcCall("pin.set", { pin: nextPin })).then(unwrapRpc).then(function (s) {
+          setStatus(s || status); setShowPin(true); setEditing(false); setCustomPin(""); setBusy(false);
+        }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
+      };
+      var refreshPin = function () {
+        if (!props.rpcCall) return;
+        setBusy(true); setActionError(null);
+        Promise.resolve(props.rpcCall("pin.refresh", {})).then(unwrapRpc).then(function (s) {
+          setStatus(s || status); setShowPin(true); setBusy(false);
+        }).catch(function (e) { setBusy(false); setActionError(String((e && e.message) || e)); });
+      };
+
       return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "扫码配对（免密码）"),
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "扫码连接（推荐，免密码）"),
         React.createElement("div", { style: { fontSize: 12, opacity: 0.65, lineHeight: 1.5, marginBottom: 10 } },
-          "用 DSH Pocket 扫描下方二维码即可直接连接，不需要输入密码。二维码自动轮换，每次有效 60 秒、仅可使用一次。"),
-        value.loading ? React.createElement("div", { style: { fontSize: 12, opacity: 0.6 } }, "正在生成二维码…") : null,
-        value.error ? React.createElement("div", { style: { fontSize: 12, color: "#b91c1c" } }, value.error) : null,
-        value.data && value.data.qr ? React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
-          React.createElement("img", { src: value.data.qr, alt: "配对二维码", style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } }),
-          React.createElement("div", { style: { flex: "1 1 200px", minWidth: 0 } },
-            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "剩余有效时间"),
-            React.createElement("div", { style: { fontSize: 22, fontWeight: 600, color: "#147A5E", marginBottom: 8 } }, remaining + "s"),
-            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, wordBreak: "break-all", marginBottom: 10 } }, value.data.url || ""),
-            React.createElement("button", { type: "button", onClick: generate, style: chipStyle }, "立即刷新"))) : null);
+          "用 DSH Pocket 扫描下方二维码即可直接连接，无需输入密码。二维码自动轮换，每次有效 60 秒、仅可使用一次。"),
+        React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
+          pairValue.data && pairValue.data.qr
+            ? React.createElement("img", { src: pairValue.data.qr, alt: "扫码连接二维码", style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } })
+            : React.createElement("div", { style: { width: 148, height: 148, borderRadius: 8, border: "1px dashed rgba(0,0,0,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, opacity: 0.6, flex: "0 0 148px", textAlign: "center", padding: 8 } },
+                pairValue.loading ? "正在生成二维码…" : "二维码不可用"),
+          React.createElement("div", { style: { flex: "1 1 220px", minWidth: 0 } },
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, "剩余有效时间"),
+            React.createElement("div", { style: { fontSize: 20, fontWeight: 600, color: "#147A5E", marginBottom: 10 } }, remaining + "s"),
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, "固定地址"),
+            React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
+              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, status && status.httpsUrl ? status.httpsUrl : (loading ? "检测中…" : "未检测到 Tailscale 地址")),
+              React.createElement("button", { type: "button", onClick: function () { copy(status && status.httpsUrl, "url"); }, style: chipStyle }, copied === "url" ? "已复制" : "复制")),
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 4 } }, "访问密码（手动登录用）"),
+            React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+              React.createElement("code", { style: { fontSize: 13, letterSpacing: 0.5, minWidth: 68 } }, showPin ? ((status && status.pin) || "—") : mask),
+              React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: chipStyle }, showPin ? "隐藏" : "显示"),
+              React.createElement("button", { type: "button", onClick: function () { copy(status && status.pin, "pin"); }, style: chipStyle }, copied === "pin" ? "已复制" : "复制"),
+              React.createElement("button", { type: "button", disabled: busy, onClick: refreshPin, style: chipStyle }, busy ? "生成中…" : "随机更换"),
+              React.createElement("button", { type: "button", disabled: busy, onClick: function () { setEditing(!editing); setActionError(null); }, style: chipStyle }, editing ? "收起" : "自定义")),
+            editing ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 } },
+              React.createElement("input", {
+                value: customPin, placeholder: "8-64 位字母或数字",
+                onChange: function (event) { setCustomPin(event.target.value); },
+                style: { padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(0,0,0,.15)", fontSize: 12, minWidth: 160 }
+              }),
+              React.createElement("button", { type: "button", disabled: busy, onClick: function () { savePin(customPin); }, style: chipPrimary }, "保存"),
+              React.createElement("span", { style: { fontSize: 11, opacity: 0.55 } }, "保存后旧密码失效")) : null,
+            actionError ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, actionError) : null,
+            pairValue.error ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, pairValue.error) : null,
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5, marginTop: 10 } },
+              "扫配对码无需密码，最省事；手动登录时用上面的访问密码。密码只保存在本机，请勿截图分享。"))));
+    }
+
+    function AppDownloadCard() {
+      return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" } },
+          React.createElement("div", {
+            style: { width: 116, height: 116, flex: "0 0 116px", background: "#fff", borderRadius: 8, padding: 6, border: "1px solid rgba(0,0,0,.06)", boxSizing: "border-box" },
+            dangerouslySetInnerHTML: { __html: QR_SVG }
+          }),
+          React.createElement("div", { style: { flex: "1 1 240px", minWidth: 0 } },
+            React.createElement("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 4 } }, "在 iPhone 上使用 DSH"),
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.68, lineHeight: 1.55, marginBottom: 10 } },
+              "扫码从 App Store 安装 DSH Pocket iOS；装好后用上方二维码连接（或 dsh-pocket 的局域网/公网二维码）。"),
+            React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+              React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: chipPrimary }, "在 App Store 下载"),
+              React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, "GitHub 仓库")))));
     }
 
     function MobileAccessPanel(props) {
-      return React.createElement(
-        "div",
-        { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
-        React.createElement(
-          "div",
-          { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
-          React.createElement(
-            "div",
-            { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" } },
-            React.createElement("div", {
-              style: { width: 116, height: 116, flex: "0 0 116px", background: "#fff", borderRadius: 8, padding: 6, border: "1px solid rgba(0,0,0,.06)", boxSizing: "border-box" },
-              dangerouslySetInnerHTML: { __html: QR_SVG }
-            }),
-            React.createElement(
-              "div",
-              { style: { flex: "1 1 240px", minWidth: 0 } },
-              React.createElement("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 4 } }, "在 iPhone 上使用 DSH"),
-              React.createElement("div", { style: { fontSize: 12, opacity: 0.68, lineHeight: 1.55, marginBottom: 10 } },
-                "扫码从 App Store 安装 DSH Pocket iOS；装好后用下方 Tailscale 二维码连接（或 dsh-pocket 的局域网/公网二维码）。"),
-              React.createElement(
-                "div",
-                { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-                React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: chipPrimary }, "在 App Store 下载"),
-                React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, "GitHub 仓库")
-              )
-            )
-          )
-        ),
-        React.createElement(TailscaleCard, { rpcCall: props.rpcCall }),
-        React.createElement(PairingCard, { rpcCall: props.rpcCall }),
+      return React.createElement("div", { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
+        React.createElement(AppDownloadCard),
+        React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }),
         React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5 } },
-          "局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。")
-      );
+          "局域网 / 公网二维码由 dsh-pocket 插件提供（可选）。扫码配对无需密码，推荐优先使用。"));
     }
 
     function apply(ctx) {
       var rpcCall = function (endpoint, payload) {
         return Promise.resolve(ctx.connection.rpc.call("/dsh-pocket-ios", endpoint || "tailscale.status", payload || {}));
       };
-      function MobileAccessSection() {
-        return React.createElement(MobileAccessPanel, { rpcCall: rpcCall });
-      }
+      function MobileAccessSection() { return React.createElement(MobileAccessPanel, { rpcCall: rpcCall }); }
       ctx.slots.inject("settings.section", function () {
-        return ctx.slots.register(
-          {
-            name: "settings.section",
-            id: "pocket-ios",
-            order: 2,
-            label: function () { return "手机访问（iOS）"; },
-            inject: function () { return { rpcCall: rpcCall }; }
-          },
-          MobileAccessSection
-        );
+        return ctx.slots.register({
+          name: "settings.section",
+          id: "pocket-ios",
+          order: 2,
+          label: function () { return "手机访问（iOS）"; },
+          inject: function () { return { rpcCall: rpcCall }; }
+        }, MobileAccessSection);
       });
     }
 
-    // cordis client 插件必须导出 name 与 inject，服务才会注入（否则 ctx.slots 为 undefined）。
     module.exports = { name: "dsh-pocket-ios", inject: ["slots", "connection"], apply: apply };
     return module.exports;
   }
