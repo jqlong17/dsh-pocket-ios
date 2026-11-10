@@ -123,6 +123,7 @@ enum L10n {
         "已复制": "Copied",
         "访问密码": "Access PIN",
         "删除连接": "Delete connection",
+        "粘贴": "Paste",
         "删除连接？": "Delete this connection?",
         "删除": "Delete",
         "取消": "Cancel",
@@ -3493,6 +3494,7 @@ struct AppSettingsSheet: View {
 struct ConnectView: View {
     @Bindable var model: ConnectionModel
     @State private var showingScanner = false
+    @State private var showingPin = false
     @State private var renamingEndpoint: SavedEndpoint?
     @State private var renameText = ""
     @State private var deletingEndpoint: SavedEndpoint?
@@ -3727,13 +3729,45 @@ struct ConnectView: View {
 
             Divider().padding(.leading, 14)
 
-            SecureField(L10n.t("访问密码"), text: $model.pin)
+            HStack(spacing: 8) {
+                Group {
+                    if showingPin {
+                        TextField(L10n.t("访问密码"), text: $model.pin)
+                    } else {
+                        SecureField(L10n.t("访问密码"), text: $model.pin)
+                    }
+                }
                 .textContentType(.password)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.subheadline)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                Button {
+                    if let pasted = UIPasteboard.general.string {
+                        model.pin = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(brand)
+                        .frame(width: 32, height: 32)
+                        .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.t("粘贴"))
+                Button {
+                    showingPin.toggle()
+                } label: {
+                    Image(systemName: showingPin ? "eye.slash" : "eye")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showingPin ? L10n.t("隐藏") : L10n.t("显示"))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
         }
         .background(card, in: RoundedRectangle(cornerRadius: 12))
     }
