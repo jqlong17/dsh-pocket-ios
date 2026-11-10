@@ -4148,6 +4148,12 @@ struct ConnectedView: View {
             }
         }
         .navigationTitle(L10n.t("会话"))
+        .alert(L10n.t("断开与电脑的连接？"), isPresented: $showingDisconnectConfirm) {
+            Button(L10n.t("断开连接"), role: .destructive) { model.disconnect() }
+            Button(L10n.t("取消"), role: .cancel) {}
+        } message: {
+            Text(L10n.t("断开后需要重新扫码配对（或输入访问密码）才能再次连接。"))
+        }
 
         .navigationDestination(for: PocketSession.self) { session in
             ConversationView(model: model, session: session)
