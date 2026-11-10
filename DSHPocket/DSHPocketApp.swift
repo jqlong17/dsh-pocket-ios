@@ -453,6 +453,8 @@ final class ConnectionModel {
     var isDemoMode = false
     var sessions: [PocketSession] = []
     var archivedSessionIds: Set<String> = []
+    /// 置顶会话（服务端返回顺序：最近置顶在前）。
+    var pinnedSessionIds: [String] = []
     var isLoadingSessions = false
     var selectedSession: PocketSession?
     var navigationPath: [PocketSession] = []
@@ -1498,7 +1500,9 @@ final class ConnectionModel {
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            if let authError = error as? ConnectionError, case .server(401) = authError {
+            if let authError = error as? ConnectionError,
+               case .server(let status) = authError,
+               TimelineOrdering.isUnauthorized(statusCode: status) {
                 recordDiagnostic("会话列表 401：登录已失效")
                 handleAuthExpired()
                 return
@@ -1512,6 +1516,14 @@ final class ConnectionModel {
         }
     }
 
+    /// 列表展示顺序：置顶在前（最近置顶优先），其余保持服务端顺序。
+    var displaySessions: [PocketSession] {
+        guard !pinnedSessionIds.isEmpty else { return sessions }
+        let pinned = pinnedSessionIds.compactMap { id in sessions.first { $0.sessionId == id } }
+        let rest = sessions.filter { !pinnedSessionIds.contains($0.sessionId) }
+        return pinned + rest
+    }
+
     private func fetchSessions() async throws -> [PocketSession] {
         let value = try await rpc("session/list", args: ["_request": ["excludeArchived": true]])
         let items = value["items"] as? [[String: Any]] ?? []
@@ -1519,8 +1531,11 @@ final class ConnectionModel {
         let archived: Set<String>
         if value["archivedSessionsExcluded"] as? Bool == true {
             archived = []
+            pinnedSessionIds = []
         } else {
-            archived = try await fetchArchivedSessionIds()
+            let flags = try await fetchWorkspaceSessionFlags()
+            archived = flags.archived
+            pinnedSessionIds = flags.pinned
         }
         archivedSessionIds = archived
         // 与 DSH 桌面端侧边栏保持一致：隐藏已归档、subagent 子会话和空会话，
@@ -1528,7 +1543,7 @@ final class ConnectionModel {
         return sessions.filter { !archived.contains($0.sessionId) && !$0.isSubagent && !$0.isHiddenFromList }
     }
 
-    private func fetchArchivedSessionIds() async throws -> Set<String> {
+    private func fetchWorkspaceSessionFlags() async throws -> (archived: Set<String>, pinned: [String]) {
         guard let base = try? Self.serverURL(from: serverAddress),
               let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
             throw ConnectionError.invalidURL(serverAddress)
@@ -1565,7 +1580,82 @@ final class ConnectionModel {
                   let archived = baseline["archivedSessionIds"] as? [String] else {
                 throw ConnectionError.invalidPayload
             }
-            return Set(archived)
+            let pinned = baseline["pinnedSessionIds"] as? [String] ?? []
+            return (Set(archived), pinned)
+        }
+    }
+
+    /// 最近一次被归档的会话（用于列表底部「撤销」）。
+    var lastArchivedSession: PocketSession?
+
+    /// 撤销最近一次归档。
+    @MainActor
+    func undoArchive() async {
+        guard let session = lastArchivedSession else { return }
+        lastArchivedSession = nil
+        if isDemoMode {
+            archivedSessionIds.remove(session.sessionId)
+            await loadSessions(silently: true)
+            return
+        }
+        do {
+            _ = try await rpc("workspace/unarchiveSession", args: ["request": ["sessionId": session.sessionId]])
+            archivedSessionIds.remove(session.sessionId)
+            await loadSessions(silently: true)
+        } catch {
+            errorMessage = "撤销归档失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 置顶 / 取消置顶（服务端 workspace/pinSession，桌面端同步）。
+    @MainActor
+    func togglePin(_ session: PocketSession) async {
+        let pinned = pinnedSessionIds.contains(session.sessionId)
+        if isDemoMode {
+            if pinned { pinnedSessionIds.removeAll { $0 == session.sessionId } }
+            else { pinnedSessionIds.insert(session.sessionId, at: 0) }
+            return
+        }
+        do {
+            let endpoint = pinned ? "workspace/unpinSession" : "workspace/pinSession"
+            let value = try await rpc(endpoint, args: ["request": ["sessionId": session.sessionId]])
+            if let list = value["pinnedSessionIds"] as? [String] {
+                pinnedSessionIds = list
+            } else if pinned {
+                pinnedSessionIds.removeAll { $0 == session.sessionId }
+            } else {
+                pinnedSessionIds.insert(session.sessionId, at: 0)
+            }
+        } catch {
+            errorMessage = "置顶失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 归档会话（从列表移除，桌面端同步隐藏）。
+    @MainActor
+    func archive(_ session: PocketSession) async {
+        if isDemoMode {
+            sessions.removeAll { $0.sessionId == session.sessionId }
+            archivedSessionIds.insert(session.sessionId)
+            pinnedSessionIds.removeAll { $0 == session.sessionId }
+            return
+        }
+        do {
+            let value = try await rpc("workspace/archiveSession", args: ["request": [
+                "sessionId": session.sessionId,
+                "stopActivity": false
+            ]])
+            if let ids = value["archivedSessionIds"] as? [String] {
+                archivedSessionIds = Set(ids)
+            } else {
+                archivedSessionIds.insert(session.sessionId)
+            }
+            sessions.removeAll { $0.sessionId == session.sessionId }
+            pinnedSessionIds.removeAll { $0 == session.sessionId }
+            lastArchivedSession = session
+            if selectedSession?.sessionId == session.sessionId { selectedSession = nil }
+        } catch {
+            errorMessage = "归档失败：\(error.localizedDescription)"
         }
     }
 
@@ -1723,7 +1813,9 @@ final class ConnectionModel {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            if let authError = error as? ConnectionError, case .server(401) = authError {
+            if let authError = error as? ConnectionError,
+               case .server(let status) = authError,
+               TimelineOrdering.isUnauthorized(statusCode: status) {
                 handleAuthExpired()
                 return
             }
@@ -1749,20 +1841,6 @@ final class ConnectionModel {
         let pending = messages.filter { message in
             guard message.isPending else { return false }
             if let rpcId = message.rpcId {
-                // 真实消息已进历史（带 rpcId）：用真实消息替换待发消息。
-                if incoming.contains(where: {
-                    !$0.isPending && $0.rpcId?.lowercased() == rpcId.lowercased()
-                }) {
-                    acknowledgedSendRpcIds.remove(rpcId)
-                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
-                    return false
-                }
-                // 只有 ACK、没有消息体：保留待发消息，等历史刷新后再替换，避免闪一下消失。
-                if incomingRpcIds.contains(rpcId.lowercased()) {
-                    acknowledgedSendRpcIds.insert(rpcId)
-                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
-                    return true
-                }
                 // 兜底：服务端没回填 rpcId（steer 偶发丢确认），但本次新出现了同文本用户消息。
                 if incoming.contains(where: {
                     $0.isUser && !$0.isPending && $0.rpcId == nil
@@ -1772,10 +1850,30 @@ final class ConnectionModel {
                     confirmOutbox(rpcIds: [rpcId])
                     return false
                 }
-                if failedSendRpcIds.contains(rpcId) { return true }
-                // 仍在发件箱、或已 ACK 等待落库的，保留；历史遗留 pending 丢弃。
-                return outboxEntries.contains { $0.id.lowercased() == rpcId.lowercased() }
-                    || acknowledgedSendRpcIds.contains(rpcId)
+                let decision = TimelineOrdering.pendingDecision(
+                    rpcId: rpcId,
+                    hasRealMessageWithSameRpcId: incoming.contains {
+                        !$0.isPending && $0.rpcId?.lowercased() == rpcId.lowercased()
+                    },
+                    acknowledgedInIncoming: incomingRpcIds.contains(rpcId.lowercased()),
+                    isFailed: failedSendRpcIds.contains(rpcId),
+                    inOutbox: outboxEntries.contains { $0.id.lowercased() == rpcId.lowercased() },
+                    isAcknowledged: acknowledgedSendRpcIds.contains(rpcId)
+                )
+                switch decision {
+                case .replaceWithReal:
+                    acknowledgedSendRpcIds.remove(rpcId)
+                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
+                    return false
+                case .acknowledgeAndKeep:
+                    acknowledgedSendRpcIds.insert(rpcId)
+                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
+                    return true
+                case .keep:
+                    return true
+                case .dropStale:
+                    return false
+                }
             }
             // 兼容不回 rpcId 的服务端：仅当“发送之后新出现的最后一条用户消息”文本相同才确认。
             if message.rpcId == nil,
@@ -1874,7 +1972,9 @@ final class ConnectionModel {
     func displaySortKey(for message: PocketMessage) -> Int {
         // 待发消息不能用 Int.max（会沉到「过程」行下面）；用发送时最后一条已确认消息的位置，
         // 这样它排在旧消息之后、发送之后产生的工具步骤之前。
-        message.localSortKey ?? message.sequence
+        TimelineOrdering.sortKey(sequence: message.sequence,
+                                 localSortKey: message.localSortKey,
+                                 isPending: message.isPending)
     }
 
     // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
@@ -2849,7 +2949,10 @@ final class ConnectionModel {
         let sendConversation = conversations[session.sessionId]
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let requestId = UUID().uuidString.lowercased()
-        let sortAnchor = max(lastSequence, steps.map(\.sequence).max() ?? -1)
+        let sortAnchor = TimelineOrdering.pendingAnchor(
+            messageMax: lastSequence,
+            stepMax: steps.map(\.sequence).max() ?? -1
+        )
         let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId, sortSequence: sortAnchor)
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
@@ -4141,7 +4244,7 @@ struct ConnectedView: View {
                 ContentUnavailableView(L10n.t("还没有会话"), systemImage: "bubble.left.and.bubble.right", description: Text(L10n.t("创建会话后即可开始对话。")))
                     .listRowSeparator(.hidden)
             }
-            ForEach(model.sessions) { session in
+            ForEach(model.displaySessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
                 NavigationLink(value: session) {
                     HStack(spacing: 12) {
@@ -4164,10 +4267,56 @@ struct ConnectedView: View {
                         }
                     }.padding(.vertical, 4)
                 }
+                .contextMenu {
+                    Button {
+                        Task { await model.togglePin(session) }
+                    } label: {
+                        Label(model.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
+                              systemImage: model.pinnedSessionIds.contains(session.sessionId) ? "pin.slash" : "pin")
+                    }
+                    Button(role: .destructive) {
+                        Task { await model.archive(session) }
+                    } label: {
+                        Label(L10n.t("归档"), systemImage: "archivebox")
+                    }
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    Button {
+                        Task { await model.togglePin(session) }
+                    } label: {
+                        Label(model.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
+                              systemImage: "pin")
+                    }
+                    .tint(.orange)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        Task { await model.archive(session) }
+                    } label: {
+                        Label(L10n.t("归档"), systemImage: "archivebox")
+                    }
+                }
             }
         }
         .listStyle(.plain)
         .overlay { if model.isLoadingSessions { ProgressView() } }
+        .overlay(alignment: .bottom) {
+            if model.lastArchivedSession != nil {
+                HStack(spacing: 10) {
+                    Image(systemName: "archivebox")
+                    Text(L10n.t("已归档"))
+                    Spacer(minLength: 8)
+                    Button(L10n.t("撤销")) { Task { await model.undoArchive() } }
+                        .fontWeight(.semibold)
+                }
+                .font(.footnote)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(.black.opacity(0.82), in: Capsule())
+                .padding(.bottom, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .refreshable { await model.loadSessions() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
