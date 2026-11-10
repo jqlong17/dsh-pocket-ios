@@ -4246,13 +4246,22 @@ struct ConnectedView: View {
             }
             ForEach(model.displaySessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
+                let isPinned = model.pinnedSessionIds.contains(session.sessionId)
                 NavigationLink(value: session) {
                     HStack(spacing: 12) {
                         Image(systemName: session.running ? "ellipsis.bubble.fill" : (finishedAwaiting ? "bell.badge.fill" : "bubble.left"))
                             .foregroundStyle(session.running ? .green : (finishedAwaiting ? .red : .secondary))
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                            HStack(spacing: 5) {
+                                Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                                if isPinned {
+                                    Image(systemName: "pin.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                        .accessibilityLabel(L10n.t("已置顶"))
+                                }
+                            }
                             Text(finishedAwaiting ? "已完成，等待你的回复"
                                  : (session.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (session.running ? "正在运行" : "对话记录")))
                                 .font(.caption)
@@ -4267,6 +4276,7 @@ struct ConnectedView: View {
                         }
                     }.padding(.vertical, 4)
                 }
+                .listRowBackground(isPinned ? Color.orange.opacity(0.055) : Color.clear)
                 .contextMenu {
                     Button {
                         Task { await model.togglePin(session) }
