@@ -1839,7 +1839,9 @@ final class ConnectionModel {
     /// 曾按 turn 区间把"生成中发送的用户消息"重排到本轮回复之后，但 steer 模式下这些消息
     /// 本身会打断当前轮、seq 就在回复之前；重排反而把用户消息和回复顺序弄反，故移除该启发式。
     func displaySortKey(for message: PocketMessage) -> Int {
-        message.sequence
+        // 待发消息不能用 Int.max（会沉到「过程」行下面）；用发送时最后一条已确认消息的位置，
+        // 这样它排在旧消息之后、发送之后产生的工具步骤之前。
+        message.localSortKey ?? message.sequence
     }
 
     // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
@@ -2814,7 +2816,7 @@ final class ConnectionModel {
         let sendConversation = conversations[session.sessionId]
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let requestId = UUID().uuidString.lowercased()
-        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId)
+        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId, sortSequence: lastSequence)
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
         recordDiagnostic("用户点击发送：\(text.count) 字，图片 \(attachments.count) 张")
@@ -3157,6 +3159,8 @@ struct PocketMessage: Identifiable {
     let text: String
     let isUser: Bool
     let isPending: Bool
+    /// 待发消息在会话里的显示排序位置（发送时刻最后一条已确认消息的 sequence）。
+    var localSortKey: Int? = nil
     let images: [PocketImageRef]
     let localImages: [UIImage]
     /// 发送时客户端生成的 requestId，服务端会回填到 user/message 的 source.rpcId，用来精确对账。
@@ -3175,9 +3179,10 @@ struct PocketMessage: Identifiable {
         self.rpcId = nil
     }
 
-    init(pendingText: String, localImages: [UIImage] = [], rpcId: String? = nil) {
+    init(pendingText: String, localImages: [UIImage] = [], rpcId: String? = nil, sortSequence: Int? = nil) {
         self.id = "pending-\(UUID().uuidString)"
         self.sequence = Int.max
+        self.localSortKey = sortSequence
         self.kind = "user/message"
         self.text = pendingText
         self.isUser = true
