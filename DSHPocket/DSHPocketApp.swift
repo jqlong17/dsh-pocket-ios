@@ -4313,16 +4313,20 @@ struct ConnectedView: View {
         .overlay(alignment: .bottom) {
             if model.lastArchivedSession != nil {
                 HStack(spacing: 10) {
-                    Image(systemName: "archivebox")
+                    Image(systemName: "archivebox.fill")
+                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                     Text(L10n.t("已归档"))
-                    Spacer(minLength: 8)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 12)
                     Button(L10n.t("撤销")) { Task { await model.undoArchive() } }
-                        .fontWeight(.semibold)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                 }
-                .font(.footnote)
-                .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(.black.opacity(0.82), in: Capsule())
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
                 .padding(.bottom, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
