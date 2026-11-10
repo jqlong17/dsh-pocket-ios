@@ -1825,6 +1825,9 @@ final class ConnectionModel {
     private func confirmInboxOutbox(in records: [[String: Any]]) {
         let ids = inboxRpcIds(in: records)
         guard !ids.isEmpty else { return }
+        // 先登记为"已确认但消息体尚未落库"，mergeMessages 会保留本地 pending，
+        // 等真实 user/message 出现再替换；否则消息会闪一下消失。
+        acknowledgedSendRpcIds.formUnion(ids)
         confirmOutbox(rpcIds: ids)
         ackedSendRpcIds.subtract(ids)
         failedSendRpcIds.subtract(ids)
@@ -2843,7 +2846,8 @@ final class ConnectionModel {
         let sendConversation = conversations[session.sessionId]
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let requestId = UUID().uuidString.lowercased()
-        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId, sortSequence: lastSequence)
+        let sortAnchor = max(lastSequence, steps.map(\.sequence).max() ?? -1)
+        let pending = PocketMessage(pendingText: text, localImages: attachments.map(\.uiImage), rpcId: requestId, sortSequence: sortAnchor)
         let sendStarted = Date()
         timingLog("send_typed chars=\(text.count) images=\(attachments.count)")
         recordDiagnostic("用户点击发送：\(text.count) 字，图片 \(attachments.count) 张")
@@ -4799,22 +4803,14 @@ struct ConversationView: View {
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
                     .accessibilityIdentifier("composer-field")
-                if model.isSending {
-                    Button { model.cancelSend() } label: {
-                        Image(systemName: "xmark").font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white).frame(width: 44, height: 44)
-                            .background(Color.red.opacity(0.85), in: Circle())
-                    }.accessibilityLabel("取消发送").accessibilityIdentifier("cancel-send")
-                } else {
-                    Button {
-                        composerFocused = false
-                        model.sendMessage(in: session)
-                    } label: {
-                        Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white).frame(width: 44, height: 44)
-                            .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
-                    }.disabled(!canSend).accessibilityLabel("发送消息").accessibilityIdentifier("send-button")
-                }
+                Button {
+                    composerFocused = false
+                    model.sendMessage(in: session)
+                } label: {
+                    Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white).frame(width: 44, height: 44)
+                        .background(canSend ? Color(red: 0.08, green: 0.48, blue: 0.37) : .gray, in: Circle())
+                }.disabled(!canSend).accessibilityLabel("发送消息").accessibilityIdentifier("send-button")
             }.padding(.horizontal).padding(.vertical, 10)
             .frame(maxWidth: 720)
             .frame(maxWidth: .infinity)
