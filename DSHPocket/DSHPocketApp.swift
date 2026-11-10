@@ -131,6 +131,14 @@ enum L10n {
         "用本 App 扫描设置页上的二维码": "Scan the QR code from that page with this app",
         "自动连接，无需输入密码": "Connects automatically, no password needed",
         "或手动连接（输入地址与密码）": "Or connect manually (address + password)",
+        "方式一（推荐）：Tailscale": "Option 1 (recommended): Tailscale",
+        "电脑装 Tailscale + dsh-pocket-ios 连接器，手机装 Tailscale 和本 App；扫码即连，地址固定": "Install Tailscale + the dsh-pocket-ios connector on your Mac, Tailscale and this app on your phone; scan to connect, fixed address",
+        "方式二：dsh-pocket": "Option 2: dsh-pocket",
+        "电脑装 dsh-pocket 插件（可选再加 dsh-pocket-ios 连接器）；扫它的局域网/公网二维码后输入访问密码": "Install the dsh-pocket plugin on your Mac (optionally add the dsh-pocket-ios connector); scan its LAN/public QR and enter the access PIN",
+        "按你选的路线装好对应插件（方式一：dsh-pocket-ios；方式二：dsh-pocket）": "Install the plugin for the option you picked (Option 1: dsh-pocket-ios; Option 2: dsh-pocket)",
+        "打开电脑 DSH → 设置 → 手机访问": "Open DSH on your Mac → Settings → Phone access",
+        "扫码：方式一自动连接；方式二输入访问密码": "Scan: Option 1 connects automatically; Option 2 asks for the access PIN",
+        "已填入地址，请输入电脑上显示的访问密码（方式二）": "Address filled in. Enter the access PIN shown on your Mac (Option 2).",
         "准备（二选一）": "Before you start (pick one)",
         "Tailscale（推荐）": "Tailscale (recommended)",
         "Mac 和 iPhone 都安装并登录同一账号：地址固定、连接更稳定，换 Wi-Fi/切 4G 不用重新扫码": "Install Tailscale on both your Mac and iPhone with the same account: fixed address, more stable, no rescanning when switching networks",
@@ -3556,6 +3564,7 @@ struct ConnectView: View {
     @State private var renamingEndpoint: SavedEndpoint?
     @State private var renameText = ""
     @State private var deletingEndpoint: SavedEndpoint?
+    @State private var scanHint: String?
 
     /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
     private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
@@ -3569,6 +3578,18 @@ struct ConnectView: View {
             VStack(spacing: 12) {
                 header
                 if let error = model.errorMessage { errorBanner(error) }
+                if let hint = scanHint {
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill").foregroundStyle(brand)
+                        Text(hint).font(.footnote).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Button { scanHint = nil } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 10)
+                    .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                }
                 scanConnectCard
                 manualSectionTitle
                 inputCard
@@ -3597,7 +3618,11 @@ struct ConnectView: View {
                         showingScanner = false
                         // 配对码/认证 URL/PIN 任一命中都直接连接。
                         if !model.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
+                            scanHint = nil
                             Task { await model.connect() }
+                        } else {
+                            // 扫的是 dsh-pocket 的「地址型」二维码（方式二）：需要手动输入访问密码。
+                            scanHint = L10n.t("已填入地址，请输入电脑上显示的访问密码（方式二）")
                         }
                     }
                 }
@@ -3787,21 +3812,21 @@ struct ConnectView: View {
                     .foregroundStyle(.secondary)
                 prereqRow(
                     icon: "network",
-                    title: L10n.t("Tailscale（推荐）"),
-                    detail: L10n.t("Mac 和 iPhone 都安装并登录同一账号：地址固定、连接更稳定，换 Wi-Fi/切 4G 不用重新扫码")
+                    title: L10n.t("方式一（推荐）：Tailscale"),
+                    detail: L10n.t("电脑装 Tailscale + dsh-pocket-ios 连接器，手机装 Tailscale 和本 App；扫码即连，地址固定")
                 )
                 prereqRow(
                     icon: "puzzlepiece.extension",
-                    title: L10n.t("dsh-pocket 插件"),
-                    detail: L10n.t("在 Mac 的 DSH 插件市场安装 dsh-pocket，提供局域网/公网二维码；适合同一 Wi-Fi 或使用代理网络的场景")
+                    title: L10n.t("方式二：dsh-pocket"),
+                    detail: L10n.t("电脑装 dsh-pocket 插件（可选再加 dsh-pocket-ios 连接器）；扫它的局域网/公网二维码后输入访问密码")
                 )
                 Divider().padding(.vertical, 2)
                 Text(L10n.t("然后"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                guideStep("1", L10n.t("在 Mac 上安装 dsh-pocket-ios 插件（提供「手机访问（iOS）」设置页）"))
-                guideStep("2", L10n.t("打开 DSH → 设置 →「手机访问（iOS）」"))
-                guideStep("3", L10n.t("用本 App 扫描该页面上的二维码"))
+                guideStep("1", L10n.t("按你选的路线装好对应插件（方式一：dsh-pocket-ios；方式二：dsh-pocket）"))
+                guideStep("2", L10n.t("打开电脑 DSH → 设置 → 手机访问"))
+                guideStep("3", L10n.t("扫码：方式一自动连接；方式二输入访问密码"))
             }
             Button {
                 showingScanner = true
