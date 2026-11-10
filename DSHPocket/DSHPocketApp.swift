@@ -3806,6 +3806,7 @@ enum SessionListMode: String, CaseIterable, Identifiable {
 struct ModelPickerSheet: View {
     @Bindable var model: ConnectionModel
     @Environment(\.dismiss) private var dismiss
+    @State private var languageRevision = 0
 
     var body: some View {
         NavigationStack {
@@ -3854,6 +3855,10 @@ struct ModelPickerSheet: View {
                 if model.modelGroups.isEmpty { await model.loadModelCatalog() }
             }
         }
+        .id(languageRevision)
+        .onReceive(NotificationCenter.default.publisher(for: .appLanguageChanged)) { _ in
+            languageRevision &+= 1
+        }
     }
 }
 
@@ -3861,6 +3866,7 @@ struct AppSettingsSheet: View {
     @Bindable var model: ConnectionModel
     @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
     @Environment(\.dismiss) private var dismiss
+    @State private var languageRevision = 0
 
     private var versionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -3914,9 +3920,13 @@ struct AppSettingsSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button(L10n.t("完成")) { dismiss() }
                 }
             }
+        }
+        .id(languageRevision)
+        .onReceive(NotificationCenter.default.publisher(for: .appLanguageChanged)) { _ in
+            languageRevision &+= 1
         }
     }
 }
@@ -3990,33 +4000,33 @@ struct ConnectView: View {
                         }
                     }
                 }
-                    .navigationTitle("扫描二维码")
+                    .navigationTitle(L10n.t("扫描二维码"))
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { showingScanner = false } } }
+                    .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.t("完成")) { showingScanner = false } } }
             }
         }
         .onAppear { model.errorMessage = nil }
         .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
-        .alert("命名连接地址", isPresented: Binding(
+        .alert(L10n.t("命名连接地址"), isPresented: Binding(
             get: { renamingEndpoint != nil },
             set: { if !$0 { renamingEndpoint = nil } }
         )) {
             TextField("例如：公司 / 家", text: $renameText)
-            Button("保存") {
+            Button(L10n.t("保存")) {
                 if let endpoint = renamingEndpoint {
                     model.renameEndpoint(endpoint.address, label: renameText)
                 }
                 renamingEndpoint = nil
             }
-            Button("清除", role: .destructive) {
+            Button(L10n.t("清除"), role: .destructive) {
                 if let endpoint = renamingEndpoint {
                     model.renameEndpoint(endpoint.address, label: nil)
                 }
                 renamingEndpoint = nil
             }
-            Button("取消", role: .cancel) { renamingEndpoint = nil }
+            Button(L10n.t("取消"), role: .cancel) { renamingEndpoint = nil }
         } message: {
-            Text("给这个地址起一个有辨识度的名字，例如「公司」或「家」。")
+            Text(L10n.t("给这个地址起一个有辨识度的名字，例如「公司」或「家」。"))
         }
         .alert(L10n.t("删除连接？"), isPresented: Binding(
             get: { deletingEndpoint != nil },
@@ -4053,7 +4063,7 @@ struct ConnectView: View {
                 .padding(.horizontal, 8)
                 .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             }
-            .accessibilityLabel("打开 DSH Pocket iOS 使用说明")
+            .accessibilityLabel(L10n.t("打开 DSH Pocket iOS 使用说明"))
         }
         .padding(14)
         .background(card, in: RoundedRectangle(cornerRadius: 12))
@@ -4332,7 +4342,7 @@ struct ConnectView: View {
                 Button { showingScanner = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "qrcode.viewfinder")
-                        Text("重新扫码连接")
+                        Text(L10n.t("重新扫码连接"))
                     }
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(brand)
@@ -4501,7 +4511,7 @@ struct ConnectedView: View {
                             Text(L10n.t("示例数据，未连接电脑")).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button("退出") { model.exitDemoMode() }.font(.footnote)
+                        Button(L10n.t("退出")) { model.exitDemoMode() }.font(.footnote)
                     }
                 }
             }
@@ -4727,7 +4737,7 @@ struct RemoteMarkdownImage: View {
             } else if failed {
                 HStack(spacing: 6) {
                     Image(systemName: "photo").foregroundStyle(.secondary)
-                    Text("图片加载失败").font(.caption2).foregroundStyle(.secondary)
+                    Text(L10n.t("图片加载失败")).font(.caption2).foregroundStyle(.secondary)
                 }
                 .frame(width: 200, height: 72)
                 .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
@@ -5129,7 +5139,7 @@ struct ConversationView: View {
                     Button { Task { await model.cancelTurn() } } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "stop.circle.fill")
-                            Text("停止")
+                            Text(L10n.t("停止"))
                         }
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -5236,7 +5246,7 @@ struct ConversationView: View {
             if let quote = model.pendingQuote {
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("引用 \(quote.sender) · #\(quote.sequence)")
+                        Text("\(L10n.t("引用")) \(quote.sender) · #\(quote.sequence)")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                         Text(quote.text)
@@ -5611,7 +5621,7 @@ struct AttachmentThumbnail: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .tertiarySystemFill))
                     VStack(spacing: 4) {
                         Image(systemName: "photo.badge.exclamationmark").foregroundStyle(.secondary)
-                        Text("图片加载失败").font(.caption2).foregroundStyle(.secondary)
+                        Text(L10n.t("图片加载失败")).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
             } else {
@@ -5667,14 +5677,14 @@ struct FullscreenImageViewer: View {
         .overlay(alignment: .top) {
             HStack(spacing: 12) {
                 Button { dismiss() } label: { circleIcon("xmark") }
-                    .accessibilityLabel("关闭")
+                    .accessibilityLabel(L10n.t("关闭"))
                 Spacer()
                 ShareLink(item: Image(uiImage: image),
                           preview: SharePreview("图片", image: Image(uiImage: image))) {
                     circleIcon("square.and.arrow.up")
                 }
                 Button { saveToAlbum() } label: { circleIcon("square.and.arrow.down") }
-                    .accessibilityLabel("保存到相册")
+                    .accessibilityLabel(L10n.t("保存到相册"))
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -5733,9 +5743,9 @@ struct UserQuestionCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 Image(systemName: "questionmark.bubble.fill").foregroundStyle(.orange)
-                Text("需要你确认").font(.footnote.weight(.semibold))
+                Text(L10n.t("需要你确认")).font(.footnote.weight(.semibold))
                 Spacer()
-                Text("来自电脑端 DSH").font(.caption2).foregroundStyle(.secondary)
+                Text(L10n.t("来自电脑端 DSH")).font(.caption2).foregroundStyle(.secondary)
             }
 
             ForEach(request.questions) { question in
@@ -5778,7 +5788,7 @@ struct UserQuestionCard: View {
             Button {
                 model.answerQuestion(request, selected: selected, custom: custom)
             } label: {
-                Text("提交回答")
+                Text(L10n.t("提交回答"))
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .frame(height: 42)
