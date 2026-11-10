@@ -9,6 +9,26 @@ window.__ModuleLoader__.load({
     var REPO_URL = "https://github.com/jqlong17/dsh-pocket-ios";
     var QR_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100%\" height=\"100%\" viewBox=\"0 0 37 37\" shape-rendering=\"crispEdges\"><path fill=\"#ffffff\" d=\"M0 0h37v37H0z\"/><path stroke=\"#000000\" d=\"M4 4.5h7m3 0h1m4 0h5m2 0h7M4 5.5h1m5 0h1m2 0h1m7 0h1m2 0h1m1 0h1m5 0h1M4 6.5h1m1 0h3m1 0h1m1 0h1m5 0h1m1 0h1m3 0h1m1 0h1m1 0h3m1 0h1M4 7.5h1m1 0h3m1 0h1m1 0h2m7 0h1m1 0h1m2 0h1m1 0h3m1 0h1M4 8.5h1m1 0h3m1 0h1m1 0h8m2 0h3m1 0h1m1 0h3m1 0h1M4 9.5h1m5 0h1m1 0h2m1 0h5m2 0h1m1 0h1m1 0h1m5 0h1M4 10.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M12 11.5h1m1 0h1m1 0h2m1 0h2m2 0h2M4 12.5h1m1 0h5m5 0h1m1 0h2m1 0h1m1 0h1m2 0h5M8 13.5h1m5 0h2m7 0h4m1 0h1m3 0h1M5 14.5h1m3 0h2m1 0h1m1 0h3m5 0h1m1 0h1m1 0h2M4 15.5h5m6 0h2m1 0h1m1 0h1m1 0h2m1 0h2m1 0h2m1 0h1M5 16.5h3m1 0h2m1 0h2m5 0h3m5 0h1m1 0h2M4 17.5h4m3 0h3m1 0h1m1 0h2m4 0h6m3 0h1M8 18.5h3m3 0h1m2 0h4m1 0h1m2 0h1m2 0h3M5 19.5h2m2 0h1m1 0h1m3 0h1m1 0h1m1 0h1m2 0h3m3 0h1m2 0h1M4 20.5h2m2 0h1m1 0h6m2 0h1m1 0h4m3 0h1m1 0h2M4 21.5h6m1 0h1m1 0h3m5 0h3m2 0h3m1 0h1m1 0h1M4 22.5h1m4 0h3m2 0h2m3 0h3m2 0h2m2 0h1m1 0h1M4 23.5h1m2 0h3m3 0h1m1 0h2m1 0h1m5 0h2m2 0h1m2 0h1M4 24.5h1m1 0h3m1 0h1m3 0h3m4 0h1m2 0h5m1 0h3M12 25.5h3m1 0h3m2 0h2m1 0h1m3 0h5M4 26.5h7m6 0h2m3 0h3m1 0h1m1 0h3M4 27.5h1m5 0h1m1 0h6m5 0h2m3 0h1M4 28.5h1m1 0h3m1 0h1m1 0h5m1 0h1m2 0h1m2 0h5m1 0h1m1 0h1M4 29.5h1m1 0h3m1 0h1m1 0h2m8 0h1m4 0h1m1 0h2M4 30.5h1m1 0h3m1 0h1m1 0h1m1 0h1m3 0h2m3 0h2m1 0h6M4 31.5h1m5 0h1m3 0h2m3 0h1m2 0h1m1 0h2m1 0h3m1 0h1M4 32.5h7m1 0h2m1 0h1m1 0h4m1 0h2m1 0h1m2 0h1m1 0h1\"/></svg>";
 
+
+    // 跟随 DSH 设置页的语言：locale 服务会同步 <html lang>，这里监听变化。
+    function currentLang() {
+      try {
+        var tag = (document.documentElement.lang || navigator.language || "zh").toLowerCase();
+        return tag.indexOf("zh") === 0 ? "zh" : "en";
+      } catch (e) { return "zh"; }
+    }
+    function useLang() {
+      var state = React.useState(currentLang());
+      React.useEffect(function () {
+        if (typeof MutationObserver === "undefined") return undefined;
+        var observer = new MutationObserver(function () { state[1](currentLang()); });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+        return function () { observer.disconnect(); };
+      }, []);
+      return state[0];
+    }
+    function makeT(lang) { return function (zh, en) { return lang === "zh" ? zh : en; }; }
+
     function linkStyle(primary) {
       return {
         display: "inline-flex", alignItems: "center", gap: 6,
@@ -35,7 +55,7 @@ window.__ModuleLoader__.load({
 
     function unwrapRpc(result) {
       if (result && typeof result === "object" && "ok" in result) {
-        if (!result.ok) return Promise.reject(new Error((result.error && result.error.message) || "RPC 失败"));
+        if (!result.ok) return Promise.reject(new Error((result.error && result.error.message) || makeT(currentLang())("RPC 失败", "RPC failed")));
         return result.value !== undefined ? result.value : result;
       }
       if (result && typeof result === "object" && result.result) return unwrapRpc(result.result);
@@ -90,7 +110,7 @@ window.__ModuleLoader__.load({
           setRemaining(data && data.expiresIn ? data.expiresIn : 60);
         }).catch(function (e) {
           var msg = String((e && e.message) || e);
-          if (msg.indexOf("unknown endpoint") >= 0) msg = "配对服务未就绪：请重启 DSH 后再刷新本页。";
+          if (msg.indexOf("unknown endpoint") >= 0) msg = makeT(currentLang())("配对服务未就绪：请重启 DSH 后再刷新本页。", "Pairing service not ready: restart DSH and refresh this page.");
           setPair({ loading: false, error: msg, data: null });
         });
       };
@@ -116,7 +136,7 @@ window.__ModuleLoader__.load({
       };
       var savePin = function (nextPin) {
         if (!props.rpcCall) return;
-        if (!/^[A-Za-z0-9]{8,64}$/.test(nextPin)) { setActionError("密码需为 8-64 位英文字母或数字"); return; }
+        if (!/^[A-Za-z0-9]{8,64}$/.test(nextPin)) { setActionError(makeT(currentLang())("密码需为 8-64 位英文字母或数字", "PIN must be 8–64 letters or digits")); return; }
         setBusy(true); setActionError(null);
         Promise.resolve(props.rpcCall("pin.set", { pin: nextPin })).then(unwrapRpc).then(function (s) {
           setStatus(s || status); setShowPin(true); setEditing(false); setCustomPin(""); setBusy(false);
@@ -131,40 +151,40 @@ window.__ModuleLoader__.load({
       };
 
       return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
-        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "扫码连接（推荐，免密码）"),
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, makeT(currentLang())("扫码连接（推荐，免密码）", "Scan to connect (recommended, no PIN)")),
         React.createElement("div", { style: { fontSize: 12, opacity: 0.65, lineHeight: 1.5, marginBottom: 10 } },
-          "用 DSH Pocket 扫描下方二维码即可直接连接，无需输入密码。二维码自动轮换，每次有效 60 秒、仅可使用一次。"),
+          makeT(currentLang())("用 DSH Pocket 扫描下方二维码即可直接连接，无需输入密码。二维码自动轮换，每次有效 60 秒、仅可使用一次。", "Scan the QR below with DSH Pocket to connect directly — no PIN. The code rotates automatically and each one is valid for 60 seconds, single use.")),
         React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
           pairValue.data && pairValue.data.qr
-            ? React.createElement("img", { src: pairValue.data.qr, alt: "扫码连接二维码", style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } })
+            ? React.createElement("img", { src: pairValue.data.qr, alt: makeT(currentLang())("扫码连接二维码", "Scan-to-connect QR"), style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } })
             : React.createElement("div", { style: { width: 148, height: 148, borderRadius: 8, border: "1px dashed rgba(0,0,0,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, opacity: 0.6, flex: "0 0 148px", textAlign: "center", padding: 8 } },
-                pairValue.loading ? "正在生成二维码…" : "二维码不可用"),
+                pairValue.loading ? makeT(currentLang())("正在生成二维码…", "Generating QR…") : makeT(currentLang())(makeT(currentLang())("二维码不可用", "QR unavailable"), "QR unavailable")),
           React.createElement("div", { style: { flex: "1 1 220px", minWidth: 0 } },
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, "剩余有效时间"),
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("剩余有效时间", "Time remaining")),
             React.createElement("div", { style: { fontSize: 20, fontWeight: 600, color: "#147A5E", marginBottom: 10 } }, remaining + "s"),
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, "固定地址"),
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("固定地址", "Fixed address")),
             React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
-              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, status && status.httpsUrl ? status.httpsUrl : (loading ? "检测中…" : "未检测到 Tailscale 地址")),
-              React.createElement("button", { type: "button", onClick: function () { copy(status && status.httpsUrl, "url"); }, style: chipStyle }, copied === "url" ? "已复制" : "复制")),
-            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 4 } }, "访问密码（手动登录用）"),
+              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, status && status.httpsUrl ? status.httpsUrl : (loading ? makeT(currentLang())("检测中…", "Checking…") : makeT(currentLang())("未检测到 Tailscale 地址", "No Tailscale address detected"))),
+              React.createElement("button", { type: "button", onClick: function () { copy(status && status.httpsUrl, "url"); }, style: chipStyle }, copied === "url" ? makeT(currentLang())("已复制", "Copied") : makeT(currentLang())("复制", "Copy"))),
+            React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 4 } }, makeT(currentLang())("访问密码（手动登录用）", "Access PIN (manual login)")),
             React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
               React.createElement("code", { style: { fontSize: 13, letterSpacing: 0.5, minWidth: 68 } }, showPin ? ((status && status.pin) || "—") : mask),
-              React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: chipStyle }, showPin ? "隐藏" : "显示"),
-              React.createElement("button", { type: "button", onClick: function () { copy(status && status.pin, "pin"); }, style: chipStyle }, copied === "pin" ? "已复制" : "复制"),
-              React.createElement("button", { type: "button", disabled: busy, onClick: refreshPin, style: chipStyle }, busy ? "生成中…" : "随机更换"),
-              React.createElement("button", { type: "button", disabled: busy, onClick: function () { setEditing(!editing); setActionError(null); }, style: chipStyle }, editing ? "收起" : "自定义")),
+              React.createElement("button", { type: "button", onClick: function () { setShowPin(!showPin); }, style: chipStyle }, showPin ? makeT(currentLang())("隐藏", "Hide") : makeT(currentLang())("显示", "Show")),
+              React.createElement("button", { type: "button", onClick: function () { copy(status && status.pin, "pin"); }, style: chipStyle }, copied === "pin" ? makeT(currentLang())("已复制", "Copied") : makeT(currentLang())("复制", "Copy")),
+              React.createElement("button", { type: "button", disabled: busy, onClick: refreshPin, style: chipStyle }, busy ? makeT(currentLang())("生成中…", "Generating…") : makeT(currentLang())("随机更换", "Regenerate")),
+              React.createElement("button", { type: "button", disabled: busy, onClick: function () { setEditing(!editing); setActionError(null); }, style: chipStyle }, editing ? makeT(currentLang())("收起", "Collapse") : makeT(currentLang())("自定义", "Custom"))),
             editing ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 8 } },
               React.createElement("input", {
-                value: customPin, placeholder: "8-64 位字母或数字",
+                value: customPin, placeholder: makeT(currentLang())("8-64 位字母或数字", "8–64 letters or digits"),
                 onChange: function (event) { setCustomPin(event.target.value); },
                 style: { padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(0,0,0,.15)", fontSize: 12, minWidth: 160 }
               }),
-              React.createElement("button", { type: "button", disabled: busy, onClick: function () { savePin(customPin); }, style: chipPrimary }, "保存"),
-              React.createElement("span", { style: { fontSize: 11, opacity: 0.55 } }, "保存后旧密码失效")) : null,
+              React.createElement("button", { type: "button", disabled: busy, onClick: function () { savePin(customPin); }, style: chipPrimary }, makeT(currentLang())("保存", "Save")),
+              React.createElement("span", { style: { fontSize: 11, opacity: 0.55 } }, makeT(currentLang())("保存后旧密码失效", "Old PIN stops working after saving"))) : null,
             actionError ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, actionError) : null,
             pairValue.error ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, pairValue.error) : null,
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5, marginTop: 10 } },
-              "扫配对码无需密码，最省事；手动登录时用上面的访问密码。密码只保存在本机，请勿截图分享。"))));
+              makeT(currentLang())("扫配对码无需密码，最省事；手动登录时用上面的访问密码。密码只保存在本机，请勿截图分享。", "Scanning the pairing QR needs no PIN and is easiest; use the access PIN above for manual login. The PIN stays on this machine — don't share screenshots.")))));
     }
 
     function AppDownloadCard() {
@@ -175,12 +195,12 @@ window.__ModuleLoader__.load({
             dangerouslySetInnerHTML: { __html: QR_SVG }
           }),
           React.createElement("div", { style: { flex: "1 1 240px", minWidth: 0 } },
-            React.createElement("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 4 } }, "在 iPhone 上使用 DSH"),
+            React.createElement("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 4 } }, makeT(currentLang())("在 iPhone 上使用 DSH", "Use DSH on iPhone")),
             React.createElement("div", { style: { fontSize: 12, opacity: 0.68, lineHeight: 1.55, marginBottom: 10 } },
-              "扫码从 App Store 安装 DSH Pocket iOS；装好后用上方二维码连接（或 dsh-pocket 的局域网/公网二维码）。"),
+              makeT(currentLang())("扫码从 App Store 安装 DSH Pocket iOS；装好后用上方二维码连接（或 dsh-pocket 的局域网/公网二维码）。", "Scan to install DSH Pocket iOS from the App Store, then connect with the QR above (or dsh-pocket's LAN/public QR).")),
             React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-              React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: chipPrimary }, "在 App Store 下载"),
-              React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, "GitHub 仓库")))));
+              React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: chipPrimary }, makeT(currentLang())("在 App Store 下载", "Download on the App Store")),
+              React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, makeT(currentLang())("GitHub 仓库", "GitHub repo"))))));
     }
 
     function MobileAccessPanel(props) {
@@ -188,7 +208,7 @@ window.__ModuleLoader__.load({
         React.createElement(AppDownloadCard),
         React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }),
         React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5 } },
-          "局域网 / 公网二维码由 dsh-pocket 插件提供（可选）。扫码配对无需密码，推荐优先使用。"));
+          makeT(currentLang())("局域网 / 公网二维码由 dsh-pocket 插件提供（可选）。扫码配对无需密码，推荐优先使用。", "LAN/public QR codes come from the dsh-pocket plugin (optional). Scan-to-pair needs no PIN and is recommended.")));
     }
 
     function apply(ctx) {
@@ -201,7 +221,7 @@ window.__ModuleLoader__.load({
           name: "settings.section",
           id: "pocket-ios",
           order: 2,
-          label: function () { return "手机访问（iOS）"; },
+          label: function () { return currentLang() === "zh" ? "手机访问（iOS）" : "Phone access (iOS)"; },
           inject: function () { return { rpcCall: rpcCall }; }
         }, MobileAccessSection);
       });
