@@ -124,6 +124,15 @@ enum L10n {
         "访问密码": "Access PIN",
         "删除连接": "Delete connection",
         "粘贴": "Paste",
+        "推荐": "Recommended",
+        "扫码连接电脑": "Scan to connect",
+        "扫一扫，连接电脑": "Scan QR to connect",
+        "在电脑上打开 DSH → 设置 →「手机访问（iOS）」": "On your Mac, open DSH → Settings → Phone access (iOS)",
+        "用本 App 扫描设置页上的二维码": "Scan the QR code from that page with this app",
+        "自动连接，无需输入密码": "Connects automatically, no password needed",
+        "或手动连接（输入地址与密码）": "Or connect manually (address + password)",
+        "访问密码（扫码连接可跳过）": "Access PIN (optional when scanning)",
+        "扫描电脑设置页的二维码即可连接，无需密码": "Scan the QR code in DSH settings to connect — no password needed",
         "删除连接？": "Delete this connection?",
         "删除": "Delete",
         "取消": "Cancel",
@@ -3550,10 +3559,12 @@ struct ConnectView: View {
         ScrollView {
             VStack(spacing: 12) {
                 header
-                if !model.savedEndpoints.isEmpty { savedEndpointsCard }
-                inputCard
                 if let error = model.errorMessage { errorBanner(error) }
+                scanConnectCard
+                manualSectionTitle
+                inputCard
                 connectButton
+                if !model.savedEndpoints.isEmpty { savedEndpointsCard }
                 demoButton
                 Text(L10n.t("演示模式使用内置示例数据，不会连接或发送任何内容。"))
                     .font(.caption)
@@ -3575,8 +3586,8 @@ struct ConnectView: View {
                 QRScannerView { value in
                     if model.useScannedAddress(value) {
                         showingScanner = false
-                        // 二维码带了 PIN（如 Tailscale 卡片）：扫码即连。
-                        if !model.pin.isEmpty {
+                        // 配对码/认证 URL/PIN 任一命中都直接连接。
+                        if !model.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
                             Task { await model.connect() }
                         }
                     }
@@ -3632,7 +3643,7 @@ struct ConnectView: View {
                 .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(L10n.t("连接你的 DSH")).font(.headline)
-                Text(L10n.t("输入电脑地址和访问密码")).font(.subheadline).foregroundStyle(.secondary)
+                Text(L10n.t("扫描电脑设置页的二维码即可连接，无需密码")).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Link(destination: Self.usageDocURL) {
@@ -3745,6 +3756,75 @@ struct ConnectView: View {
         .background(card, in: RoundedRectangle(cornerRadius: 12))
     }
 
+
+    /// 扫码连接（主入口）：三步引导 + 大按钮。
+    private var scanConnectCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(brand)
+                Text(L10n.t("扫码连接电脑"))
+                    .font(.headline)
+                Spacer()
+                Text(L10n.t("推荐"))
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(brand.opacity(0.12), in: Capsule())
+                    .foregroundStyle(brand)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                guideStep("1", L10n.t("在电脑上打开 DSH → 设置 →「手机访问（iOS）」"))
+                guideStep("2", L10n.t("用本 App 扫描设置页上的二维码"))
+                guideStep("3", L10n.t("自动连接，无需输入密码"))
+            }
+            Button {
+                showingScanner = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "qrcode.viewfinder")
+                    Text(L10n.t("扫一扫，连接电脑"))
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .foregroundStyle(.white)
+                .background(brand, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("scan-connect-button")
+        }
+        .padding(14)
+        .background(card, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func guideStep(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(brand, in: Circle())
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var manualSectionTitle: some View {
+        HStack(spacing: 6) {
+            Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
+            Text(L10n.t("或手动连接（输入地址与密码）"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
+        }
+        .padding(.top, 4)
+    }
+
     private var inputCard: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -3772,9 +3852,9 @@ struct ConnectView: View {
             HStack(spacing: 8) {
                 Group {
                     if showingPin {
-                        TextField(L10n.t("访问密码"), text: $model.pin)
+                        TextField(L10n.t("访问密码（扫码连接可跳过）"), text: $model.pin)
                     } else {
-                        SecureField(L10n.t("访问密码"), text: $model.pin)
+                        SecureField(L10n.t("访问密码（扫码连接可跳过）"), text: $model.pin)
                     }
                 }
                 .textContentType(.password)
