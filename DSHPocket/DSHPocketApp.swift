@@ -4534,8 +4534,8 @@ struct ConversationView: View {
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
                     guard newCount != oldCount else { return }
-                    if isAtBottom || isSettlingScroll {
-                        scrollToBottom(proxy: proxy)
+                    if isAtBottom || isSettlingScroll || followsLatest {
+                        scrollToBottom(proxy: proxy, force: true)
                     } else if newCount > oldCount {
                         unreadWhileScrolled += newCount - oldCount
                         if unreadWhileScrolled > 5, !scrollButtonVisible {
@@ -4545,7 +4545,7 @@ struct ConversationView: View {
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
                     guard newCount != oldCount else { return }
-                    if isAtBottom || isSettlingScroll { scrollToBottom(proxy: proxy) }
+                    if isAtBottom || isSettlingScroll || followsLatest { scrollToBottom(proxy: proxy, force: true) }
                 }
                 .onChange(of: model.olderLoadTick) { _, _ in
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
@@ -4586,6 +4586,9 @@ struct ConversationView: View {
                         // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
                         isAtBottom = false
                         isSettlingScroll = false
+                    } else if followsLatest {
+                        // 内容变高（新消息/过程）但仍在跟随：立即补一次贴底，避免"不自动滚到最新"。
+                        scrollToBottom(proxy: proxy, force: true)
                     } else {
                         scrollGeneration &+= 1
                         isAtBottom = false
