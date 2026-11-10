@@ -219,7 +219,7 @@ window.__ModuleLoader__.load({
           {
             name: "settings.section",
             id: "pocket-ios",
-            order: 0,
+            order: 2,
             label: function () { return "手机访问（iOS）"; },
             inject: function () { return { rpcCall: rpcCall }; }
           },
