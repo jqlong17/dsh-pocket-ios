@@ -1548,7 +1548,8 @@ final class ConnectionModel {
             if key == "__other__" {
                 title = L10n.t("其他会话")
             } else {
-                title = URL(fileURLWithPath: key).lastPathComponent
+                let folder = URL(fileURLWithPath: key).lastPathComponent
+                title = (folder == "default-workspace") ? L10n.t("默认工作区") : folder
             }
             groups.append(SessionGroup(id: key, title: title, sessions: buckets[key] ?? [], isPinned: false))
         }
