@@ -25,6 +25,9 @@ const BODY_MAX = 64 * 1024
 const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3091)
 
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
+
+// 一次性配对 token（60 秒有效、用后作废），用于扫码免密码连接。
+const pairTokens = new Map()
 async function logLine(line) {
   try {
     await mkdir(LOG_DIR, { recursive: true })
