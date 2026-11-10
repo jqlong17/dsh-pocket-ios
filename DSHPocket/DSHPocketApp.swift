@@ -1721,6 +1721,11 @@ final class ConnectionModel {
 
     var lastArchivedSession: PocketSession?
 
+    @MainActor
+    func dismissArchiveUndo() {
+        lastArchivedSession = nil
+    }
+
     /// 撤销最近一次归档。
     @MainActor
     func undoArchive() async {
@@ -3797,6 +3802,60 @@ enum SessionListMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct ModelPickerSheet: View {
+    @Bindable var model: ConnectionModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if model.modelGroups.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text(L10n.t("正在加载模型…")).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(model.modelGroups) { group in
+                    Section(group.name) {
+                        ForEach(group.models) { option in
+                            Button {
+                                Task {
+                                    await model.selectModel(option)
+                                    dismiss()
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(option.name).foregroundStyle(.primary)
+                                        Text(option.model)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if model.selectedModelLabel == option.name {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(L10n.t("选择模型"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.t("取消")) { dismiss() }
+                }
+            }
+            .task {
+                if model.modelGroups.isEmpty { await model.loadModelCatalog() }
+            }
+        }
+    }
+}
+
 struct AppSettingsSheet: View {
     @Bindable var model: ConnectionModel
     @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
@@ -4373,6 +4432,39 @@ struct ConnectedView: View {
     private var hideDemoBanner: Bool { false }
 #endif
 
+    /// 归档撤销条：系统材质 + 3 秒自动消失（Apple 临时提示的常见做法）。
+    private var archiveUndoBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "archivebox.fill")
+                .font(.subheadline)
+                .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+            Text(L10n.t("会话已归档"))
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            Spacer(minLength: 16)
+            Button(L10n.t("撤销")) {
+                Task { await model.undoArchive() }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.10), radius: 14, y: 6)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .task(id: model.lastArchivedSession?.sessionId) {
+            guard let id = model.lastArchivedSession?.sessionId else { return }
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled,
+                  model.lastArchivedSession?.sessionId == id else { return }
+            withAnimation(.easeOut(duration: 0.2)) { model.dismissArchiveUndo() }
+        }
+    }
+
     /// 按设置切换：工作区分组 / 单一时间线。
     private var displayGroups: [ConnectionModel.SessionGroup] {
         if sessionListModeRaw == SessionListMode.timeline.rawValue {
@@ -4494,23 +4586,7 @@ struct ConnectedView: View {
         .overlay { if model.isLoadingSessions { ProgressView() } }
         .overlay(alignment: .bottom) {
             if model.lastArchivedSession != nil {
-                HStack(spacing: 10) {
-                    Image(systemName: "archivebox.fill")
-                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                    Text(L10n.t("已归档"))
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer(minLength: 12)
-                    Button(L10n.t("撤销")) { Task { await model.undoArchive() } }
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
-                .padding(.bottom, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                archiveUndoBanner
             }
         }
         .refreshable { await model.loadSessions() }
@@ -4709,6 +4785,7 @@ struct ConversationView: View {
     @State private var photoItems: [PhotosPickerItem] = []
     @FocusState private var composerFocused: Bool
     @State private var copiedLogPath: String?
+    @State private var showingModelPicker = false
 
     private struct TimelineEntry: Identifiable {
         let id: String
@@ -5054,26 +5131,8 @@ struct ConversationView: View {
                         Label(L10n.t("复制会话日志路径"), systemImage: "doc.on.doc")
                     }
                     Divider()
-                    Menu {
-                        if model.modelGroups.isEmpty {
-                            Text(L10n.t("正在加载模型…"))
-                        } else {
-                            ForEach(model.modelGroups) { group in
-                                Menu(group.name) {
-                                    ForEach(group.models) { option in
-                                        Button {
-                                            Task { await model.selectModel(option) }
-                                        } label: {
-                                            if model.selectedModelLabel == option.name {
-                                                Label(option.name, systemImage: "checkmark")
-                                            } else {
-                                                Text(option.name)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    Button {
+                        showingModelPicker = true
                     } label: {
                         Label(model.selectedModelLabel.map { L10n.t("选择模型") + "：" + $0 } ?? L10n.t("选择模型"),
                               systemImage: "cpu")
@@ -5100,6 +5159,9 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingModelPicker) {
+            ModelPickerSheet(model: model)
         }
         .task {
             if model.modelGroups.isEmpty { await model.loadModelCatalog() }
