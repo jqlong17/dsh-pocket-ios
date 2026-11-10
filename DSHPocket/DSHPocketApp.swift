@@ -405,6 +405,8 @@ final class ConversationState {
     var turnStarts: [Int] = []
     var turnEnds: [Int] = []
     var ackedRpcIds: Set<String> = []
+    /// 已 ACK、但消息体尚未进入历史的 rpcId；保留本地 pending，避免消息"闪一下消失"。
+    var acknowledgedRpcIds: Set<String> = []
     var failedRpcIds: Set<String> = []
     var steeredRpcIds: Set<String> = []
 
@@ -578,6 +580,11 @@ final class ConnectionModel {
     private var failedSendRpcIds: Set<String> {
         get { activeConversation?.failedRpcIds ?? [] }
         set { activeConversation?.failedRpcIds = newValue }
+    }
+    /// 已 ACK、等待消息落库的 rpcId（保留本地 pending，避免消息被吞）。
+    private var acknowledgedSendRpcIds: Set<String> {
+        get { activeConversation?.acknowledgedRpcIds ?? [] }
+        set { activeConversation?.acknowledgedRpcIds = newValue }
     }
     private static let outboxDefaultsKey = "dsh-pocket.send-outbox"
     private var outboxEntries: [OutboxEntry] = []
@@ -1729,23 +1736,33 @@ final class ConnectionModel {
         let pending = messages.filter { message in
             guard message.isPending else { return false }
             if let rpcId = message.rpcId {
-                if incomingRpcIds.contains(rpcId.lowercased()) {
-                    if failedSendRpcIds.remove(rpcId) != nil {
-                        conversationError = nil
-                    }
+                // 真实消息已进历史（带 rpcId）：用真实消息替换待发消息。
+                if incoming.contains(where: {
+                    !$0.isPending && $0.rpcId?.lowercased() == rpcId.lowercased()
+                }) {
+                    acknowledgedSendRpcIds.remove(rpcId)
+                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
                     return false
+                }
+                // 只有 ACK、没有消息体：保留待发消息，等历史刷新后再替换，避免闪一下消失。
+                if incomingRpcIds.contains(rpcId.lowercased()) {
+                    acknowledgedSendRpcIds.insert(rpcId)
+                    if failedSendRpcIds.remove(rpcId) != nil { conversationError = nil }
+                    return true
                 }
                 // 兜底：服务端没回填 rpcId（steer 偶发丢确认），但本次新出现了同文本用户消息。
                 if incoming.contains(where: {
                     $0.isUser && !$0.isPending && $0.rpcId == nil
                         && $0.text == message.text && $0.sequence > previousMaxConfirmed
                 }) {
+                    acknowledgedSendRpcIds.remove(rpcId)
                     confirmOutbox(rpcIds: [rpcId])
                     return false
                 }
                 if failedSendRpcIds.contains(rpcId) { return true }
-                // 仍在发件箱（未确认）才保留；历史遗留 pending 丢弃。
+                // 仍在发件箱、或已 ACK 等待落库的，保留；历史遗留 pending 丢弃。
                 return outboxEntries.contains { $0.id.lowercased() == rpcId.lowercased() }
+                    || acknowledgedSendRpcIds.contains(rpcId)
             }
             // 兼容不回 rpcId 的服务端：仅当“发送之后新出现的最后一条用户消息”文本相同才确认。
             if message.rpcId == nil,
