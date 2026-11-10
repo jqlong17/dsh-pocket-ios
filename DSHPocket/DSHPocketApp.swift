@@ -12,6 +12,132 @@ import os
 import AudioToolbox
 import UserNotifications
 
+
+// MARK: - 应用内语言（简体中文 / English）
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system, zh, en
+    var id: String { rawValue }
+    func title() -> String {
+        switch self {
+        case .system: return L10n.t("跟随系统")
+        case .zh: return "中文"
+        case .en: return "English"
+        }
+    }
+}
+
+@Observable
+final class LanguageStore {
+    static let shared = LanguageStore()
+    private static let key = "dsh-pocket.language"
+    var code: AppLanguage {
+        didSet {
+            UserDefaults.standard.set(code.rawValue, forKey: Self.key)
+            NotificationCenter.default.post(name: .appLanguageChanged, object: nil)
+        }
+    }
+    init() {
+        let saved = UserDefaults.standard.string(forKey: Self.key) ?? AppLanguage.system.rawValue
+        code = AppLanguage(rawValue: saved) ?? .system
+    }
+    var isEnglish: Bool {
+        switch code {
+        case .en: return true
+        case .zh: return false
+        case .system:
+            let lang = Locale.preferredLanguages.first ?? "zh"
+            return !lang.lowercased().hasPrefix("zh")
+        }
+    }
+}
+
+extension Notification.Name { static let appLanguageChanged = Notification.Name("dsh-pocket.language-changed") }
+
+/// 轻量文案表：key 为中文原文，按语言返回对应文案；未收录的文案保持中文。
+enum L10n {
+    static func t(_ zh: String) -> String {
+        LanguageStore.shared.isEnglish ? (en[zh] ?? zh) : zh
+    }
+    static func tf(_ format: String, _ args: CVarArg...) -> String {
+        String(format: t(format), arguments: args)
+    }
+    static let en: [String: String] = [
+        "连接你的 DSH": "Connect to your DSH",
+        "输入电脑地址和访问密码": "Enter your computer address and access PIN",
+        "使用说明": "How to use",
+        "已保存的连接": "Saved connections",
+        "点按切换": "Tap to switch",
+        "局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。": "Up to 3 LAN addresses (name them Office/Home) and the latest 1 public address. Rescan if the public address changes.",
+        "连接": "Connect",
+        "体验演示模式": "Try demo mode",
+        "演示模式使用内置示例数据，不会连接或发送任何内容。": "Demo mode uses sample data. It never connects or sends anything.",
+        "会话": "Sessions",
+        "演示模式": "Demo mode",
+        "示例数据，未连接电脑": "Sample data · not connected",
+        "退出": "Exit",
+        "设置": "Settings",
+        "语言": "Language",
+        "跟随系统": "Follow system",
+        "中文": "简体中文",
+        "完成提醒": "Completion alerts",
+        "完成提醒：开启": "Completion alerts: on",
+        "完成提醒：关闭": "Completion alerts: off",
+        "版本": "Version",
+        "开始对话": "Start a conversation",
+        "发送第一条消息。": "Send your first message.",
+        "加载更早消息…": "Loading earlier messages…",
+        "实时连接": "Live",
+        "发送消息": "Message",
+        "停止": "Stop",
+        "深度求索中": "Thinking",
+        "已连接": "Connected",
+        "连接中…": "Connecting…",
+        "重连中…": "Reconnecting…",
+        "已断开": "Disconnected",
+        "重试": "Retry",
+        "断开连接": "Disconnect",
+        "退出演示模式": "Exit demo mode",
+        "开启完成提醒": "Enable completion alerts",
+        "关闭完成提醒": "Disable completion alerts",
+        "发送中…": "Sending…",
+        "已发出，等待处理": "Sent · waiting",
+        "已引导，正在继续": "Steering · continuing",
+        "发送失败": "Send failed",
+        "重新发送": "Resend",
+        "复制整条消息": "Copy message",
+        "引用这条消息": "Quote message",
+        "取消引用": "Cancel quote",
+        "引用": "Quote",
+        "显示": "Show",
+        "隐藏": "Hide",
+        "复制": "Copy",
+        "随机更换": "Regenerate",
+        "自定义": "Custom",
+        "密码不正确或已变更，请重新输入访问密码。": "PIN is incorrect or changed. Please enter it again.",
+        "登录已过期或访问密码已变更，请重新输入密码连接。": "Session expired or PIN changed. Please reconnect.",
+        "这条消息服务端没有收到，点消息下方「重新发送」可重试。": "The server did not receive this message. Tap Resend below.",
+        "过程": "Steps",
+        "步": "steps",
+        "待发送": "Pending",
+        "已复制": "Copied",
+        "访问密码": "Access PIN",
+        "局域网": "LAN",
+        "公网": "Public",
+        "未连接": "Not connected",
+        "正在连接": "Connecting",
+        "正在重连": "Reconnecting",
+        "重连中（第 %d 次）": "Reconnecting (%d)",
+        "重连": "Retry",
+        "新建会话": "New session",
+        "切换连接": "Switch connection",
+        "还没有会话": "No sessions yet",
+        "创建会话后即可开始对话。": "Create a session to start chatting.",
+        "完成": "Done",
+        "演示模式 · 示例数据，未连接电脑": "Demo · sample data, not connected"
+    ]
+}
+
 private let pocketLogger = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "conversation")
 
 private func timingLog(_ message: String) {
@@ -384,12 +510,12 @@ final class ConnectionModel {
 
         var label: String {
             switch self {
-            case .idle: return "未连接"
-            case .demo: return "演示模式"
-            case .connecting: return "正在连接"
-            case .connected: return "已连接"
-            case .reconnecting(let attempt): return attempt > 1 ? "重连中（第 \(attempt) 次）" : "正在重连"
-            case .disconnected: return "已断开"
+            case .idle: return L10n.t("未连接")
+            case .demo: return L10n.t("演示模式")
+            case .connecting: return L10n.t("正在连接")
+            case .connected: return L10n.t("已连接")
+            case .reconnecting(let attempt): return attempt > 1 ? L10n.tf("重连中（第 %d 次）", attempt) : L10n.t("正在重连")
+            case .disconnected: return L10n.t("已断开")
             }
         }
 
@@ -980,16 +1106,16 @@ final class ConnectionModel {
     // MARK: - 演示模式（App Store 审核 / 没有电脑时体验）
 
     private static let demoSessionList: [PocketSession] = [
-        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970 - 60, running: true, blank: false,
-                      title: "整理 v1.0.2 发布说明", cwd: "~/projects/dsh-pocket-ios"),
+        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970 - 60, running: false, blank: false,
+                      title: "做一个 iOS 版 DSH", cwd: "~/projects/ios-client"),
         PocketSession(sessionId: "demo-2", updatedAt: Date().timeIntervalSince1970 - 3600, running: false, blank: false,
-                      title: "分析 App Store 截图", cwd: "~/projects/dsh-pocket-ios"),
+                      title: "插件市场里有什么好玩的", cwd: "~/projects/dsh"),
         PocketSession(sessionId: "demo-3", updatedAt: Date().timeIntervalSince1970 - 7200, running: false, blank: false,
-                      title: "对比余额插件差异", cwd: "~/projects/plugin-research"),
+                      title: "规划东京 5 天行程", cwd: "~/Documents/旅行"),
         PocketSession(sessionId: "demo-4", updatedAt: Date().timeIntervalSince1970 - 86400, running: false, blank: false,
-                      title: "重构 Agent 上下文拼接", cwd: "~/projects/ds-agents"),
+                      title: "这份体检报告怎么看", cwd: "~/Documents/健康"),
         PocketSession(sessionId: "demo-5", updatedAt: Date().timeIntervalSince1970 - 172800, running: false, blank: false,
-                      title: "排查 WebSocket 断线", cwd: "~/projects/dsh-pocket-ios")
+                      title: "把会议记录变成行动项", cwd: "~/Documents/工作")
     ]
 
     private static let demoPicture: UIImage = {
@@ -1092,94 +1218,90 @@ final class ConnectionModel {
         switch sessionId {
         case "demo-1":
             return [
-                PocketMessage(demoText: "帮我把这次发布整理成 Release Notes，顺便标一下风险。", isUser: true, sequence: 1),
-                // 中间过程：助手先说一句，再走工具调用，最后给出正式答案——用于演示"过程"插在正确位置。
-                PocketMessage(demoText: "我先拉一下最近的提交记录和变更，再整理成发布说明。", isUser: false, sequence: 2),
+                PocketMessage(demoText: "帮我做一个 iOS 版的 DSH：要能连我电脑上的会话，原生客户端，不要网页套壳。",
+                              isUser: true, sequence: 1),
+                PocketMessage(demoText: "可以。DSH 讲究「万物皆插件」，我先去插件市场找现成能力，再组装起来。",
+                              isUser: false, sequence: 2),
                 PocketMessage(demoText: """
-                ## v1.0.2 发布说明
+                搞定了，整个客户端是这样拼出来的：
 
-                本次更新集中在**连接稳定性**与**消息可靠性**，建议所有用户升级。
-
-                ### 亮点
-
-                - 生成中发送改为 **steer**：不再排队，直接引导当前回复
-                - 消息顺序回归服务端 `seq`，修复偶发乱序
-                - 断线自动重连，状态栏可见「重连中」
-
-                | 模块 | 改动 | 风险 |
+                | 层 | 插件 | 作用 |
                 | --- | --- | --- |
-                | 实时同步 | 迁移到 DSHKit | 中 |
-                | 消息顺序 | 移除 turn 重排 | 低 |
-                | 滚动 | followsLatest | 低 |
+                | 连接 | dsh-pocket-ios | 把手机接到电脑上的 DSH |
+                | 用量 | dsh-usage | 余额与 Token 统计 |
+                | 转写 | parse-convert | 语音/链接转文字 |
 
-                ```swift
-                let sync = SessionSyncCoordinator(
-                    sessionId: id, transport: client)
-                ```
+                ### 已经完成
 
-                风险中等的「实时同步」迁移已在下面展开。
-                """, isUser: false, sequence: 5)
+                - 原生 SwiftUI 客户端：会话、实时流、图片、Markdown
+                - 扫码即连，局域网 / Tailscale / 公网三种通道
+                - 模拟器已跑通，会话历史和电脑端实时同步
+
+                想再加什么能力，直接去插件市场里装一个就行。
+                """, isUser: false, sequence: 7)
             ]
         case "demo-2":
             return [
-                PocketMessage(demoText: "看下这张图，帮我提炼 3 个卖点，再写一句 App Store 副标题。",
-                              isUser: true, sequence: 1, localImages: [demoPicture]),
+                PocketMessage(demoText: "DSH 的插件市场里都有什么好玩的？", isUser: true, sequence: 1),
                 PocketMessage(demoText: """
-                这是 **DeepSeek Harness** 的官网首屏截图，公开预览、开源、插件化。
+                DSH 的理念就是「万物皆插件」：连接、工具、界面、技能都能单独装卸。
 
-                ### 三个卖点
+                | 类别 | 插件举例 | 能做什么 |
+                | --- | --- | --- |
+                | 连接 | dsh-pocket-ios | 手机远程用电脑上的 DSH |
+                | 用量 | dsh-usage | 余额、Token、花费趋势 |
+                | 转写 | parse-convert | 视频/音频转文字、提取字幕 |
+                | 设计 | huashu-design | 高保真原型、幻灯片、动画 |
 
-                1. **随时可用** — 公开预览，下载即用，无需额外配置
-                2. **可组合** — 插件体系把能力扩展到日常开发、写作与研究
-                3. **开源本地** — 跑在自己电脑上，数据不离开设备
-
-                ### 副标题候选
-
-                - 「你的 Harness，装进手机里。」
-                - 「电脑上的 DSH，走到哪都能用。」
+                装插件不用改启动器，重启后设置页里就出现新能力。
                 """, isUser: false, sequence: 2)
             ]
         case "demo-3":
             return [
-                PocketMessage(demoText: "这三个余额插件有什么差异？给个对比表。", isUser: true, sequence: 1),
+                PocketMessage(demoText: "帮我规划东京 5 天行程，住新宿，喜欢咖啡和建筑，不要太赶。",
+                              isUser: true, sequence: 1),
                 PocketMessage(demoText: """
-                三者都解决「余额可见」，但侧重点不同：
+                按「半天一个重点」排，留出咖啡和散步时间：
 
-                | 插件 | 展示位置 | 能力 |
-                | --- | --- | --- |
-                | chenzhexi/dsh-api-usage | 侧边栏常驻 | 余额、今日消费、Token、请求数、24h 柱状图 |
-                | cailikelog/account-balance | 输入框读数旁 | 剩余余额 |
-                | Witherwithwinter/Whale-Widget | 右下角挂件 | 多平台余额（DeepSeek / OpenRouter / Kimi / GLM） |
+                | 天 | 上午 | 下午 | 晚上 |
+                | --- | --- | --- | --- |
+                | D1 | 抵达 / 新宿 | 都厅展望台 | 思い出横丁 |
+                | D2 | 浅草寺 | 隅田川散步 | 神保町旧书店 |
+                | D3 | 表参道建筑 | 青山咖啡 | 六本木夜景 |
+                | D4 | 代官山 | 中目黑 | 目黑川 |
+                | D5 | 筑地 | 银座 | 返程 |
 
-                想要**信息密度**选第一个；只想**快速看余额**选第二个；**多平台**选第三个。
+                **小建议**：买一张 Suica，咖啡店按区域就近排，别跨区折返。
                 """, isUser: false, sequence: 2)
             ]
         case "demo-4":
             return [
-                PocketMessage(demoText: "帮我把 Agent 上下文拼接拆成可测试的模块。", isUser: true, sequence: 1),
+                PocketMessage(demoText: "帮我看下这份体检报告，几个指标是什么意思？",
+                              isUser: true, sequence: 1, localImages: [demoPicture]),
                 PocketMessage(demoText: """
-                改动思路分三步：
+                整体问题不大，重点关注这三项：
 
-                1. **拆**：把 system prompt、workspace 上下文、会话历史拆成独立 builder
-                2. **合**：统一在 request 组装时按优先级拼接
-                3. **测**：补快照测试，固定输入下的输出
+                | 指标 | 结果 | 解读 |
+                | --- | --- | --- |
+                | 总胆固醇 | 略高 | 先调整饮食，3 个月复查 |
+                | 尿酸 | 偏高 | 少喝含糖饮料，多喝水 |
+                | 维D | 偏低 | 多晒太阳，必要时补充 |
 
-                这样避免上下文重复注入，也方便以后按模型裁剪。
+                其余指标在正常范围。建议把报告带去门诊让医生结合症状判断。
                 """, isUser: false, sequence: 2)
             ]
         default:
             return [
-                PocketMessage(demoText: "WebSocket 偶尔假死，怎么排查？", isUser: true, sequence: 1),
+                PocketMessage(demoText: "把今天的会议记录整理成行动项，标上负责人。", isUser: true, sequence: 1),
                 PocketMessage(demoText: """
-                先确认「假死」的特征：UI 显示已连接，但长时间没有任何增量帧。
+                整理好了：
 
-                ### 排查顺序
+                1. **周三前** 出 Q2 数据口径文档 — @小王
+                2. **周四** 和设计确认新版首页 — @小李
+                3. **下周一** 给客户发演示环境 — @我
+                4. 待定：是否接入第三方登录
 
-                1. 看是否有心跳/看门狗：生成中 25 秒无帧应主动断开重连
-                2. 检查隧道是否被中间设备静默断开：对比 `session/page` 与实时帧
-                3. 兜底：轮询最近 30 条消息，确认消息是否已经落库
-
-                最后把「重连中/已断开」状态显式展示给用户，避免误以为在回复。
+                原始记录里没写负责人的两条，我标成「待定」了，确认后我再补。
                 """, isUser: false, sequence: 2)
             ]
         }
@@ -1189,14 +1311,21 @@ final class ConnectionModel {
         guard sessionId == "demo-1" else { return [] }
         return [
             PocketStep(id: "demo-step-1", sequence: 3, turn: 1, number: 1,
-                       name: "bash", detail: "ls -la",
-                       resultText: "drwxr-xr-x  12 ruska  staff  384  src\n-rw-r--r--   1 ruska  staff  512  package.json",
+                       name: "search", detail: "插件市场 · ios",
+                       resultText: "dsh-pocket-ios（连接） · dsh-usage（用量） · huashu-design（设计）",
                        finished: true),
             PocketStep(id: "demo-step-2", sequence: 4, turn: 1, number: 2,
-                       name: "read", detail: "src/router.ts",
-                       resultText: "export const routes = [ ... ]", finished: true)
+                       name: "bash", detail: "dsh plugin add dsh-pocket-ios",
+                       resultText: "installed dsh-pocket-ios@0.2.1", finished: true),
+            PocketStep(id: "demo-step-3", sequence: 5, turn: 1, number: 3,
+                       name: "write", detail: "生成 SwiftUI 工程 + DSHKit",
+                       resultText: "App target / DSHKit 已生成", finished: true),
+            PocketStep(id: "demo-step-4", sequence: 6, turn: 1, number: 4,
+                       name: "bash", detail: "xcodebuild → BUILD SUCCEEDED",
+                       resultText: "模拟器验证通过，会话已同步", finished: true)
         ]
     }
+
 
     // MARK: - 完成提醒（红点 / 声音 / 通知）
 
@@ -2869,9 +2998,9 @@ struct SavedEndpoint: Codable, Identifiable, Hashable {
 
         var label: String {
             switch self {
-            case .lan: return "局域网"
-            case .publicNetwork: return "公网"
-            case .custom: return "自定义"
+            case .lan: return L10n.t("局域网")
+            case .publicNetwork: return L10n.t("公网")
+            case .custom: return L10n.t("自定义")
             }
         }
     }
@@ -3189,7 +3318,7 @@ enum ConnectionError: LocalizedError {
     case invalidPin, unexpectedResponse, invalidPayload, invalidURL(String), server(Int), rateLimited(Int), remote(String)
     var errorDescription: String? {
         switch self {
-        case .invalidPin: "密码不正确或已变更，请重新输入访问密码。"
+        case .invalidPin: L10n.t("密码不正确或已变更，请重新输入访问密码。")
         case .unexpectedResponse: "服务器返回了无法识别的响应。"
         case .invalidPayload: "服务器响应格式无效。"
         case .invalidURL(let raw): "地址格式无效：\(raw.debugDescription)。请输入 http://192.0.2.10:3081 这样的地址。"
@@ -3231,6 +3360,12 @@ enum DebugLaunch {
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
     static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
     static var demoMode: Bool { environment["DSH_DEMO"] == "1" }
+    /// 截图/演示用：隐藏「演示模式」状态行，让界面更接近真实使用。
+    static var hideDemoBanner: Bool { environment["DSH_HIDE_DEMO_BANNER"] == "1" }
+    /// 截图用：打开会话后自动展开所有「过程」。
+    static var expandSteps: Bool { environment["DSH_EXPAND_STEPS"] == "1" }
+    /// 截图用：打开会话后滚动到顶部。
+    static var scrollToTop: Bool { environment["DSH_SCROLL_TO_TOP"] == "1" }
 
     /// 模拟器用 `SIMCTL_CHILD_DSH_SERVER`，真机用 `DEVICECTL_CHILD_DSH_SERVER`，
     /// 由 simctl / devicectl 去掉前缀后注入进程环境。
@@ -3247,6 +3382,8 @@ enum DebugLaunch {
 struct RootView: View {
     @Bindable var model: ConnectionModel
     @Environment(\.scenePhase) private var scenePhase
+    @State private var languageRevision = 0
+    @State private var showingAppSettings = false
     var body: some View {
         NavigationStack(path: $model.navigationPath) {
             Group {
@@ -3258,8 +3395,12 @@ struct RootView: View {
             }
             .navigationTitle("DSH Pocket")
             .navigationBarTitleDisplayMode(.inline)
+            .id(languageRevision)
         }
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
+        .onReceive(NotificationCenter.default.publisher(for: .appLanguageChanged)) { _ in
+            languageRevision &+= 1
+        }
         .task { await model.restoreConnection() }
         .onChange(of: scenePhase) { _, phase in
             model.isAppActive = (phase == .active)
@@ -3274,6 +3415,63 @@ struct RootView: View {
                 try? await Task.sleep(for: .seconds(10))
                 if Task.isCancelled { break }
                 await model.loadSessions(silently: true)
+            }
+        }
+    }
+}
+
+
+struct AppSettingsSheet: View {
+    @Bindable var model: ConnectionModel
+    @Environment(\.dismiss) private var dismiss
+
+    private var versionText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(L10n.t("语言")) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Button {
+                            LanguageStore.shared.code = language
+                        } label: {
+                            HStack {
+                                Text(language.title())
+                                Spacer()
+                                if LanguageStore.shared.code == language {
+                                    Image(systemName: "checkmark").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                                }
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                }
+                Section(L10n.t("完成提醒")) {
+                    Toggle(isOn: Binding(
+                        get: { model.completionAlertsEnabled },
+                        set: { _ in model.toggleCompletionAlerts() }
+                    )) {
+                        Text(L10n.t("完成提醒"))
+                    }
+                }
+                Section("DSH Pocket") {
+                    HStack {
+                        Text(L10n.t("版本"))
+                        Spacer()
+                        Text(versionText).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle(L10n.t("设置"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
             }
         }
     }
@@ -3301,7 +3499,7 @@ struct ConnectView: View {
                 if let error = model.errorMessage { errorBanner(error) }
                 connectButton
                 demoButton
-                Text("演示模式使用内置示例数据，不会连接或发送任何内容。")
+                Text(L10n.t("演示模式使用内置示例数据，不会连接或发送任何内容。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -3365,14 +3563,14 @@ struct ConnectView: View {
                 .frame(width: 38, height: 38)
                 .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
-                Text("连接你的 DSH").font(.headline)
-                Text("输入电脑地址和访问密码").font(.subheadline).foregroundStyle(.secondary)
+                Text(L10n.t("连接你的 DSH")).font(.headline)
+                Text(L10n.t("输入电脑地址和访问密码")).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Link(destination: Self.usageDocURL) {
                 HStack(spacing: 4) {
                     Image(systemName: "book").font(.caption)
-                    Text("使用说明").font(.footnote.weight(.medium))
+                    Text(L10n.t("使用说明")).font(.footnote.weight(.medium))
                 }
                 .foregroundStyle(brand)
                 .padding(.vertical, 6)
@@ -3388,11 +3586,11 @@ struct ConnectView: View {
     private var savedEndpointsCard: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("已保存的连接")
+                Text(L10n.t("已保存的连接"))
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("点按切换")
+                Text(L10n.t("点按切换"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -3457,7 +3655,7 @@ struct ConnectView: View {
                 .buttonStyle(.plain)
             }
 
-            Text("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。")
+            Text(L10n.t("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -3492,7 +3690,7 @@ struct ConnectView: View {
 
             Divider().padding(.leading, 14)
 
-            SecureField("访问密码", text: $model.pin)
+            SecureField(L10n.t("访问密码"), text: $model.pin)
                 .textContentType(.password)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -3535,7 +3733,7 @@ struct ConnectView: View {
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
                 }
-                Text(model.isConnecting ? "正在连接" : "连接")
+                Text(model.isConnecting ? L10n.t("正在连接") : L10n.t("连接"))
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
@@ -3552,7 +3750,7 @@ struct ConnectView: View {
         Button { model.startDemoMode() } label: {
             HStack(spacing: 6) {
                 Image(systemName: "play.circle")
-                Text("体验演示模式")
+                Text(L10n.t("体验演示模式"))
             }
             .fontWeight(.medium)
             .frame(maxWidth: .infinity)
@@ -3603,16 +3801,23 @@ struct PocketCodeScanner: UIViewControllerRepresentable {
 
 struct ConnectedView: View {
     @Bindable var model: ConnectionModel
+    @State private var showingAppSettings = false
     @State private var didAutoOpen = false
+#if DEBUG
+    private var hideDemoBanner: Bool { DebugLaunch.hideDemoBanner }
+#else
+    private var hideDemoBanner: Bool { false }
+#endif
+
     var body: some View {
         List {
-            if model.isDemoMode {
+            if model.isDemoMode && !hideDemoBanner {
                 Section {
                     HStack(spacing: 8) {
                         Image(systemName: "play.circle").foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("演示模式").font(.footnote.weight(.semibold))
-                            Text("示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
+                            Text(L10n.t("演示模式")).font(.footnote.weight(.semibold))
+                            Text(L10n.t("示例数据，未连接电脑")).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                         Button("退出") { model.exitDemoMode() }.font(.footnote)
@@ -3628,7 +3833,7 @@ struct ConnectedView: View {
                 }
             }
             if model.sessions.isEmpty && !model.isLoadingSessions {
-                ContentUnavailableView("还没有会话", systemImage: "bubble.left.and.bubble.right", description: Text("创建会话后即可开始对话。"))
+                ContentUnavailableView(L10n.t("还没有会话"), systemImage: "bubble.left.and.bubble.right", description: Text(L10n.t("创建会话后即可开始对话。")))
                     .listRowSeparator(.hidden)
             }
             ForEach(model.sessions) { session in
@@ -3688,9 +3893,12 @@ struct ConnectedView: View {
                     .accessibilityLabel("切换连接")
                 }
                 Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话")
+                Button { showingAppSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel(L10n.t("设置"))
             }
         }
-        .navigationTitle("会话")
+        .navigationTitle(L10n.t("会话"))
+        .sheet(isPresented: $showingAppSettings) { AppSettingsSheet(model: model) }
         .navigationDestination(for: PocketSession.self) { session in
             ConversationView(model: model, session: session)
                 // onAppear 在部分 iOS 版本上不会对同一目的地类型重复触发，
@@ -3897,17 +4105,22 @@ struct ConversationView: View {
                     .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(.red.opacity(0.06))
             }
-            if model.isDemoMode || model.liveConnection != .connected {
+#if DEBUG
+            let showsDemoBanner = model.isDemoMode && !DebugLaunch.hideDemoBanner
+#else
+            let showsDemoBanner = model.isDemoMode
+#endif
+            if showsDemoBanner || (!model.isDemoMode && model.liveConnection != .connected) {
                 HStack(spacing: 6) {
                     if model.isDemoMode {
                         Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
-                        Text("演示模式 · 示例数据，未连接电脑").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.t("演示模式 · 示例数据，未连接电脑")).font(.caption).foregroundStyle(.secondary)
                         Spacer()
                     } else {
                         Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 6, height: 6)
                         Text(model.liveConnection.label).font(.caption2).foregroundStyle(.secondary)
                         if model.liveConnection.isDisconnected {
-                            Button("重连") { model.manualReconnect() }
+                            Button(L10n.t("重连")) { model.manualReconnect() }
                                 .font(.caption2.weight(.semibold))
                         }
                         Spacer()
@@ -3922,10 +4135,11 @@ struct ConversationView: View {
                     // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
                     // LazyVStack 会缓存旧高度导致行重叠；会话窗口只有 30 条消息，直接布局代价可忽略。
                     VStack(spacing: 0) {
+                        Color.clear.frame(height: 1).id(Self.topAnchorID)
                         if model.isLoadingOlder {
                             HStack(spacing: 6) {
                                 ProgressView().scaleEffect(0.7)
-                                Text("加载更早消息…").font(.caption).foregroundStyle(.secondary)
+                                Text(L10n.t("加载更早消息…")).font(.caption).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 2)
@@ -3934,7 +4148,7 @@ struct ConversationView: View {
                             ProgressView().padding(.top, 36)
                         }
                         if entries.isEmpty && !model.isLoadingConversation {
-                            ContentUnavailableView("开始对话", systemImage: "text.bubble", description: Text("发送第一条消息。"))
+                            ContentUnavailableView(L10n.t("开始对话"), systemImage: "text.bubble", description: Text(L10n.t("发送第一条消息。")))
                         }
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                             let topGap = index == 0 ? 0 : Self.messageSpacing(previous: entries[index - 1], current: entry)
@@ -3995,11 +4209,30 @@ struct ConversationView: View {
                     isSettlingScroll = true
                     scrollToBottom(proxy: proxy)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isSettlingScroll = false }
+#if DEBUG
+                    if DebugLaunch.expandSteps {
+                        expandedTurns = Set(model.stepGroups.map(\.turn))
+                    }
+                    if DebugLaunch.scrollToTop {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                            scrollGeneration &+= 1
+                            isSettlingScroll = false
+                            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                        }
+                    }
+#endif
                 }
                 // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
                 .onChange(of: model.focusComposerTick) { _, _ in
             composerFocused = true
         }
+#if DEBUG
+        .onChange(of: model.stepGroups.count) { _, _ in
+            if DebugLaunch.expandSteps {
+                expandedTurns = Set(model.stepGroups.map(\.turn))
+            }
+        }
+#endif
         .onChange(of: model.scrollToBottomTick) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
@@ -4059,7 +4292,12 @@ struct ConversationView: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if !isAtBottom, !entries.isEmpty {
+#if DEBUG
+                    let hideScrollButton = DebugLaunch.hideDemoBanner
+#else
+                    let hideScrollButton = false
+#endif
+                    if !isAtBottom, !entries.isEmpty, !hideScrollButton {
                         Button {
                             unreadWhileScrolled = 0
                             isAtBottom = true
@@ -4101,7 +4339,7 @@ struct ConversationView: View {
                 HStack(spacing: 6) {
                     ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
                     TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text("深度求索中 · \(elapsed(since: model.turnStartedAt, now: context.date))")
+                        Text("\(L10n.t("深度求索中")) · \(elapsed(since: model.turnStartedAt, now: context.date))")
                             .font(.caption)
                             .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                             .monospacedDigit()
@@ -4256,7 +4494,7 @@ struct ConversationView: View {
                         .frame(width: 40, height: 40)
                 }
                 .accessibilityLabel("拍照")
-                TextField("发送消息", text: $model.draft, axis: .vertical).lineLimit(1...5)
+                TextField(L10n.t("发送消息"), text: $model.draft, axis: .vertical).lineLimit(1...5)
                     .focused($composerFocused)
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -4285,6 +4523,7 @@ struct ConversationView: View {
     }
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
+    private static let topAnchorID = "conversation-top-anchor"
 
     private static func liveStateColor(_ state: ConnectionModel.LiveConnectionState) -> Color {
         switch state {
@@ -4531,14 +4770,14 @@ struct MessageRow: View {
                     switch state {
                     case .sending:
                         ProgressView().scaleEffect(0.55).frame(width: 11, height: 11)
-                        Text("发送中…")
+                        Text(L10n.t("发送中…"))
                     case .acked(let steered):
                         Image(systemName: steered ? "arrow.triangle.branch" : "clock").font(.caption2)
-                        Text(steered ? "已引导，正在继续" : "已发出，等待处理")
+                        Text(steered ? L10n.t("已引导，正在继续") : L10n.t("已发出，等待处理"))
                     case .failed:
                         Image(systemName: "exclamationmark.circle").font(.caption2)
-                        Text("发送失败")
-                        Button("重新发送") { model.retryPendingMessage(message) }
+                        Text(L10n.t("发送失败"))
+                        Button(L10n.t("重新发送")) { model.retryPendingMessage(message) }
                             .buttonStyle(.borderless)
                             .font(.caption2.weight(.semibold))
                     }
