@@ -132,7 +132,7 @@ enum L10n {
         "自动连接，无需输入密码": "Connects automatically, no password needed",
         "或手动连接（输入地址与密码）": "Or connect manually (address + password)",
         "访问密码（扫码连接可跳过）": "Access PIN (optional when scanning)",
-        "扫描电脑设置页的二维码即可连接，无需密码": "Scan the QR code in DSH settings to connect — no password needed",
+
         "删除连接？": "Delete this connection?",
         "删除": "Delete",
         "取消": "Cancel",
@@ -3643,7 +3643,6 @@ struct ConnectView: View {
                 .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text(L10n.t("连接你的 DSH")).font(.headline)
-                Text(L10n.t("扫描电脑设置页的二维码即可连接，无需密码")).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Link(destination: Self.usageDocURL) {
