@@ -4423,6 +4423,7 @@ struct ConnectedView: View {
     @Bindable var model: ConnectionModel
     @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
     @State private var showingDisconnectConfirm = false
+    @AppStorage("dsh-pocket.collapsed-groups") private var collapsedGroupsRaw = ""
     @State private var renamingSession: PocketSession?
     @State private var renameDraft = ""
     @State private var didAutoOpen = false
@@ -4431,6 +4432,20 @@ struct ConnectedView: View {
 #else
     private var hideDemoBanner: Bool { false }
 #endif
+
+    private var collapsedGroupIDs: Set<String> {
+        Set(collapsedGroupsRaw.split(separator: ",").map(String.init))
+    }
+
+    private func isCollapsed(_ id: String) -> Bool {
+        collapsedGroupIDs.contains(id)
+    }
+
+    private func toggleGroup(_ id: String) {
+        var ids = collapsedGroupIDs
+        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        collapsedGroupsRaw = ids.sorted().joined(separator: ",")
+    }
 
     /// 归档撤销条：系统材质 + 3 秒自动消失（Apple 临时提示的常见做法）。
     private var archiveUndoBanner: some View {
@@ -4503,14 +4518,33 @@ struct ConnectedView: View {
             }
             ForEach(displayGroups) { group in
                 if !group.title.isEmpty {
-                    Text(group.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                    Button {
+                        toggleGroup(group.id)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(group.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(nil)
+                            if isCollapsed(group.id) {
+                                Text("\(group.sessions.count)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(isCollapsed(group.id) ? -90 : 0))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
+                if !isCollapsed(group.id) {
                 ForEach(group.sessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
                 let isPinned = model.pinnedSessionIds.contains(session.sessionId)
@@ -4578,6 +4612,7 @@ struct ConnectedView: View {
                     } label: {
                         Label(L10n.t("归档"), systemImage: "archivebox")
                     }
+                }
                 }
                 }
             }
