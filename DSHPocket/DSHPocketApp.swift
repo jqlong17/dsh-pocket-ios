@@ -4140,21 +4140,6 @@ struct ConnectedView: View {
                     Image(systemName: model.completionAlertsEnabled ? "bell" : "bell.slash")
                 }
                 .accessibilityLabel(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒")
-                if !model.savedEndpoints.isEmpty {
-                    Menu {
-                        ForEach(model.savedEndpoints) { endpoint in
-                            Button {
-                                Task { await model.switchToEndpoint(endpoint) }
-                            } label: {
-                                Label("\(endpoint.displayName)：\(endpoint.address)",
-                                      systemImage: model.serverAddress == endpoint.address ? "checkmark" : "network")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "network")
-                    }
-                    .accessibilityLabel("切换连接")
-                }
                 Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话")
             }
         }
