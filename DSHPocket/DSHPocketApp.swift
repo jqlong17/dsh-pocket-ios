@@ -3481,7 +3481,7 @@ struct RootView: View {
                         .accessibilityLabel(L10n.t("设置"))
                 }
             }
-    
+            .sheet(isPresented: $showingAppSettings) { AppSettingsSheet(model: model) }
             .id(languageRevision)
         }
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
