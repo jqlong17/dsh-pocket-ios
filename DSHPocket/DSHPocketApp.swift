@@ -124,6 +124,8 @@ enum L10n {
         "访问密码": "Access PIN",
         "删除连接": "Delete connection",
         "粘贴": "Paste",
+        "断开与电脑的连接？": "Disconnect from your computer?",
+        "断开后需要重新扫码配对（或输入访问密码）才能再次连接。": "After disconnecting you must scan the pairing QR again (or enter the access PIN) to reconnect.",
         "推荐": "Recommended",
         "扫码连接电脑": "Scan to connect",
         "扫一扫，连接电脑": "Scan QR to connect",
@@ -4065,6 +4067,7 @@ struct PocketCodeScanner: UIViewControllerRepresentable {
 
 struct ConnectedView: View {
     @Bindable var model: ConnectionModel
+    @State private var showingDisconnectConfirm = false
     @State private var didAutoOpen = false
 #if DEBUG
     private var hideDemoBanner: Bool { DebugLaunch.hideDemoBanner }
@@ -4132,7 +4135,8 @@ struct ConnectedView: View {
                 if model.isDemoMode {
                     Button { model.exitDemoMode() } label: { Image(systemName: "play.circle.fill") }.accessibilityLabel("退出演示模式")
                 } else {
-                    Button { model.disconnect() } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }.accessibilityLabel("断开连接")
+                    Button { showingDisconnectConfirm = true } label: { Image(systemName: "rectangle.portrait.and.arrow.right") }
+                        .accessibilityLabel(L10n.t("断开连接"))
                 }
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
