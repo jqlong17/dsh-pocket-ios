@@ -4,29 +4,25 @@
 
 电脑上继续跑 DSH，手机扫码就能看会话、发指令、接结果；通勤、外出、躺床上都能接着用。
 
-<p align="center">
-  <img src="docs/screenshots/list.png" width="210" alt="按工作区分组的会话列表">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/timeline.png" width="210" alt="时间线模式">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/chat.png" width="210" alt="对话详情与过程">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/quote.png" width="210" alt="引用消息">
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/list.png" width="210" alt="工作区分组"><br><sub>工作区分组</sub></td>
+    <td align="center"><img src="docs/screenshots/timeline.png" width="210" alt="时间线模式"><br><sub>时间线模式</sub></td>
+    <td align="center"><img src="docs/screenshots/chat.png" width="210" alt="对话与过程"><br><sub>对话与过程</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/quote.png" width="210" alt="引用消息"><br><sub>引用消息</sub></td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="210" alt="设置与语言"><br><sub>设置与语言</sub></td>
+    <td align="center"><img src="docs/screenshots/connect.png" width="210" alt="扫码连接"><br><sub>扫码连接</sub></td>
+  </tr>
+</table>
 
-<p align="center"><sub>工作区分组 · 时间线模式 · 对话与过程 · 引用</sub></p>
-
-<p align="center">
-  <img src="docs/screenshots/settings.png" width="210" alt="设置与语言">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/connect.png" width="210" alt="扫码连接">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/ipad-list.png" width="330" alt="iPad 会话列表">
-  &nbsp;&nbsp;
-  <img src="docs/screenshots/ipad-chat.png" width="330" alt="iPad 对话">
-</p>
-
-<p align="center"><sub>设置 · 扫码连接 · iPad 原生适配</sub></p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/ipad-list.png" width="300" alt="iPad 会话列表"><br><sub>iPad 会话列表</sub></td>
+    <td align="center"><img src="docs/screenshots/ipad-chat.png" width="300" alt="iPad 对话"><br><sub>iPad 对话</sub></td>
+  </tr>
+</table>
 
 ## 亮点
 
