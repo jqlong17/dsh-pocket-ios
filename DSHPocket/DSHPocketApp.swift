@@ -4610,15 +4610,8 @@ struct ConversationView: View {
                             scrollButtonVisible = false
                             scrollToBottom(proxy: proxy, force: true)
                         } label: {
-                            HStack(spacing: 5) {
-                                if unreadWhileScrolled > 0 {
-                                    Text("\(unreadWhileScrolled)")
-                                        .monospacedDigit()
-                                        .font(.caption2.weight(.bold))
-                                }
-                                Image(systemName: "arrow.down")
-                                    .font(.footnote.weight(.semibold))
-                            }
+                            Image(systemName: "arrow.down")
+                                .font(.footnote.weight(.semibold))
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -4627,7 +4620,7 @@ struct ConversationView: View {
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        .accessibilityLabel(unreadWhileScrolled > 0 ? "\(unreadWhileScrolled) 条未读，滚到底部" : "滚到底部")
+                        .accessibilityLabel(L10n.t("滚到底部"))
                         .accessibilityIdentifier("back-to-bottom")
                         .padding(.trailing, 16)
                         .padding(.bottom, 12)
