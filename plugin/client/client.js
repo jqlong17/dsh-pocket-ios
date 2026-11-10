@@ -172,6 +172,53 @@ window.__ModuleLoader__.load({
               "密码只保存在本机，请勿截图分享。未开启 Tailscale 时请使用 dsh-pocket 的局域网/公网二维码。"))));
     }
 
+
+    function PairingCard(props) {
+      var state = React.useState({ loading: true, error: null, data: null });
+      var value = state[0];
+      var setValue = state[1];
+      var remainingState = React.useState(0);
+      var remaining = remainingState[0];
+      var setRemaining = remainingState[1];
+
+      var generate = function () {
+        if (!props.rpcCall) return;
+        setValue(function (prev) { return { loading: !prev.data, error: null, data: prev.data } });
+        Promise.resolve(props.rpcCall("pair.create", {})).then(unwrapRpc).then(function (data) {
+          setValue({ loading: false, error: null, data: data });
+          setRemaining(data && data.expiresIn ? data.expiresIn : 60);
+        }).catch(function (e) {
+          setValue({ loading: false, error: String((e && e.message) || e), data: null });
+        });
+      };
+
+      React.useEffect(function () {
+        generate();
+        var timer = setInterval(function () {
+          setRemaining(function (prev) {
+            var next = prev - 1;
+            if (next <= 8) { generate(); return 60; }
+            return next;
+          });
+        }, 1000);
+        return function () { clearInterval(timer); };
+      }, []);
+
+      return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)" } },
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } }, "扫码配对（免密码）"),
+        React.createElement("div", { style: { fontSize: 12, opacity: 0.65, lineHeight: 1.5, marginBottom: 10 } },
+          "用 DSH Pocket 扫描下方二维码即可直接连接，不需要输入密码。二维码自动轮换，每次有效 60 秒、仅可使用一次。"),
+        value.loading ? React.createElement("div", { style: { fontSize: 12, opacity: 0.6 } }, "正在生成二维码…") : null,
+        value.error ? React.createElement("div", { style: { fontSize: 12, color: "#b91c1c" } }, value.error) : null,
+        value.data && value.data.qr ? React.createElement("div", { style: { display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" } },
+          React.createElement("img", { src: value.data.qr, alt: "配对二维码", style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } }),
+          React.createElement("div", { style: { flex: "1 1 200px", minWidth: 0 } },
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, marginBottom: 4 } }, "剩余有效时间"),
+            React.createElement("div", { style: { fontSize: 22, fontWeight: 600, color: "#147A5E", marginBottom: 8 } }, remaining + "s"),
+            React.createElement("div", { style: { fontSize: 12, opacity: 0.6, wordBreak: "break-all", marginBottom: 10 } }, value.data.url || ""),
+            React.createElement("button", { type: "button", onClick: generate, style: chipStyle }, "立即刷新"))) : null);
+    }
+
     function MobileAccessPanel(props) {
       return React.createElement(
         "div",
@@ -202,6 +249,7 @@ window.__ModuleLoader__.load({
           )
         ),
         React.createElement(TailscaleCard, { rpcCall: props.rpcCall }),
+        React.createElement(PairingCard, { rpcCall: props.rpcCall }),
         React.createElement("div", { style: { fontSize: 11, opacity: 0.55, lineHeight: 1.5 } },
           "局域网 / 公网二维码由 dsh-pocket 插件提供（可选安装）。Tailscale 方式无需公网暴露、地址固定，推荐优先使用。")
       );

@@ -244,7 +244,7 @@ export function apply(ctx) {
     handler: async (req, res) => {
       try {
         const rawPath = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
-        const isLogin = rawPath === `${CHANNEL}/login`
+        const isLogin = rawPath === `${CHANNEL}/login` || rawPath === `${CHANNEL}/pair`
         if (!isLogin && typeof connection?.requestRejection === 'function') {
           const rejection = connection.requestRejection(req)
           if (rejection !== undefined) {
@@ -259,6 +259,37 @@ export function apply(ctx) {
           return
         }
         // 登录端点：不需要已有浏览器会话，用本插件自己的 PIN 换 DSH 的认证 cookie。
+        if (endpoint === 'pair') {
+          if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
+          let token = urlObject.searchParams.get('token') ?? urlObject.searchParams.get('pair') ?? ''
+          if (req.method === 'POST') {
+            const raw = await readRawBody(req)
+            const contentType = String(req.headers['content-type'] ?? '')
+            if (contentType.includes('application/json')) {
+              try { token = JSON.parse(raw)?.token ?? JSON.parse(raw)?.pair ?? token } catch { /* ignore */ }
+            } else {
+              token = new URLSearchParams(raw).get('token') ?? new URLSearchParams(raw).get('pair') ?? token
+            }
+          }
+          const record = pairTokens.get(String(token))
+          if (!record || record.expiresAt < Date.now()) {
+            pairTokens.delete(String(token))
+            await logLine('pair rejected (expired/unknown)')
+            send(res, 401, { ok: false })
+            return
+          }
+          pairTokens.delete(String(token))  // 一次性
+          const host = String(req.headers.host ?? '')
+          if (!host || typeof connection?.authenticatedUrl !== 'function') { send(res, 503, { ok: false }); return }
+          const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
+          const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
+          const proto = forwardedProto || (isLoopback ? 'http' : 'https')
+          const target = connection.authenticatedUrl(`${proto}://${host}/`)
+          await logLine('pair login ok')
+          res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+          res.end()
+          return
+        }
         if (endpoint === 'login') {
           if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
           let pinAttempt = urlObject.searchParams.get('token') ?? ''
@@ -302,6 +333,27 @@ export function apply(ctx) {
         }
         const body = await readBody(req)
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
+        if (endpoint === 'pair.create') {
+          const pairToken = Array.from({ length: 32 }, () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+            return chars[Math.floor(Math.random() * chars.length)]
+          }).join('')
+          pairTokens.set(pairToken, { expiresAt: Date.now() + 60_000 })
+          // 优先用 Tailscale 固定地址；否则回退请求 Host。
+          const status = await tailscaleStatus()
+          let base = status.httpsUrl
+          if (!base) {
+            const host = String(req.headers.host ?? '')
+            const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
+            const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
+            base = `${forwardedProto || (isLoopback ? 'http' : 'https')}://${host}`
+          }
+          const pairURL = `${base}/?pair=${pairToken}`
+          const qr = await QRCode.toDataURL(pairURL, { margin: 1, width: 360 })
+          await logLine('pair token created')
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { url: pairURL, qr, expiresIn: 60 } } })
+          return
+        }
         if (endpoint === 'pin.refresh') {
           const nextPin = String(randomInt(10_000_000, 100_000_000))
           await setPin(nextPin)

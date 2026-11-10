@@ -599,6 +599,8 @@ final class ConnectionModel {
 
     /// 带 `?token=` 的 DSH 认证 URL（浏览器复制出来的地址）：直接用 GET 换 cookie，无需密码。
     var pendingLoginToken: String?
+    /// 扫码得到的一次性配对 token（免密码登录）。
+    var pendingPairToken: String?
 
     @discardableResult
     func useScannedAddress(_ value: String) -> Bool {
@@ -609,7 +611,11 @@ final class ConnectionModel {
             return false
         }
         // 二维码/粘贴的地址可能携带：?token=<DSH 认证 token>（登录后浏览器地址栏），或旧版 ?pin=<密码>。
-        if let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
+        if let pairToken = components.queryItems?.first(where: { $0.name == "pair" })?.value,
+           !pairToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingPairToken = pairToken
+            pin = ""
+        } else if let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             pendingLoginToken = token
             pin = ""
@@ -638,6 +644,40 @@ final class ConnectionModel {
             return
         }
         recordDiagnostic("开始连接：\(url.absoluteString)")
+        // 一次性配对：扫码即登录，不需要密码。
+        var pairToken = pendingPairToken
+        if pairToken == nil,
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let scanned = components.queryItems?.first(where: { $0.name == "pair" })?.value {
+            pairToken = scanned
+        }
+        if let pairToken {
+            pendingPairToken = nil
+            do {
+                var request = URLRequest(url: url.appending(path: "dsh-pocket-ios/pair"))
+                request.httpMethod = "POST"
+                request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+                var form = URLComponents()
+                form.queryItems = [URLQueryItem(name: "token", value: pairToken)]
+                request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+                request.httpShouldHandleCookies = true
+                let loginSession = URLSession(configuration: .default)
+                defer { loginSession.finishTasksAndInvalidate() }
+                _ = try await loginSession.data(for: request)
+                let hasAuth = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name.hasPrefix("dsh-auth") } ?? false
+                guard hasAuth else { throw ConnectionError.invalidPin }
+                sessions = try await fetchSessions()
+                isConnected = true
+                errorMessage = nil
+                PinKeychain.clear()
+                recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
+                return
+            } catch {
+                errorMessage = "配对二维码已失效（60 秒有效、仅可使用一次），请在电脑上重新生成后扫码。"
+                recordDiagnostic("配对登录失败：\(error.localizedDescription)")
+                return
+            }
+        }
         if let token = pendingLoginToken {
             pendingLoginToken = nil
             recordDiagnostic("使用认证 URL 登录（token 长度 \(token.count)）")
