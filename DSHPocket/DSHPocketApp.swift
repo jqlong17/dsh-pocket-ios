@@ -126,6 +126,7 @@ enum L10n {
         "粘贴": "Paste",
         "断开与电脑的连接？": "Disconnect from your computer?",
         "断开后需要重新扫码配对（或输入访问密码）才能再次连接。": "After disconnecting you must scan the pairing QR again (or enter the access PIN) to reconnect.",
+        "登录已过期（DSH 可能重启过），请重新扫码配对或输入访问密码。": "Your session expired (DSH may have restarted). Scan the pairing QR again or enter the access PIN.",
         "推荐": "Recommended",
         "扫码连接电脑": "Scan to connect",
         "扫一扫，连接电脑": "Scan QR to connect",
@@ -1494,6 +1495,11 @@ final class ConnectionModel {
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
+            if let authError = error as? ConnectionError, case .server(401) = authError {
+                recordDiagnostic("会话列表 401：登录已失效")
+                handleAuthExpired()
+                return
+            }
             recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
             if isStaleTunnelError(error) {
                 applyConnectError(error)
@@ -1714,6 +1720,10 @@ final class ConnectionModel {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
+            if let authError = error as? ConnectionError, case .server(401) = authError {
+                handleAuthExpired()
+                return
+            }
             conversationError = "无法读取历史对话：\(error.localizedDescription)"
         }
     }
@@ -2415,7 +2425,7 @@ final class ConnectionModel {
         navigationPath = []
         activeConversation?.liveTask?.cancel()
         liveConnection = .disconnected(reason: "auth")
-        errorMessage = "登录已过期或访问密码已变更，请重新输入密码连接。"
+        errorMessage = L10n.t("登录已过期（DSH 可能重启过），请重新扫码配对或输入访问密码。")
     }
 
     /// 发送按钮入口：先确认当前打开的就是这个会话，避免消息发到别的 session。
