@@ -3768,6 +3768,12 @@ enum DebugLaunch {
     static var expandSteps: Bool { environment["DSH_EXPAND_STEPS"] == "1" }
     /// 截图用：打开会话后滚动到顶部。
     static var scrollToTop: Bool { environment["DSH_SCROLL_TO_TOP"] == "1" }
+    /// 截图用：启动后直接打开设置页。
+    static var showSettings: Bool { environment["DSH_SETTINGS"] == "1" }
+    /// 截图用：打开会话后自动引用最后一条助手消息。
+    static var quoteDemo: Bool { environment["DSH_QUOTE"] == "1" }
+    /// 截图用：不自动聚焦输入框（避免键盘挡住画面）。
+    static var noFocus: Bool { environment["DSH_NO_FOCUS"] == "1" }
 
     /// 模拟器用 `SIMCTL_CHILD_DSH_SERVER`，真机用 `DEVICECTL_CHILD_DSH_SERVER`，
     /// 由 simctl / devicectl 去掉前缀后注入进程环境。
@@ -3811,6 +3817,11 @@ struct RootView: View {
             languageRevision &+= 1
         }
         .task { await model.restoreConnection() }
+        .onAppear {
+#if DEBUG
+            if DebugLaunch.showSettings { showingAppSettings = true }
+#endif
+        }
         .onChange(of: scenePhase) { _, phase in
             model.isAppActive = (phase == .active)
             // 回到前台只静默刷新列表，不自动切换网络，避免打断当前会话。
@@ -5042,6 +5053,9 @@ struct ConversationView: View {
                 }
                 // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
                 .onChange(of: model.focusComposerTick) { _, _ in
+#if DEBUG
+            if DebugLaunch.noFocus { return }
+#endif
             composerFocused = true
         }
 #if DEBUG
@@ -5265,6 +5279,12 @@ struct ConversationView: View {
         }
         .task {
 #if DEBUG
+            if DebugLaunch.quoteDemo {
+                try? await Task.sleep(for: .seconds(1.5))
+                if let target = model.messages.last(where: { !$0.isUser && !$0.isPending }) {
+                    model.beginQuote(target)
+                }
+            }
             if !didAutoSend, let text = DebugLaunch.sendText {
                 didAutoSend = true
                 if let path = DebugLaunch.attachPath {
