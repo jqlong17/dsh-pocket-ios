@@ -1624,6 +1624,34 @@ final class ConnectionModel {
         }
     }
 
+    /// 重命名会话（DSH `session/rename`，桌面端同步）。
+    @MainActor
+    func rename(_ session: PocketSession, to rawTitle: String) async {
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        if !isDemoMode {
+            do {
+                _ = try await rpc("session/rename", args: ["request": [
+                    "sessionId": session.sessionId,
+                    "title": title
+                ]])
+            } catch {
+                errorMessage = "重命名失败：\(error.localizedDescription)"
+                return
+            }
+        }
+        let updated = PocketSession(
+            sessionId: session.sessionId, updatedAt: session.updatedAt,
+            running: session.running, blank: session.blank,
+            title: title, cwd: session.cwd,
+            origin: session.origin, parentSessionId: session.parentSessionId
+        )
+        if let index = sessions.firstIndex(where: { $0.sessionId == session.sessionId }) {
+            sessions[index] = updated
+        }
+        if selectedSession?.sessionId == session.sessionId { selectedSession = updated }
+    }
+
     /// 最近一次被归档的会话（用于列表底部「撤销」）。
     var lastArchivedSession: PocketSession?
 
@@ -4270,6 +4298,8 @@ struct ConnectedView: View {
     @Bindable var model: ConnectionModel
     @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
     @State private var showingDisconnectConfirm = false
+    @State private var renamingSession: PocketSession?
+    @State private var renameDraft = ""
     @State private var didAutoOpen = false
 #if DEBUG
     private var hideDemoBanner: Bool { DebugLaunch.hideDemoBanner }
@@ -4314,7 +4344,15 @@ struct ConnectedView: View {
                     .listRowSeparator(.hidden)
             }
             ForEach(displayGroups) { group in
-              Section {
+                if !group.title.isEmpty {
+                    Text(group.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
                 ForEach(group.sessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
                 let isPinned = model.pinnedSessionIds.contains(session.sessionId)
@@ -4345,10 +4383,16 @@ struct ConnectedView: View {
                         } else if finishedAwaiting {
                             Circle().fill(.red).frame(width: 7, height: 7)
                         }
-                    }.padding(.vertical, 4)
+                    }.padding(.vertical, 2)
                 }
                 .listRowBackground(isPinned ? Color(red: 0.08, green: 0.48, blue: 0.37).opacity(0.05) : Color.clear)
                 .contextMenu {
+                    Button {
+                        renamingSession = session
+                        renameDraft = session.displayTitle
+                    } label: {
+                        Label(L10n.t("重命名"), systemImage: "pencil")
+                    }
                     Button {
                         Task { await model.togglePin(session) }
                     } label: {
@@ -4378,18 +4422,9 @@ struct ConnectedView: View {
                     }
                 }
                 }
-              } header: {
-                if !group.title.isEmpty {
-                    Text(group.title)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
-                }
-              }
             }
         }
         .listStyle(.plain)
-        .listSectionSpacing(.compact)
         .overlay { if model.isLoadingSessions { ProgressView() } }
         .overlay(alignment: .bottom) {
             if model.lastArchivedSession != nil {
@@ -4431,6 +4466,19 @@ struct ConnectedView: View {
             }
         }
         .navigationTitle(L10n.t("会话"))
+        .alert(L10n.t("重命名会话"), isPresented: Binding(
+            get: { renamingSession != nil },
+            set: { if !$0 { renamingSession = nil } }
+        ), presenting: renamingSession) { session in
+            TextField(L10n.t("会话名称"), text: $renameDraft)
+            Button(L10n.t("保存")) {
+                Task { await model.rename(session, to: renameDraft) }
+                renamingSession = nil
+            }
+            Button(L10n.t("取消"), role: .cancel) { renamingSession = nil }
+        } message: { _ in
+            Text(L10n.t("会同步到电脑端的会话标题。"))
+        }
         .alert(L10n.t("断开与电脑的连接？"), isPresented: $showingDisconnectConfirm) {
             Button(L10n.t("断开连接"), role: .destructive) { model.disconnect() }
             Button(L10n.t("取消"), role: .cancel) {}
