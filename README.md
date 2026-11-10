@@ -5,14 +5,28 @@
 电脑上继续跑 DSH，手机扫码就能看会话、发指令、接结果；通勤、外出、躺床上都能接着用。
 
 <p align="center">
-  <img src="docs/screenshots/list.png" width="240" alt="会话列表">
+  <img src="docs/screenshots/list.png" width="210" alt="按工作区分组的会话列表">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/chat.png" width="240" alt="对话详情">
+  <img src="docs/screenshots/timeline.png" width="210" alt="时间线模式">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/connect.png" width="240" alt="扫码连接">
+  <img src="docs/screenshots/chat.png" width="210" alt="对话详情与过程">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/quote.png" width="210" alt="引用消息">
 </p>
 
-<p align="center"><sub>分组会话列表 · 对话详情 · 扫码连接</sub></p>
+<p align="center"><sub>工作区分组 · 时间线模式 · 对话与过程 · 引用</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" width="210" alt="设置与语言">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/connect.png" width="210" alt="扫码连接">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/ipad-list.png" width="330" alt="iPad 会话列表">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/ipad-chat.png" width="330" alt="iPad 对话">
+</p>
+
+<p align="center"><sub>设置 · 扫码连接 · iPad 原生适配</sub></p>
 
 ## 亮点
 
@@ -23,19 +37,27 @@
 - **对话**：实时流式回复、工具过程折叠、Markdown、图片、引用、模型切换；
 - **中英文**：跟随系统 / 中文 / English，设置页、会话、连接页全量覆盖。
 
-## 连接方式
+## 连接方式（主推：Tailscale + 扫码配对）
 
-### 方式一：Tailscale（推荐）
+### 推荐：Tailscale 固定地址 + 一次性配对码
 
-需要：Mac 装 DSH + `dsh-pocket-ios` 插件；iPhone 装 DSH Pocket + Tailscale。
+**为什么主推**：地址固定、换 Wi-Fi / 切 4G 都不用重新扫码；不暴露公网；扫码免密，体验最接近原生 App。
 
-```bash
-tailscale serve --bg 3091
-```
+需要：Mac 装 DSH + `dsh-pocket-ios` 插件；iPhone 装 DSH Pocket + Tailscale（两台设备登录同一账号）。
 
-打开 DSH → 设置 →「手机访问（iOS）」，用 DSH Pocket 扫卡片上的配对二维码即可。
+1. Mac 上执行一次固定入口：
 
-### 方式二：dsh-pocket（局域网/公网）
+   ```bash
+   tailscale serve --bg 3091
+   ```
+
+   （Tailscale 后台 DNS 页需开启 HTTPS Certificates）
+2. 打开 DSH → 设置 →「手机访问（iOS）」，卡片上会出现一个**自动轮换的配对二维码**；
+3. 用 DSH Pocket 扫码 → 自动登录，无需输入密码。
+
+> 读不到 Tailscale 状态时可手写配置：`~/.dsh/dsh-pocket-ios/tailscale.json`，内容 `{"url":"https://你的机器名.你的tailnet.ts.net"}`。
+
+### 备选：dsh-pocket（局域网 / 公网，不装 Tailscale）
 
 需要：Mac 装 DSH + `dsh-pocket` 插件；iPhone 装 DSH Pocket。
 
