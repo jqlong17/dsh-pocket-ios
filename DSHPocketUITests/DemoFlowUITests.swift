@@ -82,7 +82,7 @@ final class DemoFlowUITests: XCTestCase {
 
         // 返回列表
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let otherSession = app.staticTexts["分析 App Store 截图"]
+        let otherSession = app.staticTexts["插件市场里有什么好玩的"]
         XCTAssertTrue(otherSession.waitForExistence(timeout: 10), "会话列表未出现")
         otherSession.tap()
         let otherField = app.textFields["composer-field"]
@@ -91,7 +91,7 @@ final class DemoFlowUITests: XCTestCase {
 
         // 回到原会话，草稿应恢复
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let original = app.staticTexts["整理 v1.0.2 发布说明"]
+        let original = app.staticTexts["做一个 iOS 版 DSH"]
         XCTAssertTrue(original.waitForExistence(timeout: 10))
         original.tap()
         let restored = app.textFields["composer-field"]
@@ -101,19 +101,40 @@ final class DemoFlowUITests: XCTestCase {
 
 
 
-    func testBackToBottomThenScrollUpDoesNotSnapBack() {
+    /// 发送后不允许出现「取消发送」红叉（已移除）。
+    func testNoCancelSendButtonAfterSending() {
         let app = launchDemo()
-        XCTAssertTrue(app.textFields["composer-field"].waitForExistence(timeout: 15))
-        // 向上滚动，触发"回到底部"按钮。
-        app.swipeDown()
-        app.swipeDown()
-        let back = app.buttons["back-to-bottom"]
-        guard back.waitForExistence(timeout: 5) else {
-            return // 内容不足一屏时按钮不出现，跳过
-        }
-        back.tap()
-        // 立刻再次上滑：不应被强制拉回底部（按钮应重新出现）。
-        app.swipeDown()
-        XCTAssertTrue(back.waitForExistence(timeout: 5), "上滑后应重新出现回到底部按钮，说明没有被强制抢滚动")
+        let field = app.textFields["composer-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.tap(); field.typeText("取消按钮回归测试")
+        app.buttons["send-button"].tap()
+        XCTAssertFalse(app.buttons["cancel-send"].waitForExistence(timeout: 2), "发送后不应出现取消发送按钮")
+        XCTAssertTrue(app.buttons["send-button"].exists, "发送按钮应始终存在")
+    }
+
+    /// 发送后「回到底部」箭头不应立刻出现并盖住消息（0.9s 防抖 + 未读>5 才显示）。
+    func testBackToBottomButtonHiddenRightAfterSend() {
+        let app = launchDemo()
+        let field = app.textFields["composer-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.tap(); field.typeText("箭头回归测试")
+        app.buttons["send-button"].tap()
+        XCTAssertFalse(app.buttons["back-to-bottom"].waitForExistence(timeout: 1.2), "发送后箭头不应立即出现")
+    }
+
+    /// 发送后的用户消息必须一直可见；并且排在助手回复上方。
+    func testSentMessageStaysVisibleAndAboveReply() {
+        let app = launchDemo()
+        let field = app.textFields["composer-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        field.tap(); field.typeText("顺序回归测试")
+        app.buttons["send-button"].tap()
+
+        let sent = app.staticTexts["顺序回归测试"]
+        XCTAssertTrue(sent.waitForExistence(timeout: 5), "发送后气泡未出现")
+        let reply = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "这是内置的示例回复")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 12), "未出现示例回复")
+        XCTAssertTrue(sent.exists, "回复到达后用户消息不应消失")
+        XCTAssertLessThan(sent.frame.minY, reply.frame.minY, "用户消息应排在回复上方")
     }
 }

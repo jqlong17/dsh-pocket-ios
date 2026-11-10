@@ -1297,7 +1297,10 @@ final class ConnectionModel {
         try? await Task.sleep(for: .seconds(1))
         if Task.isCancelled { return }
         messages.removeAll { $0.isPending }
-        let nextSequence = (messages.map(\.sequence).max() ?? 0) + 1
+        // 演示模式也要保留用户消息（与真实发送一致），否则气泡会消失。
+        var nextSequence = (messages.map(\.sequence).max() ?? 0) + 1
+        messages.append(PocketMessage(demoText: text, isUser: true, sequence: nextSequence))
+        nextSequence += 1
         messages.append(PocketMessage(
             demoText: "（演示模式）这是内置的示例回复，不会真正调用模型。\n\n连接电脑后，消息会发给本机的 DSH，助手回复与工具过程会实时出现在这里。",
             isUser: false, sequence: nextSequence))
