@@ -4258,7 +4258,7 @@ struct ConnectedView: View {
                                 if isPinned {
                                     Image(systemName: "pin.fill")
                                         .font(.caption2)
-                                        .foregroundStyle(.orange)
+                                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
                                         .accessibilityLabel(L10n.t("已置顶"))
                                 }
                             }
@@ -4276,7 +4276,7 @@ struct ConnectedView: View {
                         }
                     }.padding(.vertical, 4)
                 }
-                .listRowBackground(isPinned ? Color.orange.opacity(0.055) : Color.clear)
+                .listRowBackground(isPinned ? Color(red: 0.08, green: 0.48, blue: 0.37).opacity(0.05) : Color.clear)
                 .contextMenu {
                     Button {
                         Task { await model.togglePin(session) }
@@ -4297,7 +4297,7 @@ struct ConnectedView: View {
                         Label(model.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
                               systemImage: "pin")
                     }
-                    .tint(.orange)
+                    .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
