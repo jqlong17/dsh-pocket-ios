@@ -3475,6 +3475,13 @@ struct RootView: View {
             }
             .navigationTitle("DSH Pocket")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingAppSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel(L10n.t("设置"))
+                }
+            }
+    
             .id(languageRevision)
         }
         .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
@@ -4058,7 +4065,6 @@ struct PocketCodeScanner: UIViewControllerRepresentable {
 
 struct ConnectedView: View {
     @Bindable var model: ConnectionModel
-    @State private var showingAppSettings = false
     @State private var didAutoOpen = false
 #if DEBUG
     private var hideDemoBanner: Bool { DebugLaunch.hideDemoBanner }
@@ -4150,12 +4156,10 @@ struct ConnectedView: View {
                     .accessibilityLabel("切换连接")
                 }
                 Button { Task { await model.createSession() } } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("新建会话")
-                Button { showingAppSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel(L10n.t("设置"))
             }
         }
         .navigationTitle(L10n.t("会话"))
-        .sheet(isPresented: $showingAppSettings) { AppSettingsSheet(model: model) }
+
         .navigationDestination(for: PocketSession.self) { session in
             ConversationView(model: model, session: session)
                 // onAppear 在部分 iOS 版本上不会对同一目的地类型重复触发，
