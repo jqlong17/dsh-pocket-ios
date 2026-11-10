@@ -1653,6 +1653,72 @@ final class ConnectionModel {
     }
 
     /// 最近一次被归档的会话（用于列表底部「撤销」）。
+    struct ModelOption: Identifiable, Hashable {
+        let provider: String
+        let model: String
+        let name: String
+        var id: String { "\(provider)/\(model)" }
+    }
+
+    struct ModelGroup: Identifiable {
+        let id: String
+        let name: String
+        let models: [ModelOption]
+    }
+
+    var modelGroups: [ModelGroup] = []
+    var selectedModelLabel: String?
+
+    /// 会话地址（用于复制给其他 Agent / 自己记录）。
+    var sessionAddress: String {
+        guard let session = selectedSession else { return "" }
+        return "\(serverAddress)/?session=\(session.sessionId)"
+    }
+
+    @MainActor
+    func loadModelCatalog() async {
+        guard !isDemoMode else { return }
+        do {
+            let value = try await rpc("session/modelCatalog", args: [:])
+            let groups = value["groups"] as? [[String: Any]] ?? []
+            modelGroups = groups.compactMap { group in
+                guard let id = group["id"] as? String,
+                      let name = group["name"] as? String else { return nil }
+                let models = (group["models"] as? [[String: Any]] ?? []).compactMap { item -> ModelOption? in
+                    guard let model = item["id"] as? String else { return nil }
+                    return ModelOption(provider: id, model: model,
+                                       name: item["name"] as? String ?? model)
+                }
+                return ModelGroup(id: id, name: name, models: models)
+            }
+            if selectedModelLabel == nil,
+               let defaultSel = value["default"] as? [String: Any],
+               let provider = defaultSel["provider"] as? String,
+               let model = defaultSel["model"] as? String {
+                selectedModelLabel = modelGroups.first { $0.id == provider }?
+                    .models.first { $0.model == model }?.name ?? model
+            }
+        } catch {
+            recordDiagnostic("模型列表加载失败：\(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    func selectModel(_ option: ModelOption) async {
+        guard let session = selectedSession else { return }
+        if isDemoMode { selectedModelLabel = option.name; return }
+        do {
+            _ = try await rpc("session/selectModel", args: ["request": [
+                "sessionId": session.sessionId,
+                "provider": option.provider,
+                "model": option.model
+            ]])
+            selectedModelLabel = option.name
+        } catch {
+            errorMessage = "切换模型失败：\(error.localizedDescription)"
+        }
+    }
+
     var lastArchivedSession: PocketSession?
 
     /// 撤销最近一次归档。
@@ -4972,25 +5038,59 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    if let path = model.sessionLogPath {
-                        UIPasteboard.general.string = path
-                        copiedLogPath = path
+                Menu {
+                    Button {
+                        UIPasteboard.general.string = model.sessionAddress
+                        copiedLogPath = model.sessionAddress
+                    } label: {
+                        Label(L10n.t("复制会话地址"), systemImage: "link")
                     }
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .accessibilityLabel("复制会话日志路径")
-                .contextMenu {
+                    Button {
+                        if let path = model.sessionLogPath {
+                            UIPasteboard.general.string = path
+                            copiedLogPath = path
+                        }
+                    } label: {
+                        Label(L10n.t("复制会话日志路径"), systemImage: "doc.on.doc")
+                    }
+                    Divider()
+                    Menu {
+                        if model.modelGroups.isEmpty {
+                            Text(L10n.t("正在加载模型…"))
+                        } else {
+                            ForEach(model.modelGroups) { group in
+                                Menu(group.name) {
+                                    ForEach(group.models) { option in
+                                        Button {
+                                            Task { await model.selectModel(option) }
+                                        } label: {
+                                            if model.selectedModelLabel == option.name {
+                                                Label(option.name, systemImage: "checkmark")
+                                            } else {
+                                                Text(option.name)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(model.selectedModelLabel.map { L10n.t("选择模型") + "：" + $0 } ?? L10n.t("选择模型"),
+                              systemImage: "cpu")
+                    }
                     Button {
                         UIPasteboard.general.string = model.diagnosticReport()
+                        copiedLogPath = model.diagnosticReport()
                     } label: {
-                        Label("复制诊断信息", systemImage: "stethoscope")
+                        Label(L10n.t("复制诊断信息"), systemImage: "stethoscope")
                     }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel(L10n.t("更多"))
             }
         }
-        .alert("已复制会话日志路径", isPresented: Binding(
+        .alert(L10n.t("已复制"), isPresented: Binding(
             get: { copiedLogPath != nil },
             set: { if !$0 { copiedLogPath = nil } }
         )) {
@@ -5000,6 +5100,9 @@ struct ConversationView: View {
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
+        }
+        .task {
+            if model.modelGroups.isEmpty { await model.loadModelCatalog() }
         }
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
