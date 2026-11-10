@@ -4325,6 +4325,9 @@ struct ConversationView: View {
     /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
     @State private var isAtBottom = true
     @State private var unreadWhileScrolled = 0
+    /// 「回到底部」按钮的显示状态：延迟出现，避免发送后程序化滚动期间闪烁并盖住消息。
+    @State private var scrollButtonVisible = false
+    @State private var scrollButtonTask: Task<Void, Never>?
     /// 是否仍"跟随最新"：用户主动上滑后置 false；回到底部/点箭头后置 true。
     @State private var followsLatest = true
     /// 用户上滑时递增，用于让待执行的补滚任务失效。
@@ -4570,6 +4573,8 @@ struct ConversationView: View {
                         isAtBottom = true
                         unreadWhileScrolled = 0
                         followsLatest = true
+                        scrollButtonTask?.cancel()
+                        scrollButtonVisible = false
                     } else if !followsLatest {
                         // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
                         isAtBottom = false
@@ -4578,6 +4583,14 @@ struct ConversationView: View {
                         scrollGeneration &+= 1
                         isAtBottom = false
                     }
+                    if !atBottom, !scrollButtonVisible {
+                        scrollButtonTask?.cancel()
+                        scrollButtonTask = Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(0.9))
+                            guard !Task.isCancelled, !isAtBottom else { return }
+                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                        }
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
 #if DEBUG
@@ -4585,11 +4598,13 @@ struct ConversationView: View {
 #else
                     let hideScrollButton = false
 #endif
-                    if !isAtBottom, !entries.isEmpty, !hideScrollButton {
+                    if scrollButtonVisible, !entries.isEmpty, !hideScrollButton {
                         Button {
                             unreadWhileScrolled = 0
                             isAtBottom = true
                             followsLatest = true
+                            scrollButtonTask?.cancel()
+                            scrollButtonVisible = false
                             scrollToBottom(proxy: proxy, force: true)
                         } label: {
                             HStack(spacing: 5) {
@@ -4608,6 +4623,7 @@ struct ConversationView: View {
                             .overlay(Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
                         }
                         .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
                         .accessibilityLabel(unreadWhileScrolled > 0 ? "\(unreadWhileScrolled) 条未读，滚到底部" : "滚到底部")
                         .accessibilityIdentifier("back-to-bottom")
                         .padding(.trailing, 16)
