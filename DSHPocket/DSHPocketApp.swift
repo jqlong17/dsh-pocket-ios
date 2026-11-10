@@ -4534,6 +4534,9 @@ struct ConversationView: View {
                         scrollToBottom(proxy: proxy)
                     } else if newCount > oldCount {
                         unreadWhileScrolled += newCount - oldCount
+                        if unreadWhileScrolled > 5, !scrollButtonVisible {
+                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                        }
                     }
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
@@ -4587,7 +4590,7 @@ struct ConversationView: View {
                         scrollButtonTask?.cancel()
                         scrollButtonTask = Task { @MainActor in
                             try? await Task.sleep(for: .seconds(0.9))
-                            guard !Task.isCancelled, !isAtBottom else { return }
+                            guard !Task.isCancelled, !isAtBottom, unreadWhileScrolled > 5 else { return }
                             withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
                         }
                     }
@@ -4598,7 +4601,7 @@ struct ConversationView: View {
 #else
                     let hideScrollButton = false
 #endif
-                    if scrollButtonVisible, !entries.isEmpty, !hideScrollButton {
+                    if scrollButtonVisible, unreadWhileScrolled > 5, !entries.isEmpty, !hideScrollButton {
                         Button {
                             unreadWhileScrolled = 0
                             isAtBottom = true
