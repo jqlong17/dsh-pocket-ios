@@ -4445,7 +4445,7 @@ struct ConversationView: View {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                     }
                 }
-                .defaultScrollAnchor(.bottom)
+                .defaultScrollAnchor(.top)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded {
                     composerFocused = false
