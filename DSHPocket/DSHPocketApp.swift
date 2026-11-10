@@ -1516,6 +1516,45 @@ final class ConnectionModel {
         }
     }
 
+    struct SessionGroup: Identifiable {
+        let id: String
+        let title: String
+        let sessions: [PocketSession]
+        let isPinned: Bool
+    }
+
+    /// 分组规则：置顶单独成组（最上方），其余按工作区（cwd 目录名）分组；
+    /// 组顺序按最近活跃出现顺序。
+    var sessionGroups: [SessionGroup] {
+        let pinned = pinnedSessionIds.compactMap { id in sessions.first { $0.sessionId == id } }
+        var groups: [SessionGroup] = []
+        if !pinned.isEmpty {
+            groups.append(SessionGroup(id: "__pinned__", title: L10n.t("置顶"), sessions: pinned, isPinned: true))
+        }
+        let rest = sessions.filter { !pinnedSessionIds.contains($0.sessionId) }
+        var order: [String] = []
+        var buckets: [String: [PocketSession]] = [:]
+        for session in rest {
+            let path = session.cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let key = path.isEmpty ? "__other__" : path
+            if buckets[key] == nil {
+                order.append(key)
+                buckets[key] = []
+            }
+            buckets[key]?.append(session)
+        }
+        for key in order {
+            let title: String
+            if key == "__other__" {
+                title = L10n.t("其他会话")
+            } else {
+                title = URL(fileURLWithPath: key).lastPathComponent
+            }
+            groups.append(SessionGroup(id: key, title: title, sessions: buckets[key] ?? [], isPinned: false))
+        }
+        return groups
+    }
+
     /// 列表展示顺序：置顶在前（最近置顶优先），其余保持服务端顺序。
     var displaySessions: [PocketSession] {
         guard !pinnedSessionIds.isEmpty else { return sessions }
@@ -3652,8 +3691,21 @@ struct RootView: View {
 }
 
 
+enum SessionListMode: String, CaseIterable, Identifiable {
+    case grouped
+    case timeline
+    var id: String { rawValue }
+    func title() -> String {
+        switch self {
+        case .grouped: L10n.t("按工作区分组")
+        case .timeline: L10n.t("按时间线")
+        }
+    }
+}
+
 struct AppSettingsSheet: View {
     @Bindable var model: ConnectionModel
+    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
     @Environment(\.dismiss) private var dismiss
 
     private var versionText: String {
@@ -3679,6 +3731,13 @@ struct AppSettingsSheet: View {
                             }
                         }
                         .foregroundStyle(.primary)
+                    }
+                }
+                Section(L10n.t("会话列表")) {
+                    Picker(L10n.t("显示方式"), selection: $sessionListModeRaw) {
+                        ForEach(SessionListMode.allCases) { mode in
+                            Text(mode.title()).tag(mode.rawValue)
+                        }
                     }
                 }
                 Section(L10n.t("完成提醒")) {
@@ -4209,6 +4268,7 @@ struct PocketCodeScanner: UIViewControllerRepresentable {
 
 struct ConnectedView: View {
     @Bindable var model: ConnectionModel
+    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
     @State private var showingDisconnectConfirm = false
     @State private var didAutoOpen = false
 #if DEBUG
@@ -4216,6 +4276,15 @@ struct ConnectedView: View {
 #else
     private var hideDemoBanner: Bool { false }
 #endif
+
+    /// 按设置切换：工作区分组 / 单一时间线。
+    private var displayGroups: [ConnectionModel.SessionGroup] {
+        if sessionListModeRaw == SessionListMode.timeline.rawValue {
+            return [ConnectionModel.SessionGroup(id: "__timeline__", title: "",
+                                                 sessions: model.displaySessions, isPinned: false)]
+        }
+        return model.sessionGroups
+    }
 
     var body: some View {
         List {
@@ -4244,7 +4313,9 @@ struct ConnectedView: View {
                 ContentUnavailableView(L10n.t("还没有会话"), systemImage: "bubble.left.and.bubble.right", description: Text(L10n.t("创建会话后即可开始对话。")))
                     .listRowSeparator(.hidden)
             }
-            ForEach(model.displaySessions) { session in
+            ForEach(displayGroups) { group in
+              Section {
+                ForEach(group.sessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
                 let isPinned = model.pinnedSessionIds.contains(session.sessionId)
                 NavigationLink(value: session) {
@@ -4262,8 +4333,8 @@ struct ConnectedView: View {
                                         .accessibilityLabel(L10n.t("已置顶"))
                                 }
                             }
-                            Text(finishedAwaiting ? "已完成，等待你的回复"
-                                 : (session.cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? (session.running ? "正在运行" : "对话记录")))
+                            Text(finishedAwaiting ? L10n.t("已完成，等待你的回复")
+                                 : (session.running ? L10n.t("正在运行") : L10n.t("对话记录")))
                                 .font(.caption)
                                 .foregroundStyle(finishedAwaiting ? Color.red : .secondary)
                                 .lineLimit(1)
@@ -4306,9 +4377,19 @@ struct ConnectedView: View {
                         Label(L10n.t("归档"), systemImage: "archivebox")
                     }
                 }
+                }
+              } header: {
+                if !group.title.isEmpty {
+                    Text(group.title)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                }
+              }
             }
         }
         .listStyle(.plain)
+        .listSectionSpacing(.compact)
         .overlay { if model.isLoadingSessions { ProgressView() } }
         .overlay(alignment: .bottom) {
             if model.lastArchivedSession != nil {
