@@ -56,8 +56,9 @@ public enum DSHDecoding {
 
     public static func stepEvent(fromEvent event: [String: Any]) -> DSHStepEvent? {
         guard let type = event["type"] as? String,
-              let sequence = (event["seq"] as? NSNumber)?.intValue,
-              let data = event["data"] as? [String: Any] else { return nil }
+              let sequence = (event["seq"] as? NSNumber)?.intValue else { return nil }
+        // `data` 缺失按空对象处理：turn/start、turn/end 的 data 可以为空。
+        let data = event["data"] as? [String: Any] ?? [:]
         let turn = (data["turn"] as? NSNumber)?.intValue ?? 0
         switch type {
         case "tool/call":
@@ -73,8 +74,11 @@ public enum DSHDecoding {
             let text = content.compactMap { $0["text"] as? String }.joined()
             let isError = (data["isError"] as? Bool) ?? (message?["isError"] as? Bool) ?? false
             let images = content.compactMap { DSHDecoding.imageRef(from: $0) }
+            // callId 的位置随服务端版本变化：data.toolCallId / message.toolCallId /
+            // data.callId（App 旧解析读这里）/ message.source.callId，依次兜底。
             let callId = (data["toolCallId"] as? String)
                 ?? (message?["toolCallId"] as? String)
+                ?? (data["callId"] as? String)
                 ?? ((message?["source"] as? [String: Any])?["callId"] as? String)
                 ?? ""
             return .toolResult(seq: sequence, turn: turn,
@@ -89,19 +93,13 @@ public enum DSHDecoding {
         }
     }
 
-    /// 解析 `{type:"image", attachment:{attachmentId, mediaType, width, height, name}}`。
+    /// 解析 `{type:"image", attachment:{...}}`。attachment 字段被拍平时也认。
     static func imageRef(from block: [String: Any]) -> DSHImageRef? {
-        guard block["type"] as? String == "image",
-              let attachment = block["attachment"] as? [String: Any],
-              let attachmentId = attachment["attachmentId"] as? String else { return nil }
-        return DSHImageRef(
-            attachmentId: attachmentId,
-            mediaType: attachment["mediaType"] as? String,
-            bytes: (attachment["bytes"] as? NSNumber)?.intValue,
-            width: (attachment["width"] as? NSNumber)?.intValue,
-            height: (attachment["height"] as? NSNumber)?.intValue,
-            name: attachment["name"] as? String
-        )
+        guard block["type"] as? String == "image" else { return nil }
+        if let attachment = block["attachment"] as? [String: Any] {
+            return imageRef(fromAttachment: attachment)
+        }
+        return block["attachmentId"] != nil ? imageRef(fromAttachment: block) : nil
     }
 
     /// 工具调用的"一句话说明"：bash 取命令首行，其余取参数里的路径。
@@ -140,19 +138,8 @@ public enum DSHDecoding {
     public static func page(fromValue value: [String: Any]) -> DSHSessionPage {
         let records = value["records"] as? [[String: Any]] ?? []
         let hasMore = value["hasMore"] as? Bool ?? false
-        let decoded: [DSHRecord] = records.compactMap { record in
-            if let event = record["event"] as? [String: Any] {
-                if let message = message(fromEvent: event) { return .message(message) }
-                if let step = stepEvent(fromEvent: event) { return .step(step) }
-                if event["type"] as? String == "session/title",
-                   let seq = (event["seq"] as? NSNumber)?.intValue,
-                   let data = event["data"] as? [String: Any],
-                   let title = data["title"] as? String {
-                    return .title(seq: seq, title: title)
-                }
-            }
-            return .unknown
-        }
+        // 与实时流共用同一份 record 分发（message/step/title/unknown），避免两处漂移。
+        let decoded: [DSHRecord] = DSHDecoding.records(fromRecords: records)
         return DSHSessionPage(records: decoded, hasMore: hasMore)
     }
 

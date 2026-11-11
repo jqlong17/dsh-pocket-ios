@@ -40,6 +40,7 @@ struct ConversationView: View {
     @State private var olderCooldownUntil = Date.distantPast
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
     @State private var olderLoadWasAtTop = false
+    @State private var showingJobs = false
     @State private var showingCamera = false
     @State private var showingPhotoPicker = false
     @State private var photoItems: [PhotosPickerItem] = []
@@ -334,8 +335,9 @@ struct ConversationView: View {
                     if !atBottom, !scrollButtonVisible {
                         scrollButtonTask?.cancel()
                         scrollButtonTask = Task { @MainActor in
-                            try? await Task.sleep(for: .seconds(0.9))
-                            guard !Task.isCancelled, !isAtBottom, unreadWhileScrolled > 5 else { return }
+                            // 只延迟一点点，避免还在拖动时闪出来。
+                            try? await Task.sleep(for: .seconds(0.25))
+                            guard !Task.isCancelled, !isAtBottom else { return }
                             withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
                         }
                     }
@@ -346,7 +348,7 @@ struct ConversationView: View {
 #else
                     let hideScrollButton = false
 #endif
-                    if scrollButtonVisible, unreadWhileScrolled > 5, !entries.isEmpty, !hideScrollButton {
+                    if scrollButtonVisible, !entries.isEmpty, !hideScrollButton {
                         Button {
                             unreadWhileScrolled = 0
                             isAtBottom = true
@@ -355,8 +357,16 @@ struct ConversationView: View {
                             scrollButtonVisible = false
                             scrollToBottom(proxy: proxy, force: true)
                         } label: {
-                            Image(systemName: "arrow.down")
-                                .font(.footnote.weight(.semibold))
+                            HStack(spacing: 4) {
+                                // 原生做法：离开底部就出现；有未读时把条数带上。
+                                Image(systemName: "arrow.down")
+                                    .font(.footnote.weight(.semibold))
+                                if unreadWhileScrolled > 0 {
+                                    Text(unreadWhileScrolled > 99 ? "99+" : "\(unreadWhileScrolled)")
+                                        .font(.caption2.weight(.semibold))
+                                        .monospacedDigit()
+                                }
+                            }
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -414,7 +424,7 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                JobsToolbarButton(model: model)
+                JobsToolbarButton { showingJobs = true }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -458,6 +468,9 @@ struct ConversationView: View {
             Button("好", role: .cancel) {}
         } message: {
             Text(copiedLogPath ?? "")
+        }
+        .sheet(isPresented: $showingJobs) {
+            JobsSheet(model: model)
         }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()

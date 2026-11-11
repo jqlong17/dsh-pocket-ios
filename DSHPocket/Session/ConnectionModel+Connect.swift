@@ -330,7 +330,10 @@ extension ConnectionModel {
         guard var components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
               components.host != nil else {
-            errorMessage = "二维码中没有有效的 HTTP 或 HTTPS 地址。"
+            // 扫到的不是电脑地址：属于「地址无效」，提示里直接引导再扫一次，所以给重新扫码入口。
+            let failure = ConnectFailureMessage.scannedAddressInvalid()
+            addressNeedsRescan = failure.needsRescan
+            errorMessage = failure.text
             return false
         }
         // 二维码/粘贴的地址可能携带：?token=<DSH 认证 token>（登录后浏览器地址栏），或旧版 ?pin=<密码>。
@@ -357,14 +360,18 @@ extension ConnectionModel {
     @MainActor
     func connect() async {
         errorMessage = nil
+        addressNeedsRescan = false
         let url: URL
         do {
             url = try Self.serverURL(from: serverAddress)
             // 地址里可能带扫码的配对 token：只留 scheme/host/端口，token 不落到存档和日志里。
             serverAddress = DSHURL.baseAddress(url)
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "地址格式无效。"
-            recordDiagnostic("地址校验失败：\(DSHURL.redactedAddress(serverAddress))")
+            // 地址在发请求之前就解析不了：属于「地址无效」，不是网络问题。
+            let failure = ConnectFailureMessage(error: error, context: .address)
+            addressNeedsRescan = failure.needsRescan
+            errorMessage = failure.text
+            recordDiagnostic("地址校验失败 [\(failure.kind.label)]：\(DSHURL.redactedAddress(serverAddress)) \(ConnectFailureMessage.diagnosticText(error))")
             return
         }
         recordDiagnostic("开始连接：\(DSHURL.redacted(url))")
@@ -393,12 +400,17 @@ extension ConnectionModel {
                 sessions = try await fetchSessions()
                 isConnected = true
                 errorMessage = nil
+                addressNeedsRescan = false
                 PinKeychain.clear()
                 recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
                 return
             } catch {
-                errorMessage = "配对二维码已失效（60 秒有效、仅可使用一次），请在电脑上重新生成后扫码。"
-                recordDiagnostic("配对登录失败：\(error.localizedDescription)")
+                // 配对分支的失败不只是「二维码过期」：超时、断网也会落到这里。
+                // 以前一律说二维码失效，会把网络问题误报成需要重新配对，所以交给分型判断。
+                let failure = ConnectFailureMessage(error: error, context: .pairing)
+                addressNeedsRescan = failure.needsRescan
+                errorMessage = failure.text
+                recordDiagnostic("配对登录失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
                 return
             }
         }
@@ -417,24 +429,29 @@ extension ConnectionModel {
                 sessions = try await fetchSessions()
                 isConnected = true
                 errorMessage = nil
+                addressNeedsRescan = false
                 PinKeychain.save(pin)
                 await syncPushRegistration()
                 recordDiagnostic("token 登录成功：会话 \(sessions.count) 个")
                 return
             } catch {
-                errorMessage = "登录链接已失效（DSH 重启后 token 会变化），请重新在设置页复制最新地址或输入访问密码。"
-                recordDiagnostic("token 登录失败：\(error.localizedDescription)")
+                // 同上：登录链接失效和网络超时是两回事，分别给「重新复制地址」和「稍后重试」。
+                let failure = ConnectFailureMessage(error: error, context: .loginToken)
+                addressNeedsRescan = failure.needsRescan
+                errorMessage = failure.text
+                recordDiagnostic("token 登录失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
                 return
             }
         }
-        // 访问密码只允许 8-64 位字母或数字；避免把密码管理器自动填入的长密码发给服务器后变成“密码错误”。
-        guard pin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil else {
-            errorMessage = "访问密码需为 8–64 位英文字母或数字，请重新输入（不要使用密码管理器的自动填充）。"
-            recordDiagnostic("密码格式无效（长度 \(pin.count)），未发起请求")
+        // 先拦空密码，再说格式：空输入报「格式不对」会让人以为密码本身有问题。
+        guard !pin.isEmpty else {
+            errorMessage = ConnectFailureMessage.pinMissing().text
             return
         }
-        guard !pin.isEmpty else {
-            errorMessage = "请输入访问密码"
+        // 访问密码只允许 8-64 位字母或数字；避免把密码管理器自动填入的长密码发给服务器后变成“密码错误”。
+        guard pin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil else {
+            errorMessage = ConnectFailureMessage.pinFormatInvalid().text
+            recordDiagnostic("密码格式无效（长度 \(pin.count)），未发起请求")
             return
         }
         isConnecting = true
@@ -486,56 +503,31 @@ extension ConnectionModel {
 
             sessions = try await fetchSessions()
             isConnected = true
+            addressNeedsRescan = false
             UserDefaults.standard.set(serverAddress, forKey: Self.savedServerAddressKey)
             recordEndpoint(serverAddress)
             pin = ""
             recordDiagnostic("连接成功：会话 \(sessions.count) 个")
         } catch {
-            recordDiagnostic("连接失败：\(error.localizedDescription)")
-            applyConnectError(error)
+            // 密码登录分支：invalidPin 是密码问题，URLError 是网络问题，由分型决定说什么。
+            applyConnectError(error, context: .password)
         }
     }
 
-    /// 连接错误 → 用户能看懂的提示；TLS/主机不可达时提示地址已失效并引导重新扫码。
-    /// 是否是"公网隧道地址已失效/隧道未连接"这类错误（Cloudflare 常见 5xx）。
+    /// 是否是「公网隧道地址已失效 / 证书对不上」这类错误（Live、会话列表用它区分重试与重新扫码）。
+    /// 具体判断收在 ConnectFailureMessage 里，和分型文案共用同一套状态码/证书码，避免两处各写一份。
     func isStaleTunnelError(_ error: Error) -> Bool {
-        if case .server(let code) = error as? ConnectionError {
-            return [502, 503, 504, 520, 521, 522, 523, 524, 530].contains(code)
-        }
-        if let urlError = error as? URLError {
-            return [.secureConnectionFailed, .serverCertificateUntrusted,
-                    .serverCertificateHasBadDate, .serverCertificateNotYetValid,
-                    .serverCertificateHasUnknownRoot].contains(urlError.code)
-        }
-        return false
+        ConnectFailureMessage.isStaleTunnel(error)
     }
 
-    func applyConnectError(_ error: Error) {
-        if isStaleTunnelError(error) {
-            addressNeedsRescan = true
-            errorMessage = "公网隧道暂时连不上（HTTP 530）：电脑上的隧道可能已重启、公网地址已经变化。请在电脑上重新打开「手机访问」并用二维码重新扫码；同一 Wi-Fi 下也可以改用局域网地址。"
-            return
-        }
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .secureConnectionFailed, .serverCertificateUntrusted,
-                 .serverCertificateHasBadDate, .serverCertificateNotYetValid,
-                 .serverCertificateHasUnknownRoot, .clientCertificateRejected:
-                addressNeedsRescan = true
-                errorMessage = "无法建立安全连接：电脑的公网地址可能已失效。隧道重启后会分配新地址，请在电脑上打开 DSH → 设置 → 手机访问，用这里的二维码重新扫描；同一 Wi-Fi 下也可以改用局域网地址。"
-                return
-            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost, .notConnectedToInternet:
-                addressNeedsRescan = true
-                errorMessage = "连不上电脑：请确认电脑和手机网络正常、DSH 的「手机访问」仍开着；如果公网地址变了，请重新扫码。"
-                return
-            case .timedOut:
-                errorMessage = "连接超时：电脑端可能正忙或网络不稳定，请稍后重试。"
-                return
-            default:
-                break
-            }
-        }
-        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    /// 连接失败 → 分型文案。分类规则全在 ConnectFailureMessage 里，这里只负责落到界面状态。
+    /// 诊断记录仍写原始错误类型：用户看到的是人话，排查时要的是错误原文，两边都不能少。
+    @MainActor
+    func applyConnectError(_ error: Error, context: ConnectFailureMessage.Context = .general) {
+        let failure = ConnectFailureMessage(error: error, context: context)
+        addressNeedsRescan = failure.needsRescan
+        errorMessage = failure.text
+        recordDiagnostic("连接失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
     }
 
     /// 整理用户输入：去掉首尾空白和零宽字符，缺少协议时补 `http://`。

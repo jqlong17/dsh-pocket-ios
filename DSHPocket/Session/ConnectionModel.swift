@@ -102,7 +102,6 @@ final class ConnectionModel {
     /// 会话列表拉取失败后的自动重试。
     var sessionListRetryTask: Task<Void, Never>?
     /// 后台任务面板是否展开。
-    var showingJobs = false
     var selectedSession: PocketSession?
     var navigationPath: [PocketSession] = []
     var isSending = false

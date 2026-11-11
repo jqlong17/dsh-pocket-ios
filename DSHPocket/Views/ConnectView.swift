@@ -417,11 +417,19 @@ struct ConnectView: View {
         .background(card, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// 连接失败的红字。
+    /// 文案本身全部来自 `ConnectFailureMessage`（超时/断连、认证失效、地址无效各有各的说法），
+    /// 这里不再写任何一句提示，只按分类结果给下一步入口：
+    /// 地址失效/认证失效显示「重新扫码连接」，暂时性失败显示「重试」——用户一眼能看出该等还是该重新配对。
     private func errorBanner(_ error: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Image(systemName: model.addressNeedsRescan ? "qrcode.viewfinder" : "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if model.addressNeedsRescan {
                 Button { showingScanner = true } label: {
@@ -432,6 +440,16 @@ struct ConnectView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(brand)
                 }
+            } else {
+                Button { Task { await model.connect() } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text(L10n.t("重试"))
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(brand)
+                }
+                .disabled(model.isConnecting)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

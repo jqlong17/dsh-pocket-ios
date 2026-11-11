@@ -112,7 +112,7 @@ public struct DSHSessionPage: Sendable {
     }
 }
 
-public enum DSHRecord: Sendable {
+public enum DSHRecord: Equatable, Sendable {
     case message(DSHMessage)
     case step(DSHStepEvent)
     case title(seq: Int, title: String)

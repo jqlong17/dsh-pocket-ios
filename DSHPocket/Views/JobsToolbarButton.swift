@@ -16,20 +16,18 @@ import ImageIO
 import UserNotifications
 
 
-/// 右上角后台任务入口。图标常驻、不随任务数变化；点开才看具体任务。
+/// 右上角后台任务入口。
+///
+/// 刻意不持有 model：只要它读 model 上的任何状态，工具栏就会随任务名单刷新反复求值，
+/// 图标看起来会跟着任务数变。这里只收一个动作，弹窗由页面自己管。
 struct JobsToolbarButton: View {
-    @Bindable var model: ConnectionModel
+    let action: () -> Void
 
     var body: some View {
-        Button {
-            model.showingJobs = true
-        } label: {
+        Button(action: action) {
             Image(systemName: "checklist")
         }
         .accessibilityLabel(L10n.t("后台任务"))
-        .sheet(isPresented: $model.showingJobs) {
-            JobsSheet(model: model)
-        }
     }
 }
 
