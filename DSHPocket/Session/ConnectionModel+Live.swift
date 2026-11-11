@@ -894,14 +894,7 @@ extension ConnectionModel {
     }
 
     func isTransientNetworkError(_ error: Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
-        switch urlError.code {
-        case .timedOut, .networkConnectionLost, .notConnectedToInternet,
-             .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
-            return true
-        default:
-            return false
-        }
+        DSHNetworkErrorPolicy.isTransient(error)
     }
 
     /// 主动核验消息是否真的落库：在最近会话历史里按 rpcId 精确查找。

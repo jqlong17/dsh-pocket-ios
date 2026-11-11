@@ -18,17 +18,7 @@ import UserNotifications
 extension ConnectionModel {
 
     static func endpointKind(of address: String) -> SavedEndpoint.Kind {
-        guard let url = URL(string: address), let host = url.host?.lowercased() else { return .custom }
-        if host == "localhost" || host.hasSuffix(".local") { return .lan }
-        let parts = host.split(separator: ".").compactMap { Int($0) }
-        if parts.count == 4 {
-            let a = parts[0], b = parts[1]
-            if a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && (16...31).contains(b)) {
-                return .lan
-            }
-        }
-        if host.contains("trycloudflare.com") || url.scheme == "https" { return .publicNetwork }
-        return .custom
+        SavedEndpoint.Kind(DSHEndpointPolicy.kind(of: address))
     }
 
     func loadSavedEndpoints() {
@@ -38,48 +28,40 @@ extension ConnectionModel {
         seedServerEndpointIfNeeded()
     }
 
-    /// 阿里云开发机。和「家 / 公司」并列，走 3091，不占备案的 80/443。
+    /// 仅 DEBUG 下可选播种阿里云开发机，正式包不会把该地址写入 UserDefaults。
+    /// 用户已经手工保存的端点一律保留。
     func seedServerEndpointIfNeeded() {
+#if DEBUG
         let address = "http://203.0.113.10:3091"
-        guard !savedEndpoints.contains(where: { $0.address == address }) else { return }
+        let existing = savedEndpoints.map(\.address)
+        guard DSHEndpointPolicy.shouldAutoSeedDevelopmentEndpoint(
+            isDebugBuild: true,
+            existingAddresses: existing,
+            developmentAddress: address
+        ) else { return }
         savedEndpoints.append(SavedEndpoint(address: address, kind: .custom, lastUsedAt: Date().timeIntervalSince1970, label: "服务器"))
         savedEndpoints = Self.dedupEndpoints(savedEndpoints)
         if let data = try? JSONEncoder().encode(savedEndpoints) {
             UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
         }
+#endif
     }
 
-    /// 去重 + 配额：局域网最多 3 个（可分别命名「公司」「家」），公网 1 个，自定义 1 个。
-    /// 公网地址很容易失效，没必要存很多。
+    /// 去重 + 配额交给 DSHKit；这里只做模型映射。
     static func dedupEndpoints(_ list: [SavedEndpoint]) -> [SavedEndpoint] {
-        var kept: [SavedEndpoint] = []
-        var seenAddresses = Set<String>()
-        var lanCount = 0
-        var publicCount = 0
-        var customCount = 0
-        for endpoint in list.sorted(by: { $0.lastUsedAt > $1.lastUsedAt }) {
-            guard !seenAddresses.contains(endpoint.address) else { continue }
-            switch endpoint.kind {
-            case .lan:
-                guard lanCount < 3 else { continue }
-                lanCount += 1
-            case .publicNetwork:
-                guard publicCount < 1 else { continue }
-                publicCount += 1
-            case .custom:
-                guard customCount < 2 else { continue }
-                customCount += 1
-            }
-            seenAddresses.insert(endpoint.address)
-            kept.append(endpoint)
+        let records = list.map {
+            DSHSavedEndpointRecord(address: $0.address, kind: $0.kind.policyKind, lastUsedAt: $0.lastUsedAt, label: $0.label)
         }
-        return kept
+        return DSHEndpointPolicy.dedup(records).map {
+            SavedEndpoint(address: $0.address, kind: SavedEndpoint.Kind($0.kind), lastUsedAt: $0.lastUsedAt, label: $0.label)
+        }
     }
 
     /// 连接成功后记录地址；同一地址只保留一条（供连接页手动选择）。
     func recordEndpoint(_ address: String) {
         guard let url = try? Self.serverURL(from: address) else { return }
-        let normalized = url.absoluteString
+        // 存的是去参数后的地址：配对 token 只用于当次登录，不写进地址列表。
+        let normalized = DSHURL.baseAddress(url)
         let existingLabel = savedEndpoints.first(where: { $0.address == normalized })?.label
         var list = savedEndpoints.filter { $0.address != normalized }
         list.append(SavedEndpoint(address: normalized,
@@ -202,7 +184,7 @@ extension ConnectionModel {
             sessions = try await fetchSessions()
             isConnected = true
             recordEndpoint(endpoint.address)
-            recordDiagnostic("切换连接：\(endpoint.kind.label) \(endpoint.address)")
+            recordDiagnostic("切换连接：\(endpoint.kind.label) \(DSHURL.redactedAddress(endpoint.address))")
         } catch {
             serverAddress = previous
             applyConnectError(error)
@@ -219,7 +201,7 @@ extension ConnectionModel {
         if let server = DebugLaunch.server {
             serverAddress = server
             if let pin = DebugLaunch.pin { self.pin = pin }
-            recordDiagnostic("Debug 自动连接：\(server)")
+            recordDiagnostic("Debug 自动连接：\(DSHURL.redactedAddress(server))")
             await connect()
             return
         }

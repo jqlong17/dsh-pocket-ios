@@ -360,13 +360,14 @@ extension ConnectionModel {
         let url: URL
         do {
             url = try Self.serverURL(from: serverAddress)
-            serverAddress = url.absoluteString
+            // 地址里可能带扫码的配对 token：只留 scheme/host/端口，token 不落到存档和日志里。
+            serverAddress = DSHURL.baseAddress(url)
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "地址格式无效。"
-            recordDiagnostic("地址校验失败：\(serverAddress.debugDescription)")
+            recordDiagnostic("地址校验失败：\(DSHURL.redactedAddress(serverAddress))")
             return
         }
-        recordDiagnostic("开始连接：\(url.absoluteString)")
+        recordDiagnostic("开始连接：\(DSHURL.redacted(url))")
         // 一次性配对：扫码即登录，不需要密码。
         var pairToken = pendingPairToken
         if pairToken == nil,

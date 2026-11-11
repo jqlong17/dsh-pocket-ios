@@ -136,14 +136,7 @@ extension ConnectionModel {
     }
 
     static func isTransientNetworkError(_ error: Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
-        switch urlError.code {
-        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
-             .notConnectedToInternet, .secureConnectionFailed:
-            return true
-        default:
-            return false
-        }
+        DSHNetworkErrorPolicy.isTransient(error)
     }
 
     func fetchSessions() async throws -> [PocketSession] {
