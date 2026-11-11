@@ -16,27 +16,19 @@ import ImageIO
 import UserNotifications
 
 
-/// 右上角后台任务入口。没有在跑的任务时不出现；有几个在跑就显示几，点开才看具体任务。
+/// 右上角后台任务入口。图标常驻、不随任务数变化；点开才看具体任务。
 struct JobsToolbarButton: View {
     @Bindable var model: ConnectionModel
 
-    private var running: [PocketJob] { model.runningJobs }
-
     var body: some View {
-        if !running.isEmpty {
-            Button {
-                model.showingJobs = true
-            } label: {
-                Text("\(running.count)")
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(PocketChrome.brand)
-                    .frame(minWidth: 22, minHeight: 22)
-            }
-            .accessibilityLabel("\(running.count) 个后台任务")
-            .sheet(isPresented: $model.showingJobs) {
-                JobsSheet(model: model)
-            }
+        Button {
+            model.showingJobs = true
+        } label: {
+            Image(systemName: "checklist")
+        }
+        .accessibilityLabel(L10n.t("后台任务"))
+        .sheet(isPresented: $model.showingJobs) {
+            JobsSheet(model: model)
         }
     }
 }

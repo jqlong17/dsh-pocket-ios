@@ -403,10 +403,8 @@ struct ConversationView: View {
         .navigationTitle(model.currentConversationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !model.runningJobs.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
-                    JobsToolbarButton(model: model)
-                }
+            ToolbarItem(placement: .topBarTrailing) {
+                JobsToolbarButton(model: model)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
