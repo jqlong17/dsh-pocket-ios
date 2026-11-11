@@ -43,6 +43,8 @@ final class ConversationState {
     var coordinator: SessionSyncCoordinator?
     var coordinatorTask: Task<Void, Never>?
     var coordinatorStarted = false
+    /// 最近一次打开时间。用来决定淘汰哪些会话的内存副本。
+    var lastOpenedAt = Date()
     /// 历史分页：是否还有更早消息、是否正在加载、加载前的滚动锚点。
     var hasMoreOlder = false
     var isLoadingOlder = false

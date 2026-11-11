@@ -29,17 +29,22 @@ public struct SyncConfig: Sendable {
     public var baseBackoff: Duration
     public var maxBackoff: Duration
     public var pollInterval: Duration
+    /// 首次连上时要不要再走一次 HTTP 基线。
+    /// 会话内容已经在内存里（再次进入同一条会话）时置 false：只靠 WS 快照补齐，少拉一次整页。
+    public var fetchHTTPBaseline: Bool
 
     public init(maxMessages: Int = 30,
                 watchdog: Duration = .seconds(25),
                 baseBackoff: Duration = .seconds(1),
                 maxBackoff: Duration = .seconds(15),
-                pollInterval: Duration = .seconds(5)) {
+                pollInterval: Duration = .seconds(5),
+                fetchHTTPBaseline: Bool = true) {
         self.maxMessages = maxMessages
         self.watchdog = watchdog
         self.baseBackoff = baseBackoff
         self.maxBackoff = maxBackoff
         self.pollInterval = pollInterval
+        self.fetchHTTPBaseline = fetchHTTPBaseline
     }
 
     public static let `default` = SyncConfig()

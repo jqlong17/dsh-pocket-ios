@@ -384,7 +384,9 @@ extension ConnectionModel {
         let config = SyncConfig(maxMessages: Self.conversationMessageLimit,
                                 watchdog: .seconds(25),
                                 baseBackoff: .seconds(1),
-                                maxBackoff: .seconds(15))
+                                maxBackoff: .seconds(15),
+                                // 会话内容已经在内存里（再次进入）就不必再拉一次整页，只靠 WS 快照补齐。
+                                fetchHTTPBaseline: conversation.messages.isEmpty)
         let coordinator = SessionSyncCoordinator(sessionId: session.sessionId, transport: client, config: config)
         conversation.coordinator = coordinator
         conversation.coordinatorStarted = true

@@ -109,7 +109,9 @@ public actor SessionSyncCoordinator {
                 setState(.connected)
                 attempt = 0
                 // HTTP 基线（失败不致命，WS snapshot 可补）。
-                if let page = try? await transport.snapshotPage(sessionId: sessionId,
+                // 已有缓存的会话不再走这一趟：少一次整页拉取，WS 快照足够补齐。
+                if config.fetchHTTPBaseline,
+                   let page = try? await transport.snapshotPage(sessionId: sessionId,
                                                                 maxMessages: config.maxMessages) {
                     applyPage(page, emitSnapshot: !emittedSnapshot)
                 }

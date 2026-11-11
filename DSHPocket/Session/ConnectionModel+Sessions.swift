@@ -369,6 +369,28 @@ extension ConnectionModel {
         }
     }
 
+    /// 只保留最近打开过的几条会话内容，其余只留 ID（草稿另存在 DraftStore）。
+    /// 原生不会把聊过的每条会话都摊在内存里；我们也别一直涨。
+    @MainActor
+    func trimRetainedConversations(keeping sessionId: String, limit: Int = 3) {
+        guard conversations.count > limit else { return }
+        let active = activeConversation?.sessionId ?? sessionId
+        let evictable = conversations.values
+            .filter { $0.sessionId != active && $0.sessionId != sessionId }
+            .sorted { $0.lastOpenedAt < $1.lastOpenedAt }
+        var overflow = conversations.count - limit
+        for conversation in evictable where overflow > 0 {
+            conversation.liveTask?.cancel()
+            conversation.fallbackTask?.cancel()
+            conversation.coordinatorTask?.cancel()
+            conversation.jobsTask?.cancel()
+            conversations.removeValue(forKey: conversation.sessionId)
+            overflow -= 1
+        }
+        if overflow < 0 { return }
+        recordDiagnostic("会话缓存回收：保留 \(conversations.count) 条")
+    }
+
     @MainActor
     func open(_ session: PocketSession) {
         pruneStaleOutbox()
@@ -390,6 +412,7 @@ extension ConnectionModel {
         let isNewConversation = conversations[session.sessionId] == nil
         let conversation = conversations[session.sessionId] ?? ConversationState(sessionId: session.sessionId)
         conversations[session.sessionId] = conversation
+        conversation.lastOpenedAt = Date()
         activeConversation = conversation
         conversation.conversationToken = UUID()
         conversation.turnStarts.removeAll()
@@ -422,6 +445,12 @@ extension ConnectionModel {
         recordDiagnostic("打开会话：\(session.displayTitle)")
         startDiagnosticSampler()
         beginDiagnosticVisit(reusedMessages: isNewConversation ? 0 : conversation.messages.count)
+        // 复用内存里的消息时不再等快照：直接结束「加载中」，避免转圈白等。
+        if !conversation.messages.isEmpty {
+            conversation.isLoadingConversation = false
+            noteLoadFinished(source: "cache", conversation: conversation)
+        }
+        trimRetainedConversations(keeping: session.sessionId)
         requestScrollToBottom()
         conversation.isLoadingConversation = true
         conversation.loadStartedAt = Date()
