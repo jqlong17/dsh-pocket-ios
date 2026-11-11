@@ -30,8 +30,8 @@ final class EndpointPolicyTests: XCTestCase {
             rec("https://a.example.ts.net", .publicNetwork, now + 5, nil),
             rec("https://b.example.ts.net", .publicNetwork, now + 1, nil),
             rec("http://203.0.113.10:3091", .custom, now + 4, "服务器"),
-            rec("http://203.0.113.10:3091", .custom, now + 3, "另一台"),
-            rec("http://203.0.113.11:3091", .custom, now, "超配额"),
+            rec("http://203.0.113.11:3091", .custom, now + 3, "另一台"),
+            rec("http://203.0.113.12:3091", .custom, now, "超配额"),
             rec("http://192.168.1.11:3081", .lan, now + 9, "家-重复"),
         ]
         let kept = DSHEndpointPolicy.dedup(list)
@@ -43,8 +43,8 @@ final class EndpointPolicyTests: XCTestCase {
         XCTAssertFalse(addresses.contains("http://192.168.1.14:3081"))
         XCTAssertEqual(addresses.filter { $0.contains("example.ts.net") }, ["https://a.example.ts.net"])
         XCTAssertTrue(addresses.contains("http://203.0.113.10:3091"))
-        XCTAssertTrue(addresses.contains("http://203.0.113.10:3091"))
-        XCTAssertFalse(addresses.contains("http://203.0.113.11:3091"))
+        XCTAssertTrue(addresses.contains("http://203.0.113.11:3091"))
+        XCTAssertFalse(addresses.contains("http://203.0.113.12:3091"))
         XCTAssertEqual(kept.first(where: { $0.address == "http://192.168.1.11:3081" })?.label, "家-重复")
     }
 
