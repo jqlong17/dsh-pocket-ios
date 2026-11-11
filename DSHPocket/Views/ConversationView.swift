@@ -35,6 +35,8 @@ struct ConversationView: View {
     @State private var loadingGroupIDs: Set<String> = []
     /// 展开/收起「过程」后短时间内抑制"自动贴底"，避免一点击就被拽到底部。
     @State private var suppressAutoScrollUntil = Date.distantPast
+    /// 手指正在拖动列表。拖动期间一律不自动贴底，否则用户上滑会被按住。
+    @State private var userDragging = false
     /// 分页加载冷却，避免滚动到顶部时连续翻页。
     @State private var olderCooldownUntil = Date.distantPast
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
@@ -204,6 +206,7 @@ struct ConversationView: View {
                     // 就补一次贴底，避免"最后一条消息下方留出空白"。
                     // 展开/收起「过程」后的 0.5 秒内不贴底，否则点击会被拽到底部。
                     guard Date() >= suppressAutoScrollUntil else { return }
+                    guard !userDragging else { return }
                     guard isSettlingScroll || followsLatest else { return }
                     DispatchQueue.main.async {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
@@ -221,7 +224,12 @@ struct ConversationView: View {
                             // 用户一旦主动拖动，立刻取消"刚进会话时的多次补滚"，不要跟手指抢滚动。
                             scrollGeneration &+= 1
                             isSettlingScroll = false
+                            userDragging = true
                             if value.translation.height > 10 { followsLatest = false }
+                        }
+                        .onEnded { _ in
+                            // 手指抬起才允许恢复自动贴底；拖动期间任何贴底都会把用户按住。
+                            userDragging = false
                         }
                 )
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
@@ -262,6 +270,11 @@ struct ConversationView: View {
                 .onChange(of: model.messages.count) { oldCount, newCount in
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
                     guard newCount != oldCount else { return }
+                    if userDragging {
+                        // 手指在滑：只累计未读，不抢滚动。
+                        if newCount > oldCount { unreadWhileScrolled += newCount - oldCount }
+                        return
+                    }
                     if isAtBottom || isSettlingScroll || followsLatest {
                         scrollToBottom(proxy: proxy, force: true)
                     } else if newCount > oldCount {
@@ -272,7 +285,7 @@ struct ConversationView: View {
                     }
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
-                    guard newCount != oldCount, Date() >= suppressAutoScrollUntil else { return }
+                    guard newCount != oldCount, Date() >= suppressAutoScrollUntil, !userDragging else { return }
                     if isAtBottom || isSettlingScroll || followsLatest { scrollToBottom(proxy: proxy, force: true) }
                 }
                 .onChange(of: model.olderLoadTick) { _, _ in
@@ -620,6 +633,8 @@ struct ConversationView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
+        // 手指正在拖动时不抢滚动：这期间任何贴底都会把用户按住。
+        guard !userDragging else { return }
         // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
         if !force && !isAtBottom && !isSettlingScroll { return }
         let generation = scrollGeneration
