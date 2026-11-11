@@ -41,3 +41,21 @@ struct SavedEndpoint: Codable, Identifiable, Hashable {
     var id: String { address }
     var displayName: String { label ?? kind.label }
 }
+
+extension SavedEndpoint.Kind {
+    init(_ kind: DSHEndpointKind) {
+        switch kind {
+        case .lan: self = .lan
+        case .publicNetwork: self = .publicNetwork
+        case .custom: self = .custom
+        }
+    }
+
+    var policyKind: DSHEndpointKind {
+        switch self {
+        case .lan: return .lan
+        case .publicNetwork: return .publicNetwork
+        case .custom: return .custom
+        }
+    }
+}
