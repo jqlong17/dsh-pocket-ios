@@ -28,11 +28,14 @@ extension ConnectionModel {
         seedServerEndpointIfNeeded()
     }
 
-    /// 仅 DEBUG 下可选播种阿里云开发机，正式包不会把该地址写入 UserDefaults。
+    /// 仅 DEBUG 下播种开发机地址，且地址来自启动环境变量（DSH_DEV_SERVER），
+    /// 代码里不留任何公网地址，正式包更不会写入 UserDefaults。
     /// 用户已经手工保存的端点一律保留。
     func seedServerEndpointIfNeeded() {
 #if DEBUG
-        let address = "http://203.0.113.10:3091"
+        let address = (ProcessInfo.processInfo.environment["DSH_DEV_SERVER"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { return }
         let existing = savedEndpoints.map(\.address)
         guard DSHEndpointPolicy.shouldAutoSeedDevelopmentEndpoint(
             isDebugBuild: true,
