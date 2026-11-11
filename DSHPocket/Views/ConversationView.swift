@@ -40,6 +40,7 @@ struct ConversationView: View {
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
     @State private var olderLoadWasAtTop = false
     @State private var showingCamera = false
+    @State private var showingPhotoPicker = false
     @State private var photoItems: [PhotosPickerItem] = []
     @FocusState private var composerFocused: Bool
     @State private var copiedLogPath: String?
@@ -299,12 +300,15 @@ struct ConversationView: View {
                     olderLoadWasAtTop = topOffset <= 2
                     model.loadOlderMessages()
                 }
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
-                    return distance <= 48
-                } action: { _, atBottom in
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
+                } action: { _, distance in
                     guard Date() >= suppressAutoScrollUntil else { return }
-                    if atBottom {
+                    // 48 点内算「在底部附近」（用于隐藏回到底部按钮），
+                    // 但只有 6 点内才恢复自动跟随；否则手指往上带一点就被吸回底部。
+                    let nearBottom = distance <= 48
+                    let hardBottom = distance <= 6
+                    if hardBottom {
                         isAtBottom = true
                         unreadWhileScrolled = 0
                         followsLatest = true
@@ -314,6 +318,11 @@ struct ConversationView: View {
                         // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
                         isAtBottom = false
                         isSettlingScroll = false
+                    } else if nearBottom {
+                        // 退出底部一小段：保留「在底部」的观感，但不再恢复跟随，避免回弹。
+                        isAtBottom = true
+                        followsLatest = false
+                        isSettlingScroll = false
                     } else if followsLatest {
                         // 内容变高（新消息/过程）但仍在跟随：立即补一次贴底，避免"不自动滚到最新"。
                         scrollToBottom(proxy: proxy, force: true)
@@ -321,7 +330,7 @@ struct ConversationView: View {
                         scrollGeneration &+= 1
                         isAtBottom = false
                     }
-                    if !atBottom, !scrollButtonVisible {
+                    if !nearBottom, !scrollButtonVisible {
                         scrollButtonTask?.cancel()
                         scrollButtonTask = Task { @MainActor in
                             try? await Task.sleep(for: .seconds(0.9))
@@ -452,6 +461,14 @@ struct ConversationView: View {
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
         }
+        // 菜单里只切换状态，真正的相册选择器挂在页面上。
+        // 把 PhotosPicker 直接塞进 Menu 里，iOS 不会弹出选择器，表现为「点了没反应」。
+        .photosPicker(isPresented: $showingPhotoPicker,
+                      selection: $photoItems,
+                      maxSelectionCount: 9,
+                      selectionBehavior: .ordered,
+                      matching: .images,
+                      photoLibrary: .shared())
         .sheet(isPresented: $showingModelPicker) {
             ModelPickerSheet(model: model)
         }
@@ -557,7 +574,7 @@ struct ConversationView: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 Menu {
-                    PhotosPicker(selection: $photoItems, maxSelectionCount: 9, selectionBehavior: .ordered, matching: .images, photoLibrary: .shared()) {
+                    Button { showingPhotoPicker = true } label: {
                         Label("相册", systemImage: "photo")
                     }
                     Button { showingCamera = true } label: {
