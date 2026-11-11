@@ -83,7 +83,7 @@ public enum DSHDecoding {
         case "turn/start":
             return .turnStart(seq: sequence, turn: turn)
         case "turn/end":
-            return .turnEnd(seq: sequence, turn: turn)
+            return .turnEnd(seq: sequence, turn: turn, failure: turnFailure(from: data))
         default:
             return nil
         }
@@ -120,6 +120,19 @@ public enum DSHDecoding {
             if let array = object[key] as? [String], !array.isEmpty { return array.joined(separator: " / ") }
         }
         return name
+    }
+
+    /// `turn/end` 的 `reason.kind == error`。成功结束或没有 reason 时返回 nil。
+    public static func turnFailure(from data: [String: Any]) -> DSHTurnFailure? {
+        guard let reason = data["reason"] as? [String: Any],
+              (reason["kind"] as? String) == "error",
+              let error = reason["error"] as? [String: Any] else { return nil }
+        let message = (error["message"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let code = (error["code"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCode = (code?.isEmpty == false) ? code : nil
+        guard !message.isEmpty || normalizedCode != nil else { return nil }
+        return DSHTurnFailure(message: message, code: normalizedCode)
     }
 
     // MARK: Page

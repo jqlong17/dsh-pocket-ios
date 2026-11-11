@@ -1,0 +1,643 @@
+// ConversationView
+
+import SwiftUI
+import Security
+import Textual
+import DSHKit
+import VisionKit
+import AVFoundation
+import Observation
+import PhotosUI
+import UIKit
+import Photos
+import os
+import AudioToolbox
+import ImageIO
+import UserNotifications
+
+
+struct ConversationView: View {
+    @Bindable var model: ConnectionModel
+    let session: PocketSession
+    @State private var isSettlingScroll = false
+    /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
+    @State private var isAtBottom = true
+    @State private var unreadWhileScrolled = 0
+    /// 「回到底部」按钮的显示状态：延迟出现，避免发送后程序化滚动期间闪烁并盖住消息。
+    @State private var scrollButtonVisible = false
+    @State private var scrollButtonTask: Task<Void, Never>?
+    /// 是否仍"跟随最新"：用户主动上滑后置 false；回到底部/点箭头后置 true。
+    @State private var followsLatest = true
+    /// 用户上滑时递增，用于让待执行的补滚任务失效。
+    @State private var scrollGeneration = 0
+    @State private var didAutoSend = false
+    @State private var expandedGroupIDs: Set<String> = []
+    @State private var loadingGroupIDs: Set<String> = []
+    /// 展开/收起「过程」后短时间内抑制"自动贴底"，避免一点击就被拽到底部。
+    @State private var suppressAutoScrollUntil = Date.distantPast
+    /// 分页加载冷却，避免滚动到顶部时连续翻页。
+    @State private var olderCooldownUntil = Date.distantPast
+    /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
+    @State private var olderLoadWasAtTop = false
+    @State private var showingCamera = false
+    @State private var photoItems: [PhotosPickerItem] = []
+    @FocusState private var composerFocused: Bool
+    @State private var copiedLogPath: String?
+    @State private var showingModelPicker = false
+
+    private struct TimelineEntry: Identifiable {
+        let id: String
+        let sortKey: Int      // 展示排序键（排队消息会被推迟到 turn 结束之后）
+        let sequence: Int     // 原始 seq，二级排序保证同一 turn 内排队消息的先后顺序
+        let message: PocketMessage?
+        let group: PocketStepGroup?
+        let failure: TurnFailureNotice?
+    }
+
+    private var entries: [TimelineEntry] {
+        var result: [TimelineEntry] = model.messages.map {
+            TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), sequence: $0.sequence, message: $0, group: nil, failure: nil)
+        }
+        for group in model.stepGroups {
+            result.append(TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence, message: nil, group: group, failure: nil))
+        }
+        for failure in model.turnFailures {
+            result.append(TimelineEntry(id: failure.id, sortKey: failure.sequence, sequence: failure.sequence, message: nil, group: nil, failure: failure))
+        }
+        return result.sorted { lhs, rhs in
+            if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+            // 同一排序键（同一 turn 内排队的多条消息）用原始 seq 保持发送先后。
+            if lhs.sequence != rhs.sequence { return lhs.sequence < rhs.sequence }
+            switch (lhs.message, rhs.message) {
+            case let (.some(l), .some(r)):
+                if l.isPending != r.isPending { return !l.isPending }
+                return l.id < r.id
+            case (.some, nil):
+                return true
+            case (nil, .some), (nil, nil):
+                return lhs.id < rhs.id
+            }
+        }
+    }
+
+    /// 消息列表的垂直节奏：同人连续 8、换角色 18、过程行相邻 10、turn 切换 24。
+    private static func messageSpacing(previous: TimelineEntry, current: TimelineEntry) -> CGFloat {
+        if previous.group != nil || current.group != nil || previous.failure != nil || current.failure != nil { return 10 }
+        guard let prevMessage = previous.message, let currentMessage = current.message else { return 10 }
+        if prevMessage.isUser != currentMessage.isUser { return 18 }
+        return 8
+    }
+
+    private var canSend: Bool {
+        !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.draftImages.isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let error = model.conversationError {
+                Text(error).font(.footnote).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(.red.opacity(0.06))
+            }
+#if DEBUG
+            let showsDemoBanner = model.isDemoMode && !DebugLaunch.hideDemoBanner
+#else
+            let showsDemoBanner = model.isDemoMode
+#endif
+            if showsDemoBanner || (!model.isDemoMode && model.liveConnection != .connected) {
+                HStack(spacing: 6) {
+                    if model.isDemoMode {
+                        Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
+                        Text(L10n.t("演示模式 · 示例数据，未连接电脑")).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    } else {
+                        Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 6, height: 6)
+                        Text(model.liveConnection.label).font(.caption2).foregroundStyle(.secondary)
+                        if model.liveConnection.isDisconnected {
+                            Button(L10n.t("重连")) { model.manualReconnect() }
+                                .font(.caption2.weight(.semibold))
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal).padding(.vertical, 4)
+                .transition(.opacity)
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // 用 VStack 而非 LazyVStack：MarkdownUI/图片/表格行高度动态变化，
+                    // LazyVStack 会缓存旧高度导致行重叠；会话窗口只有 30 条消息，直接布局代价可忽略。
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 1).id(Self.topAnchorID)
+                        if model.isLoadingOlder {
+                            HStack(spacing: 6) {
+                                ProgressView().scaleEffect(0.7)
+                                Text(L10n.t("加载更早消息…")).font(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 2)
+                        }
+                        if model.isLoadingConversation && model.messages.isEmpty && model.steps.isEmpty {
+                            ProgressView().padding(.top, 36)
+                        }
+                        if entries.isEmpty && !model.isLoadingConversation {
+                            ContentUnavailableView(L10n.t("开始对话"), systemImage: "text.bubble", description: Text(L10n.t("发送第一条消息。")))
+                        }
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            let topGap = index == 0 ? 0 : Self.messageSpacing(previous: entries[index - 1], current: entry)
+                            if let message = entry.message {
+                                MessageRow(message: message, model: model).id(entry.id).padding(.top, topGap)
+                            } else if let failure = entry.failure {
+                                TurnFailureRow(failure: failure).id(entry.id).padding(.top, topGap)
+                            } else if let group = entry.group {
+                                ProcessRow(group: group, expanded: expandedGroupIDs.contains(group.id), loading: loadingGroupIDs.contains(group.id), model: model) {
+                                    let plan = ProcessTogglePlan.make(
+                                        isExpanded: expandedGroupIDs.contains(group.id),
+                                        needsDetails: group.steps.contains { !$0.detailsLoaded }
+                                    )
+                                    // 展开会把这一行撑高。滚不滚、要不要拉正文，由 ProcessTogglePlan 决定。
+                                    if !plan.followLatest { followsLatest = false }
+                                    isSettlingScroll = false
+                                    scrollGeneration &+= 1
+                                    if plan.suppressAutoScroll > 0 {
+                                        suppressAutoScrollUntil = Date().addingTimeInterval(plan.suppressAutoScroll)
+                                    }
+                                    if plan.opening {
+                                        expandedGroupIDs.insert(group.id)
+                                        if plan.loadDetails {
+                                            loadingGroupIDs.insert(group.id)
+                                            let target = group
+                                            Task {
+                                                await model.loadProcessDetails(for: target)
+                                                loadingGroupIDs.remove(target.id)
+                                            }
+                                        }
+                                    } else if plan.dropDetails {
+                                        expandedGroupIDs.remove(group.id)
+                                        model.dropProcessDetails(for: group)
+                                    }
+                                    if plan.scrollToRowTop {
+                                        DispatchQueue.main.async {
+                                            proxy.scrollTo(group.id, anchor: .top)
+                                        }
+                                    }
+                                }.id(entry.id).padding(.top, topGap)
+                            }
+                        }
+                        // 底部锚点：滚动到它比"最后一条消息"更可靠（能带上后面的过程行/占位）。
+                        Color.clear.frame(height: 1).id(Self.bottomAnchorID)
+                    }
+                    .padding()
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(key: ConversationHeightKey.self, value: geo.size.height)
+                        }
+                    )
+                }
+                .onPreferenceChange(ConversationHeightKey.self) { _ in
+                    // 行高异步变化（Textual 表格/图片晚渲染）会让内容变高；只要仍在跟随最新，
+                    // 就补一次贴底，避免"最后一条消息下方留出空白"。
+                    // 展开/收起「过程」后的 0.5 秒内不贴底，否则点击会被拽到底部。
+                    guard Date() >= suppressAutoScrollUntil else { return }
+                    guard isSettlingScroll || followsLatest else { return }
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+                    }
+                }
+                .defaultScrollAnchor(.top)
+                .scrollDismissesKeyboard(.interactively)
+                .simultaneousGesture(TapGesture().onEnded {
+                    composerFocused = false
+                    TextSelectionDismisser.clear()
+                })
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 6)
+                        .onChanged { value in
+                            // 用户一旦主动拖动，立刻取消"刚进会话时的多次补滚"，不要跟手指抢滚动。
+                            scrollGeneration &+= 1
+                            isSettlingScroll = false
+                            if value.translation.height > 10 { followsLatest = false }
+                        }
+                )
+                // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
+                .onAppear {
+                    isSettlingScroll = true
+                    scrollToBottom(proxy: proxy)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isSettlingScroll = false }
+#if DEBUG
+                    if DebugLaunch.expandSteps {
+                        expandedGroupIDs = Set(model.stepGroups.map(\.id))
+                    }
+                    if DebugLaunch.scrollToTop {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                            scrollGeneration &+= 1
+                            isSettlingScroll = false
+                            proxy.scrollTo(Self.topAnchorID, anchor: .top)
+                        }
+                    }
+#endif
+                }
+                // 打开会话、历史/快照到达：模型递增 tick，视图统一滚到底部。
+                .onChange(of: model.focusComposerTick) { _, _ in
+#if DEBUG
+            if DebugLaunch.noFocus { return }
+#endif
+            composerFocused = true
+        }
+#if DEBUG
+        .onChange(of: model.stepGroups.count) { _, _ in
+            if DebugLaunch.expandSteps {
+                expandedGroupIDs = Set(model.stepGroups.map(\.id))
+            }
+        }
+#endif
+        .onChange(of: model.scrollToBottomTick) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: model.messages.count) { oldCount, newCount in
+                    timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
+                    guard newCount != oldCount else { return }
+                    if isAtBottom || isSettlingScroll || followsLatest {
+                        scrollToBottom(proxy: proxy, force: true)
+                    } else if newCount > oldCount {
+                        unreadWhileScrolled += newCount - oldCount
+                        if unreadWhileScrolled > 5, !scrollButtonVisible {
+                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                        }
+                    }
+                }
+                .onChange(of: model.steps.count) { oldCount, newCount in
+                    guard newCount != oldCount, Date() >= suppressAutoScrollUntil else { return }
+                    if isAtBottom || isSettlingScroll || followsLatest { scrollToBottom(proxy: proxy, force: true) }
+                }
+                .onChange(of: model.olderLoadTick) { _, _ in
+                    olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    // 已经在最顶部时：让新加载的一页直接出现在顶部（用户继续上滑即可看到更早内容）。
+                    // 只有用户停在中间时，才把原来的首条消息锚回顶部，避免内容跳动。
+                    if olderLoadWasAtTop {
+                        olderLoadWasAtTop = false
+                        return
+                    }
+                    guard let anchor = model.olderAnchorID else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, topOffset in
+                    guard topOffset < 80,
+                          model.hasMoreOlder,
+                          !model.isLoadingOlder,
+                          !model.messages.isEmpty,
+                          Date() >= olderCooldownUntil else { return }
+                    olderCooldownUntil = Date().addingTimeInterval(1.5)
+                    olderLoadWasAtTop = topOffset <= 2
+                    model.loadOlderMessages()
+                }
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
+                    return distance <= 48
+                } action: { _, atBottom in
+                    guard Date() >= suppressAutoScrollUntil else { return }
+                    if atBottom {
+                        isAtBottom = true
+                        unreadWhileScrolled = 0
+                        followsLatest = true
+                        scrollButtonTask?.cancel()
+                        scrollButtonVisible = false
+                    } else if !followsLatest {
+                        // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
+                        isAtBottom = false
+                        isSettlingScroll = false
+                    } else if followsLatest {
+                        // 内容变高（新消息/过程）但仍在跟随：立即补一次贴底，避免"不自动滚到最新"。
+                        scrollToBottom(proxy: proxy, force: true)
+                    } else {
+                        scrollGeneration &+= 1
+                        isAtBottom = false
+                    }
+                    if !atBottom, !scrollButtonVisible {
+                        scrollButtonTask?.cancel()
+                        scrollButtonTask = Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(0.9))
+                            guard !Task.isCancelled, !isAtBottom, unreadWhileScrolled > 5 else { return }
+                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                        }
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+#if DEBUG
+                    let hideScrollButton = DebugLaunch.hideDemoBanner
+#else
+                    let hideScrollButton = false
+#endif
+                    if scrollButtonVisible, unreadWhileScrolled > 5, !entries.isEmpty, !hideScrollButton {
+                        Button {
+                            unreadWhileScrolled = 0
+                            isAtBottom = true
+                            followsLatest = true
+                            scrollButtonTask?.cancel()
+                            scrollButtonVisible = false
+                            scrollToBottom(proxy: proxy, force: true)
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        .accessibilityLabel(L10n.t("滚到底部"))
+                        .accessibilityIdentifier("back-to-bottom")
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 12)
+                    }
+                }
+                }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+            if let question = model.pendingQuestion {
+                UserQuestionCard(request: question, model: model)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if model.isTurnRunning {
+                // 生成状态放在输入栏上方左侧：等待时视线就在这里。
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("\(L10n.t("深度求索中")) · \(elapsed(since: model.turnStartedAt, now: context.date))")
+                            .font(.caption)
+                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                            .monospacedDigit()
+                    }
+                    Spacer()
+                    Button { Task { await model.cancelTurn() } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stop.circle.fill")
+                            Text(L10n.t("停止"))
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("停止生成")
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .background(.background)
+            }
+            Divider()
+            inputBar
+            }
+        }
+        .navigationTitle(model.currentConversationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !model.runningJobs.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    JobsToolbarButton(model: model)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        UIPasteboard.general.string = model.sessionAddress
+                        copiedLogPath = model.sessionAddress
+                    } label: {
+                        Label(L10n.t("复制会话地址"), systemImage: "link")
+                    }
+                    Button {
+                        if let path = model.sessionLogPath {
+                            UIPasteboard.general.string = path
+                            copiedLogPath = path
+                        }
+                    } label: {
+                        Label(L10n.t("复制会话日志路径"), systemImage: "doc.on.doc")
+                    }
+                    Divider()
+                    Button {
+                        showingModelPicker = true
+                    } label: {
+                        Label(model.selectedModelLabel.map { L10n.t("选择模型") + "：" + $0 } ?? L10n.t("选择模型"),
+                              systemImage: "cpu")
+                    }
+                    Button {
+                        UIPasteboard.general.string = model.diagnosticReport()
+                        copiedLogPath = model.diagnosticReport()
+                    } label: {
+                        Label(L10n.t("复制诊断信息"), systemImage: "stethoscope")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel(L10n.t("更多"))
+            }
+        }
+        .alert(L10n.t("已复制"), isPresented: Binding(
+            get: { copiedLogPath != nil },
+            set: { if !$0 { copiedLogPath = nil } }
+        )) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(copiedLogPath ?? "")
+        }
+        .sheet(isPresented: $showingCamera) {
+            CameraPicker { image in model.addDraftImage(image) }.ignoresSafeArea()
+        }
+        .sheet(isPresented: $showingModelPicker) {
+            ModelPickerSheet(model: model)
+        }
+        .task {
+            if model.modelGroups.isEmpty { await model.loadModelCatalog() }
+        }
+        .onDisappear {
+            composerFocused = false
+            TextSelectionDismisser.clear()
+        }
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                // 支持一次多选多张：按选择顺序逐张加载，全部加入草稿后清空选择状态。
+                for item in items {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                        model.addDraftImage(image)
+                    }
+                }
+                photoItems = []
+            }
+        }
+        .task {
+#if DEBUG
+            if DebugLaunch.quoteDemo {
+                try? await Task.sleep(for: .seconds(1.5))
+                if let target = model.messages.last(where: { !$0.isUser && !$0.isPending }) {
+                    model.beginQuote(target)
+                    if DebugLaunch.storeShots {
+                        model.draft = LanguageStore.shared.isEnglish
+                            ? "Change the button to Copy address, and shorten the pairing note."
+                            : "按钮改成「复制地址」，配对说明再短一点。"
+                    }
+                }
+            }
+            if !didAutoSend, let text = DebugLaunch.sendText {
+                didAutoSend = true
+                if let path = DebugLaunch.attachPath {
+                    let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    let url = path.hasPrefix("/") ? URL(fileURLWithPath: path) : documents.appendingPathComponent(path)
+                    if let data = try? Data(contentsOf: url), let image = UIImage(data: data) { model.addDraftImage(image) }
+                }
+                try? await Task.sleep(for: .seconds(2))
+                model.draft = text
+                model.sendMessage()
+            }
+#endif
+        }
+    }
+
+    private var inputBar: some View {
+        VStack(spacing: 8) {
+            if let quote = model.pendingQuote {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(L10n.t("引用")) \(quote.sender) · #\(quote.sequence)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                        Text(quote.text)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.leading, 12)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(Color(red: 0.08, green: 0.48, blue: 0.37)).frame(width: 3)
+                    }
+                    Spacer(minLength: 0)
+                    Button { model.cancelQuote() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("取消引用")
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            if !model.draftImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.draftImages) { image in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: image.uiImage).resizable().scaledToFill()
+                                    .frame(width: 64, height: 64)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                Button {
+                                    model.draftImages.removeAll { $0.id == image.id }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                                        .foregroundStyle(.white, .black.opacity(0.55))
+                                }
+                                .offset(x: 5, y: -5)
+                            }
+                        }
+                    }.padding(.horizontal).padding(.top, 6)
+                }
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                Menu {
+                    PhotosPicker(selection: $photoItems, maxSelectionCount: 9, selectionBehavior: .ordered, matching: .images, photoLibrary: .shared()) {
+                        Label("相册", systemImage: "photo")
+                    }
+                    Button { showingCamera = true } label: {
+                        Label("拍照", systemImage: "camera")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .pocketSystemGlassCircle(size: Self.composerControlHeight)
+                }
+                .accessibilityLabel("添加图片或拍照")
+                TextField(L10n.t("发送消息"), text: $model.draft, axis: .vertical).lineLimit(1...5)
+                    .focused($composerFocused)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: Self.composerControlHeight)
+                    .pocketSystemGlassField(cornerRadius: Self.composerControlHeight / 2)
+                    .accessibilityIdentifier("composer-field")
+                Button {
+                    composerFocused = false
+                    model.sendMessage(in: session)
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .pocketSystemGlassCircle(size: Self.composerControlHeight)
+                }
+                .disabled(!canSend)
+                .accessibilityLabel("发送消息")
+                .accessibilityIdentifier("send-button")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 720)
+            .frame(maxWidth: .infinity)
+        }
+        .background(.bar)
+    }
+
+    private static let bottomAnchorID = "conversation-bottom-anchor"
+    private static let topAnchorID = "conversation-top-anchor"
+    /// 输入栏里加号、输入框、发送三者统一的高度。改一处，三者一起变。
+    private static let composerControlHeight: CGFloat = 36
+
+    private static func liveStateColor(_ state: ConnectionModel.LiveConnectionState) -> Color {
+        switch state {
+        case .connected: return .green
+        case .connecting, .reconnecting: return .orange
+        case .disconnected: return .red
+        case .idle, .demo: return .gray
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
+        // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
+        if !force && !isAtBottom && !isSettlingScroll { return }
+        let generation = scrollGeneration
+        // 点"回到底部"只补滚两帧：用户随后立刻上滑，必须立即失效（不能强制抢回底部）。
+        let delays: [Double]
+        if force {
+            delays = [0, 0.15]
+        } else if isSettlingScroll {
+            delays = [0, 0.1, 0.3, 0.7, 1.2, 2.0]
+        } else {
+            delays = [0]
+        }
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                // 用户已上滑（generation 递增）或会话已切换：放弃这次补滚。
+                guard generation == scrollGeneration else { return }
+                guard force || isSettlingScroll || isAtBottom else { return }
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            }
+        }
+    }
+
+    private func elapsed(since start: Date?, now: Date) -> String {
+        guard let start else { return "计算中" }
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        return seconds < 60 ? "\(seconds) 秒" : "\(seconds / 60) 分 \(seconds % 60) 秒"
+    }
+}

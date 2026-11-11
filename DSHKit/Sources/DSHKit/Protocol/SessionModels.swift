@@ -82,12 +82,23 @@ public struct DSHMessage: Identifiable, Equatable, Sendable {
     }
 }
 
+/// `turn/end` 的失败原因。成功结束时为 nil。
+public struct DSHTurnFailure: Equatable, Sendable {
+    public let message: String
+    public let code: String?
+
+    public init(message: String, code: String?) {
+        self.message = message
+        self.code = code
+    }
+}
+
 /// 工具过程事件（用例 P23–P24）。
 public enum DSHStepEvent: Equatable, Sendable {
     case toolCall(seq: Int, turn: Int, callId: String, name: String, detail: String, arguments: String)
     case toolResult(seq: Int, turn: Int, callId: String, text: String, isError: Bool, images: [DSHImageRef])
     case turnStart(seq: Int, turn: Int)
-    case turnEnd(seq: Int, turn: Int)
+    case turnEnd(seq: Int, turn: Int, failure: DSHTurnFailure?)
 }
 
 /// 历史分页（用例 P40）。

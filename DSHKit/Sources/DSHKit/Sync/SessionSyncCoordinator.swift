@@ -252,7 +252,7 @@ public actor SessionSyncCoordinator {
         case .toolCall(let s, _, _, _, _, _): seq = s
         case .toolResult(let s, _, _, _, _, _): seq = s
         case .turnStart(let s, _): seq = s
-        case .turnEnd(let s, _): seq = s
+        case .turnEnd(let s, _, _): seq = s
         }
         guard !steps.contains(where: { $0.sortSeq == seq && $0.tag == step.tag }) else { return }
         steps.append(step)
@@ -272,7 +272,7 @@ extension DSHStepEvent {
     var sortSeq: Int {
         switch self {
         case .toolCall(let s, _, _, _, _, _), .toolResult(let s, _, _, _, _, _),
-             .turnStart(let s, _), .turnEnd(let s, _):
+             .turnStart(let s, _), .turnEnd(let s, _, _):
             return s
         }
     }

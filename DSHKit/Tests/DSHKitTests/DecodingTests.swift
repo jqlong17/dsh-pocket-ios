@@ -68,7 +68,32 @@ final class DecodingTests: XCTestCase {
             return nil
         }
         XCTAssertTrue(steps.contains { if case .turnStart(seq: 4, turn: 1) = $0 { return true }; return false })
-        XCTAssertTrue(steps.contains { if case .turnEnd(seq: 8, turn: 1) = $0 { return true }; return false })
+        XCTAssertTrue(steps.contains { if case .turnEnd(seq: 8, turn: 1, failure: nil) = $0 { return true }; return false })
+    }
+
+    func testDecodeTurnEndError() {
+        let event: [String: Any] = [
+            "type": "turn/end",
+            "seq": 12,
+            "data": [
+                "turn": 3,
+                "reason": [
+                    "kind": "error",
+                    "error": [
+                        "message": "Insufficient Balance (request_id: abc)",
+                        "code": "ACCOUNT_QUOTA",
+                        "status": 402
+                    ]
+                ]
+            ]
+        ]
+        guard case .turnEnd(let seq, let turn, let failure)? = DSHDecoding.stepEvent(fromEvent: event) else {
+            return XCTFail("expected turnEnd")
+        }
+        XCTAssertEqual(seq, 12)
+        XCTAssertEqual(turn, 3)
+        XCTAssertEqual(failure?.code, "ACCOUNT_QUOTA")
+        XCTAssertEqual(failure?.message, "Insufficient Balance (request_id: abc)")
     }
 
     // P25
