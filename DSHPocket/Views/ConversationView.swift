@@ -19,7 +19,6 @@ import UserNotifications
 struct ConversationView: View {
     @Bindable var model: ConnectionModel
     let session: PocketSession
-    @State private var isSettlingScroll = false
     /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
     @State private var isAtBottom = true
     @State private var unreadWhileScrolled = 0
@@ -162,7 +161,6 @@ struct ConversationView: View {
                                     )
                                     // 展开会把这一行撑高。滚不滚、要不要拉正文，由 ProcessTogglePlan 决定。
                                     if !plan.followLatest { followsLatest = false }
-                                    isSettlingScroll = false
                                     scrollGeneration &+= 1
                                     if plan.suppressAutoScroll > 0 {
                                         suppressAutoScrollUntil = Date().addingTimeInterval(plan.suppressAutoScroll)
@@ -207,12 +205,12 @@ struct ConversationView: View {
                     // 展开/收起「过程」后的 0.5 秒内不贴底，否则点击会被拽到底部。
                     guard Date() >= suppressAutoScrollUntil else { return }
                     guard !userDragging else { return }
-                    guard isSettlingScroll || followsLatest else { return }
+                    guard followsLatest else { return }
                     DispatchQueue.main.async {
                         proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                     }
                 }
-                .defaultScrollAnchor(.top)
+                .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded {
                     composerFocused = false
@@ -223,7 +221,6 @@ struct ConversationView: View {
                         .onChanged { value in
                             // 用户一旦主动拖动，立刻取消"刚进会话时的多次补滚"，不要跟手指抢滚动。
                             scrollGeneration &+= 1
-                            isSettlingScroll = false
                             userDragging = true
                             if value.translation.height > 10 { followsLatest = false }
                         }
@@ -234,9 +231,8 @@ struct ConversationView: View {
                 )
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
                 .onAppear {
-                    isSettlingScroll = true
-                    scrollToBottom(proxy: proxy)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { isSettlingScroll = false }
+                    // 原生做法：进页面定位一次就停，不再开稳定期反复补滚。
+                    scrollToBottom(proxy: proxy, force: true)
 #if DEBUG
                     if DebugLaunch.expandSteps {
                         expandedGroupIDs = Set(model.stepGroups.map(\.id))
@@ -244,7 +240,6 @@ struct ConversationView: View {
                     if DebugLaunch.scrollToTop {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
                             scrollGeneration &+= 1
-                            isSettlingScroll = false
                             proxy.scrollTo(Self.topAnchorID, anchor: .top)
                         }
                     }
@@ -275,7 +270,7 @@ struct ConversationView: View {
                         if newCount > oldCount { unreadWhileScrolled += newCount - oldCount }
                         return
                     }
-                    if isAtBottom || isSettlingScroll || followsLatest {
+                    if followsLatest {
                         scrollToBottom(proxy: proxy, force: true)
                     } else if newCount > oldCount {
                         unreadWhileScrolled += newCount - oldCount
@@ -286,7 +281,7 @@ struct ConversationView: View {
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
                     guard newCount != oldCount, Date() >= suppressAutoScrollUntil, !userDragging else { return }
-                    if isAtBottom || isSettlingScroll || followsLatest { scrollToBottom(proxy: proxy, force: true) }
+                    if followsLatest { scrollToBottom(proxy: proxy, force: true) }
                 }
                 .onChange(of: model.olderLoadTick) { _, _ in
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
@@ -314,8 +309,9 @@ struct ConversationView: View {
                     model.loadOlderMessages()
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
+                    // 原生语义：只有真正贴底才算「在底部」，离底一点就不再自动跟随。
                     let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
-                    return distance <= 48
+                    return distance <= 8
                 } action: { _, atBottom in
                     guard Date() >= suppressAutoScrollUntil else { return }
                     if atBottom {
@@ -325,9 +321,7 @@ struct ConversationView: View {
                         scrollButtonTask?.cancel()
                         scrollButtonVisible = false
                     } else if !followsLatest {
-                        // 已在跟随状态下被程序化贴底时，几何短暂变化不打断跟随；只有用户上滑才停。
                         isAtBottom = false
-                        isSettlingScroll = false
                     } else if followsLatest {
                         // 内容变高（新消息/过程）但仍在跟随：立即补一次贴底，避免"不自动滚到最新"。
                         scrollToBottom(proxy: proxy, force: true)
@@ -635,23 +629,16 @@ struct ConversationView: View {
     private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
         // 手指正在拖动时不抢滚动：这期间任何贴底都会把用户按住。
         guard !userDragging else { return }
-        // followsLatest：用户主动往上翻时不要抢滚动；只有点击"回到底部"才强制。
-        if !force && !isAtBottom && !isSettlingScroll { return }
+        // 只在「本来就在跟随」或显式要求时才贴底。
+        guard force || followsLatest else { return }
         let generation = scrollGeneration
-        // 点"回到底部"只补滚两帧：用户随后立刻上滑，必须立即失效（不能强制抢回底部）。
-        let delays: [Double]
-        if force {
-            delays = [0, 0.15]
-        } else if isSettlingScroll {
-            delays = [0, 0.1, 0.3, 0.7, 1.2, 2.0]
-        } else {
-            delays = [0]
-        }
+        // 一次定位（force 多补一帧）。不再有稳定期反复补滚。
+        let delays: [Double] = force ? [0, 0.15] : [0]
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 // 用户已上滑（generation 递增）或会话已切换：放弃这次补滚。
                 guard generation == scrollGeneration else { return }
-                guard force || isSettlingScroll || isAtBottom else { return }
+                guard force || followsLatest else { return }
                 proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
         }
