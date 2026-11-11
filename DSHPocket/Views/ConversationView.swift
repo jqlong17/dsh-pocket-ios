@@ -308,26 +308,28 @@ struct ConversationView: View {
                     olderLoadWasAtTop = topOffset <= 2
                     model.loadOlderMessages()
                 }
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    // 原生语义：只有真正贴底才算「在底部」，离底一点就不再自动跟随。
-                    let distance = geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
-                    return distance <= 8
-                } action: { _, atBottom in
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
+                } action: { _, distance in
                     guard Date() >= suppressAutoScrollUntil else { return }
-                    if atBottom {
+                    // 判定全部交给 DSHKit：只有贴底才跟随，手指在屏上不抢。
+                    let atBottom = ScrollFollowPolicy.isAtBottom(distanceFromBottom: distance)
+                    switch ScrollFollowPolicy.action(distanceFromBottom: distance,
+                                                     isDragging: userDragging,
+                                                     followsLatest: followsLatest) {
+                    case .follow:
                         isAtBottom = true
                         unreadWhileScrolled = 0
                         followsLatest = true
                         scrollButtonTask?.cancel()
                         scrollButtonVisible = false
-                    } else if !followsLatest {
-                        isAtBottom = false
-                    } else if followsLatest {
-                        // 内容变高（新消息/过程）但仍在跟随：立即补一次贴底，避免"不自动滚到最新"。
-                        scrollToBottom(proxy: proxy, force: true)
-                    } else {
+                    case .stopFollow:
                         scrollGeneration &+= 1
                         isAtBottom = false
+                    case .pinToBottom:
+                        scrollToBottom(proxy: proxy, force: true)
+                    case .keep:
+                        break
                     }
                     if !atBottom, !scrollButtonVisible {
                         scrollButtonTask?.cancel()
@@ -627,10 +629,10 @@ struct ConversationView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, force: Bool = false) {
-        // 手指正在拖动时不抢滚动：这期间任何贴底都会把用户按住。
-        guard !userDragging else { return }
-        // 只在「本来就在跟随」或显式要求时才贴底。
-        guard force || followsLatest else { return }
+        // 手指在屏上不抢滚动；其余情况只认「在跟随」或显式要求。
+        guard ScrollFollowPolicy.canAutoScroll(isDragging: userDragging,
+                                              followsLatest: followsLatest,
+                                              force: force) else { return }
         let generation = scrollGeneration
         // 一次定位（force 多补一帧）。不再有稳定期反复补滚。
         let delays: [Double] = force ? [0, 0.15] : [0]

@@ -372,23 +372,26 @@ extension ConnectionModel {
     /// 只保留最近打开过的几条会话内容，其余只留 ID（草稿另存在 DraftStore）。
     /// 原生不会把聊过的每条会话都摊在内存里；我们也别一直涨。
     @MainActor
-    func trimRetainedConversations(keeping sessionId: String, limit: Int = 3) {
+    func trimRetainedConversations(keeping sessionId: String, limit: Int = ConversationCachePolicy.defaultLimit) {
         guard conversations.count > limit else { return }
         let active = activeConversation?.sessionId ?? sessionId
-        let evictable = conversations.values
-            .filter { $0.sessionId != active && $0.sessionId != sessionId }
-            .sorted { $0.lastOpenedAt < $1.lastOpenedAt }
-        var overflow = conversations.count - limit
-        for conversation in evictable where overflow > 0 {
+        let refs = conversations.values.map {
+            CachedConversationRef(id: $0.sessionId, lastOpenedAt: $0.lastOpenedAt)
+        }
+        // 淘汰谁交给 DSHKit；当前会话和正在看的会话永不淘汰。
+        let doomed = ConversationCachePolicy.evictions(from: refs,
+                                                       keeping: [active, sessionId],
+                                                       limit: limit)
+        guard !doomed.isEmpty else { return }
+        for id in doomed {
+            guard let conversation = conversations[id] else { continue }
             conversation.liveTask?.cancel()
             conversation.fallbackTask?.cancel()
             conversation.coordinatorTask?.cancel()
             conversation.jobsTask?.cancel()
-            conversations.removeValue(forKey: conversation.sessionId)
-            overflow -= 1
+            conversations.removeValue(forKey: id)
         }
-        if overflow < 0 { return }
-        recordDiagnostic("会话缓存回收：保留 \(conversations.count) 条")
+        recordDiagnostic("会话缓存回收 \(doomed.count) 条，剩 \(conversations.count) 条")
     }
 
     @MainActor
