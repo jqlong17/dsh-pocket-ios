@@ -156,8 +156,8 @@ extension ConnectionModel {
                           object["streamId"] as? String == streamId,
                           object["type"] as? String == "item",
                           let value = object["value"] as? [String: Any],
-                          let rows = value["jobs"] as? [[String: Any]] else { continue }
-                    let next = rows.compactMap(PocketJob.init(json:))
+                          let rows = DSHJobRoster.rows(fromValue: value) else { continue }
+                    let next = rows.map(PocketJob.init(row:))
                     await MainActor.run {
                         guard self.activeConversation === conversation else { return }
                         conversation.jobs = next

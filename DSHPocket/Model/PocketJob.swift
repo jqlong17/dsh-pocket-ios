@@ -27,6 +27,18 @@ struct PocketJob: Identifiable, Equatable {
     let progress: String?
     let detail: String?
 
+    /// 协议字段的解析在 DSHKit；这里只做显示。
+    init(row: DSHJobRow) {
+        self.id = row.id
+        self.kind = row.kind
+        self.label = row.label
+        self.status = row.status
+        self.startedAt = row.startedAt
+        self.finishedAt = row.finishedAt
+        self.progress = row.progress
+        self.detail = row.detail
+    }
+
     var isRunning: Bool { status == "running" || status == "stopping" }
 
     /// 只给看人看的名字，不露出裸 jobId。
@@ -66,17 +78,5 @@ struct PocketJob: Identifiable, Equatable {
         case "failed": return L10n.t("失败")
         default: return status
         }
-    }
-
-    init?(json: [String: Any]) {
-        guard let id = json["id"] as? String else { return nil }
-        self.id = id
-        self.kind = json["kind"] as? String ?? ""
-        self.label = json["label"] as? String ?? ""
-        self.status = json["status"] as? String ?? ""
-        self.startedAt = (json["startedAt"] as? NSNumber)?.doubleValue ?? 0
-        self.finishedAt = (json["finishedAt"] as? NSNumber)?.doubleValue
-        self.progress = json["progress"] as? String
-        self.detail = json["detail"] as? String
     }
 }
