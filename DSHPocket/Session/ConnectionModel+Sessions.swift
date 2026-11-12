@@ -206,41 +206,7 @@ extension ConnectionModel {
 
     // MARK: 单条会话操作（实现在 SessionActions）
 
-    @MainActor func rename(_ session: PocketSession, to rawTitle: String) async {
-        await sessionActions.rename(session, to: rawTitle)
-    }
-    @MainActor func loadModelCatalog() async { await sessionActions.loadModelCatalog() }
-    @MainActor func selectModel(_ option: ModelOption) async { await sessionActions.selectModel(option) }
-    @MainActor func dismissArchiveUndo() { sessionActions.dismissArchiveUndo() }
-    @MainActor func undoArchive() async { await sessionActions.undoArchive() }
-    @MainActor func togglePin(_ session: PocketSession) async { await sessionActions.togglePin(session) }
-    @MainActor func archive(_ session: PocketSession) async { await sessionActions.archive(session) }
-    @MainActor func createSession() async { await sessionActions.createSession() }
-
     /// 装配会话操作的依赖（幂等）。
-    @MainActor
-    func installSessionActionProviders() {
-        guard sessionActions.providers == nil else { return }
-        sessionActions.providers = SessionActions.Providers(
-            client: { [weak self] in
-                guard let self else { throw ConnectionError.invalidURL("") }
-                return try self.rpcClient
-            },
-            store: sessionStore,
-            isDemoMode: { [weak self] in self?.isDemoMode ?? false },
-            reportError: { @MainActor [weak self] message in self?.connection.errorMessage = message },
-            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
-            reload: { @MainActor [weak self] in await self?.loadSessions() },
-            modelGroups: { [weak self] in self?.modelGroups ?? [] },
-            setModelGroups: { @MainActor [weak self] groups in self?.modelGroups = groups },
-            selectedModelLabel: { [weak self] in self?.selectedModelLabel },
-            setSelectedModelLabel: { @MainActor [weak self] label in self?.selectedModelLabel = label },
-            lastArchived: { [weak self] in self?.lastArchivedSession },
-            setLastArchived: { @MainActor [weak self] session in self?.lastArchivedSession = session },
-            open: { @MainActor [weak self] session in self?.open(session) }
-        )
-    }
-
 
     static func homeDirectory(for cwd: String) -> String {
         let parts = cwd.split(separator: "/").map(String.init)

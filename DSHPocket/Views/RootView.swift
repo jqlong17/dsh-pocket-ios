@@ -42,7 +42,6 @@ struct RootView: View {
                 model.installDiagnosticsProviders()
                 model.installQuestionProviders()
                 model.installSessionAPIProviders()
-                model.installSessionActionProviders()
                 model.installNetworkWatcher()
                 model.installNotificationProviders()
                 model.installLiveFrameProviders()
