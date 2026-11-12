@@ -21,7 +21,8 @@ struct ConversationView: View {
     let session: PocketSession
     /// 是否停在底部（followsLatest）：在底部才自动跟随新消息，否则只累计未读。
     @State private var isAtBottom = true
-    @State private var unreadWhileScrolled = 0
+    /// 离开底部时的最后一条已确认序号。之后到达的助手回复才算未读。
+    @State private var unreadSinceSequence: Int?
     /// 「回到底部」按钮的显示状态：延迟出现，避免发送后程序化滚动期间闪烁并盖住消息。
     @State private var scrollButtonVisible = false
     @State private var scrollButtonTask: Task<Void, Never>?
@@ -83,6 +84,12 @@ struct ConversationView: View {
                 return lhs.id < rhs.id
             }
         }
+    }
+
+    /// 离开底部之后到达的助手回复条数（用户自己的消息不算）。
+    private var unreadReplies: Int {
+        guard let mark = unreadSinceSequence else { return 0 }
+        return model.messages.filter { !$0.isUser && !$0.isPending && $0.sequence > mark }.count
     }
 
     /// 消息列表的垂直节奏：同人连续 8、换角色 18、过程行相邻 10、turn 切换 24。
@@ -269,17 +276,14 @@ struct ConversationView: View {
                     timingLog("ui_messages_changed old=\(oldCount) new=\(newCount)")
                     guard newCount != oldCount else { return }
                     if userDragging {
-                        // 手指在滑：只累计未读，不抢滚动。
-                        if newCount > oldCount { unreadWhileScrolled += newCount - oldCount }
+                        // 手指在滑：不抢滚动，未读由 unreadReplies 现算。
                         return
                     }
                     if followsLatest {
                         scrollToBottom(proxy: proxy, force: true)
-                    } else if newCount > oldCount {
-                        unreadWhileScrolled += newCount - oldCount
-                        if unreadWhileScrolled > 5, !scrollButtonVisible {
-                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
-                        }
+                    } else if UnreadBadgePolicy.shouldShowBadge(assistantReplies: unreadReplies),
+                              !scrollButtonVisible {
+                        withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
                     }
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
@@ -322,13 +326,20 @@ struct ConversationView: View {
                                                      followsLatest: followsLatest) {
                     case .follow:
                         isAtBottom = true
-                        unreadWhileScrolled = 0
+                        unreadSinceSequence = nil
                         followsLatest = true
                         scrollButtonTask?.cancel()
                         scrollButtonVisible = false
                     case .stopFollow:
                         scrollGeneration &+= 1
                         isAtBottom = false
+                        // 记下离开底部那一刻的最后一条已确认序号，之后只数它的助手回复。
+                        if unreadSinceSequence == nil {
+                            unreadSinceSequence = model.messages
+                                .filter { !$0.isPending }
+                                .map(\.sequence)
+                                .max()
+                        }
                     case .pinToBottom:
                         scrollToBottom(proxy: proxy, force: true)
                     case .keep:
@@ -350,9 +361,11 @@ struct ConversationView: View {
 #else
                     let hideScrollButton = false
 #endif
-                    if scrollButtonVisible, !entries.isEmpty, !hideScrollButton {
+                    if scrollButtonVisible,
+                       UnreadBadgePolicy.shouldShowBadge(assistantReplies: unreadReplies),
+                       !entries.isEmpty, !hideScrollButton {
                         Button {
-                            unreadWhileScrolled = 0
+                            unreadSinceSequence = nil
                             isAtBottom = true
                             followsLatest = true
                             scrollButtonTask?.cancel()
@@ -363,8 +376,8 @@ struct ConversationView: View {
                                 // 原生做法：离开底部就出现；有未读时把条数带上。
                                 Image(systemName: "arrow.down")
                                     .font(.footnote.weight(.semibold))
-                                if unreadWhileScrolled > 0 {
-                                    Text(unreadWhileScrolled > 99 ? "99+" : "\(unreadWhileScrolled)")
+                                if let badge = UnreadBadgePolicy.badgeText(for: unreadReplies) {
+                                    Text(badge)
                                         .font(.caption2.weight(.semibold))
                                         .monospacedDigit()
                                 }
