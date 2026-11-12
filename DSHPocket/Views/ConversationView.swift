@@ -209,7 +209,9 @@ struct ConversationView: View {
                             }
                         }
                         // 底部锚点：滚动到它比"最后一条消息"更可靠（能带上后面的过程行/占位）。
-                        Color.clear.frame(height: 1).id(Self.bottomAnchorID)
+                        // 底部留白：滚动是把这个锚点贴到视口底部，所以留白必须长在锚点自己身上。
+                        // 靠外层 padding 会被滚出屏幕，视觉上就是最后一条消息贴着输入栏（踩过）。
+                        Color.clear.frame(height: Self.bottomBreathingRoom).id(Self.bottomAnchorID)
                     }
                     .padding()
                     .frame(maxWidth: 720)
@@ -676,6 +678,8 @@ struct ConversationView: View {
     }
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
+    /// 最后一条消息与输入栏之间的留白。原生消息类 App 也有这一段，不然会显得被裁掉。
+    private static let bottomBreathingRoom: CGFloat = 20
     private static let topAnchorID = "conversation-top-anchor"
     /// 输入栏里加号、输入框、发送三者统一的高度。改一处，三者一起变。
     private static let composerControlHeight: CGFloat = 36
