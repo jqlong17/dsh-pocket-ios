@@ -36,7 +36,15 @@
   记录文件 `git-checkpoints.jsonl`，每行的 `commit` 就是那次提交的完整 sha。
   规则：先提交主改动拿到 sha，再写记录；**不要 amend 合并**（会重算 sha 导致记录失效）。
 
-## 3. 硬性禁止
+## 3. 架构事实与历程
+
+- `docs/architecture/fact.json`：**脚本生成，禁止手写**。`./scripts/architecture-facts.sh`
+- `docs/architecture/journey.jsonl`：架构决策只追加，字段固定。改动分层/抽象时写一条。
+- `./scripts/check-architecture.sh`：违规检查，退出码 1。**新增违规当次修掉**，存量按 spec 还债。
+
+当前存量 8 处违规（6 个超 400 行、ConnectionModel 7 个 extension、MotionPolicy 在纯逻辑层 import SwiftUI）。
+
+## 4. 硬性禁止
 
 - 不要把公网地址、token、凭证写进代码或日志（历史已因此重写过一次）。
 - 不要新增 `+Feature` extension 堆叠（那是假拆分，见架构规范）。

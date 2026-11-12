@@ -1,0 +1,2002 @@
+{
+  "generated_at": "2026-11-12T11:08:34+08:00",
+  "commit": "4bbb8fc",
+  "layers": [
+    {
+      "layer": "pure-logic",
+      "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
+      "files": 39,
+      "lines": 2413
+    },
+    {
+      "layer": "app",
+      "role": "App 编排层与视图",
+      "files": 59,
+      "lines": 9539
+    },
+    {
+      "layer": "ui-tests",
+      "role": "端到端 UI 测试",
+      "files": 1,
+      "lines": 141
+    }
+  ],
+  "dependencies": [
+    {
+      "from_layer": "app",
+      "to": "AVFoundation",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "AudioToolbox",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "DSHKit",
+      "kind": "internal"
+    },
+    {
+      "from_layer": "app",
+      "to": "Foundation",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "ImageIO",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "Observation",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "Photos",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "PhotosUI",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "Security",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "SwiftUI",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "Textual",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "UIKit",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "UserNotifications",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "VisionKit",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "os",
+      "kind": "external"
+    },
+    {
+      "from_layer": "pure-logic",
+      "to": "CoreGraphics",
+      "kind": "external"
+    },
+    {
+      "from_layer": "pure-logic",
+      "to": "Foundation",
+      "kind": "external"
+    },
+    {
+      "from_layer": "pure-logic",
+      "to": "SwiftUI",
+      "kind": "external"
+    },
+    {
+      "from_layer": "ui-tests",
+      "to": "XCTest",
+      "kind": "external"
+    }
+  ],
+  "modules": [
+    {
+      "file": "DSHKit/Sources/DSHKit/Conversation/TimelineOrdering.swift",
+      "layer": "pure-logic",
+      "lines": 58,
+      "types": [
+        "PendingDecision",
+        "TimelineOrdering"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/DSHClient.swift",
+      "layer": "pure-logic",
+      "lines": 120,
+      "types": [
+        "DSHClient"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/DSHError.swift",
+      "layer": "pure-logic",
+      "lines": 23,
+      "types": [
+        "DSHError"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/Decoding.swift",
+      "layer": "pure-logic",
+      "lines": 175,
+      "types": [
+        "DSHDecoding"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/EndpointPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 84,
+      "types": [
+        "DSHEndpointKind",
+        "DSHSavedEndpointRecord",
+        "DSHEndpointPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/JobRoster.swift",
+      "layer": "pure-logic",
+      "lines": 56,
+      "types": [
+        "DSHJobRow",
+        "DSHJobRoster"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/Login.swift",
+      "layer": "pure-logic",
+      "lines": 28,
+      "types": [
+        "LoginOutcome",
+        "LoginClassifier"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/NetworkErrorPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 22,
+      "types": [
+        "DSHNetworkErrorPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/ProcessEventDecoding.swift",
+      "layer": "pure-logic",
+      "lines": 97,
+      "types": [],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/RPC.swift",
+      "layer": "pure-logic",
+      "lines": 52,
+      "types": [
+        "RPCRequest"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/RPCRetryPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 25,
+      "types": [
+        "RPCRetryPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/SessionModels.swift",
+      "layer": "pure-logic",
+      "lines": 139,
+      "types": [
+        "DSHSession",
+        "DSHImageRef",
+        "DSHMessage",
+        "DSHTurnFailure",
+        "DSHStepEvent",
+        "DSHSessionPage",
+        "DSHRecord",
+        "DSHStreamFrame"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/StreamFrames.swift",
+      "layer": "pure-logic",
+      "lines": 36,
+      "types": [
+        "StreamFrames"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/URLBuilding.swift",
+      "layer": "pure-logic",
+      "lines": 67,
+      "types": [
+        "DSHURL"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/RPCId.swift",
+      "layer": "pure-logic",
+      "lines": 20,
+      "types": [
+        "RPCId"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/ImageFetchPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 25,
+      "types": [
+        "ImageFetchPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/MessageLifecycle.swift",
+      "layer": "pure-logic",
+      "lines": 74,
+      "types": [
+        "SendMode",
+        "MessageSendState",
+        "MessageLifecycle",
+        "SendModeDecider"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/MessageOrdering.swift",
+      "layer": "pure-logic",
+      "lines": 57,
+      "types": [
+        "TurnRange",
+        "OrderableMessage",
+        "MessageOrdering"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/OfflineDeliveryPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 34,
+      "types": [
+        "OfflineDeliveryPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/Outbox.swift",
+      "layer": "pure-logic",
+      "lines": 108,
+      "types": [
+        "OutboxEntry",
+        "OutboxStorage",
+        "UserDefaultsOutboxStorage",
+        "Outbox",
+        "InMemoryOutboxStorage"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/OutboxAttachmentPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 23,
+      "types": [
+        "OutboxAttachmentPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/OutboxRetentionPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 29,
+      "types": [
+        "OutboxRetentionPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/PendingReconciler.swift",
+      "layer": "pure-logic",
+      "lines": 38,
+      "types": [
+        "PendingCandidate",
+        "PendingReconciler"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/ThumbnailCachePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 28,
+      "types": [
+        "ThumbnailCachePolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/DSHClientSyncTransport.swift",
+      "layer": "pure-logic",
+      "lines": 24,
+      "types": [],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/SessionCompletionTracker.swift",
+      "layer": "pure-logic",
+      "lines": 33,
+      "types": [
+        "SessionCompletionTracker"
+      ],
+      "imports": []
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/SessionSyncCoordinator.swift",
+      "layer": "pure-logic",
+      "lines": 291,
+      "types": [
+        "SessionSyncCoordinator"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/SyncModels.swift",
+      "layer": "pure-logic",
+      "lines": 83,
+      "types": [
+        "SyncConnectionState",
+        "SessionUpdate",
+        "SyncConfig",
+        "SyncError",
+        "SyncClock",
+        "RealSyncClock",
+        "SyncTransport"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Transport/Transport.swift",
+      "layer": "pure-logic",
+      "lines": 70,
+      "types": [
+        "DSHHTTPTransport",
+        "DSHWebSocketConnection",
+        "DSHWebSocketTransport",
+        "DSHURLSessionHTTPTransport",
+        "DSHURLSessionWebSocketTransport"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/AccessibilityLabels.swift",
+      "layer": "pure-logic",
+      "lines": 58,
+      "types": [
+        "AccessibilityLabels"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ConversationCachePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 40,
+      "types": [
+        "SessionOpenPolicy",
+        "CachedConversationRef",
+        "ConversationCachePolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ConversationOpenPlan.swift",
+      "layer": "pure-logic",
+      "lines": 24,
+      "types": [
+        "ConversationOpenPlan"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ConversationUIModel.swift",
+      "layer": "pure-logic",
+      "lines": 149,
+      "types": [
+        "ScrollAction",
+        "ScrollPolicy",
+        "ComposerButton",
+        "ComposerPolicy",
+        "PendingPresentation",
+        "PendingPresentationBuilder",
+        "ConnectionStatusKind",
+        "ConnectionStatusPresentation",
+        "ConnectionStatusBuilder",
+        "CopyTextBuilder"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/MotionPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 9,
+      "types": [
+        "MotionPolicy"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/PendingQuestionPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 11,
+      "types": [
+        "PendingQuestionPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ProcessResultSummary.swift",
+      "layer": "pure-logic",
+      "lines": 78,
+      "types": [
+        "ProcessResultSummary"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ProcessTogglePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 51,
+      "types": [
+        "ProcessTogglePlan"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/ScrollFollowPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 53,
+      "types": [
+        "ScrollFollowAction",
+        "ScrollDragIntent",
+        "ScrollFollowPolicy"
+      ],
+      "imports": [
+        "CoreGraphics",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/UnreadBadgePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 21,
+      "types": [
+        "UnreadBadgePolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/DSHPocketApp.swift",
+      "layer": "app",
+      "lines": 31,
+      "types": [
+        "DSHPocketApp"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/CompletionNotifier.swift",
+      "layer": "app",
+      "lines": 106,
+      "types": [
+        "CompletionNotifier"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ConnectFailureMessage.swift",
+      "layer": "app",
+      "lines": 267,
+      "types": [
+        "ConnectFailureMessage"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ConnectionError.swift",
+      "layer": "app",
+      "lines": 33,
+      "types": [
+        "ConnectionError"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ConversationHeightKey.swift",
+      "layer": "app",
+      "lines": 23,
+      "types": [
+        "ConversationHeightKey"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/DebugLaunch.swift",
+      "layer": "app",
+      "lines": 55,
+      "types": [
+        "DebugLaunch"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/DraftImageStore.swift",
+      "layer": "app",
+      "lines": 65,
+      "types": [
+        "DraftImageStore"
+      ],
+      "imports": [
+        "DSHKit",
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/DraftStore.swift",
+      "layer": "app",
+      "lines": 45,
+      "types": [
+        "DraftStore"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ImageMemory.swift",
+      "layer": "app",
+      "lines": 88,
+      "types": [
+        "ImageMemory",
+        "CachedImage"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ImagePipeline.swift",
+      "layer": "app",
+      "lines": 153,
+      "types": [
+        "ImagePipeline",
+        "ThumbnailDiskCache"
+      ],
+      "imports": [
+        "DSHKit",
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/LoginRedirectRecorder.swift",
+      "layer": "app",
+      "lines": 34,
+      "types": [
+        "LoginRedirectRecorder"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/OutboxAttachment.swift",
+      "layer": "app",
+      "lines": 75,
+      "types": [
+        "OutboxAttachment",
+        "OutboxImageStore"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/OutboxEntry.swift",
+      "layer": "app",
+      "lines": 64,
+      "types": [
+        "OutboxEntry"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PendingUserQuestion.swift",
+      "layer": "app",
+      "lines": 37,
+      "types": [
+        "PendingUserQuestion"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketDraftImage.swift",
+      "layer": "app",
+      "lines": 27,
+      "types": [
+        "PocketDraftImage"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketImageRef.swift",
+      "layer": "app",
+      "lines": 58,
+      "types": [
+        "PocketImageRef"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketJob.swift",
+      "layer": "app",
+      "lines": 83,
+      "types": [
+        "PocketJob"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketMessage.swift",
+      "layer": "app",
+      "lines": 115,
+      "types": [
+        "PocketMessage"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketSession.swift",
+      "layer": "app",
+      "lines": 71,
+      "types": [
+        "PocketSession"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketStep.swift",
+      "layer": "app",
+      "lines": 82,
+      "types": [
+        "PocketStep"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/PocketStepGroup.swift",
+      "layer": "app",
+      "lines": 27,
+      "types": [
+        "PocketStepGroup"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/SavedEndpoint.swift",
+      "layer": "app",
+      "lines": 62,
+      "types": [
+        "SavedEndpoint"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/StreamOpen.swift",
+      "layer": "app",
+      "lines": 46,
+      "types": [
+        "StreamOpen",
+        "AnyEncodable"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/TurnFailureNotice.swift",
+      "layer": "app",
+      "lines": 41,
+      "types": [
+        "TurnFailureNotice"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
+      "layer": "app",
+      "lines": 602,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Demo.swift",
+      "layer": "app",
+      "lines": 261,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Endpoints.swift",
+      "layer": "app",
+      "lines": 248,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Live.swift",
+      "layer": "app",
+      "lines": 993,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Outbox.swift",
+      "layer": "app",
+      "lines": 379,
+      "types": [
+        "HeldOfflineDelivery"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Process.swift",
+      "layer": "app",
+      "lines": 340,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
+      "layer": "app",
+      "lines": 694,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel.swift",
+      "layer": "app",
+      "lines": 630,
+      "types": [
+        "DiagnosticVisit",
+        "DiagnosticSample",
+        "ConnectionModel"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConversationState.swift",
+      "layer": "app",
+      "lines": 86,
+      "types": [
+        "ConversationState"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Support/AppSupport.swift",
+      "layer": "app",
+      "lines": 136,
+      "types": [
+        "AccessibilityAnnouncer",
+        "ConversationViewLifetime",
+        "TextSelectionDismisser",
+        "PushDelegate",
+        "PinKeychain"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Support/Localization.swift",
+      "layer": "app",
+      "lines": 263,
+      "types": [
+        "AppLanguage",
+        "LanguageStore",
+        "L10n"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Support/PocketMotion.swift",
+      "layer": "app",
+      "lines": 21,
+      "types": [
+        "PocketMotion"
+      ],
+      "imports": [
+        "DSHKit",
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/AppSettingsSheet.swift",
+      "layer": "app",
+      "lines": 87,
+      "types": [
+        "AppSettingsSheet"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/AttachmentThumbnail.swift",
+      "layer": "app",
+      "lines": 69,
+      "types": [
+        "AttachmentThumbnail"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/CameraPicker.swift",
+      "layer": "app",
+      "lines": 48,
+      "types": [
+        "CameraPicker"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ChatHeadingStyle.swift",
+      "layer": "app",
+      "lines": 37,
+      "types": [
+        "ChatHeadingStyle"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ConnectView.swift",
+      "layer": "app",
+      "lines": 505,
+      "types": [
+        "ConnectView"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ConnectedView.swift",
+      "layer": "app",
+      "lines": 378,
+      "types": [
+        "ConnectedView"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ConversationView.swift",
+      "layer": "app",
+      "lines": 732,
+      "types": [
+        "ConversationView"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/FullscreenImageViewer.swift",
+      "layer": "app",
+      "lines": 127,
+      "types": [
+        "FullscreenImageViewer"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/JobRow.swift",
+      "layer": "app",
+      "lines": 85,
+      "types": [
+        "JobRow"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/JobsSheet.swift",
+      "layer": "app",
+      "lines": 56,
+      "types": [
+        "JobsSheet"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/JobsToolbarButton.swift",
+      "layer": "app",
+      "lines": 75,
+      "types": [
+        "JobsToolbarButton",
+        "PocketChrome"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/MarkdownBody.swift",
+      "layer": "app",
+      "lines": 78,
+      "types": [
+        "MarkdownBody",
+        "PhoneTableStyle"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/MessageRow.swift",
+      "layer": "app",
+      "lines": 261,
+      "types": [
+        "MessageRow"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ModelPickerSheet.swift",
+      "layer": "app",
+      "lines": 77,
+      "types": [
+        "ModelPickerSheet"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/PocketCodeScanner.swift",
+      "layer": "app",
+      "lines": 42,
+      "types": [
+        "PocketCodeScanner"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/PreviewImageItem.swift",
+      "layer": "app",
+      "lines": 23,
+      "types": [
+        "PreviewImageItem"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ProcessRow.swift",
+      "layer": "app",
+      "lines": 130,
+      "types": [
+        "ProcessRow"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/QRScannerView.swift",
+      "layer": "app",
+      "lines": 30,
+      "types": [
+        "QRScannerView"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/RemoteMarkdownImage.swift",
+      "layer": "app",
+      "lines": 84,
+      "types": [
+        "RemoteMarkdownImage"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/RootView.swift",
+      "layer": "app",
+      "lines": 77,
+      "types": [
+        "RootView"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/SessionListMode.swift",
+      "layer": "app",
+      "lines": 31,
+      "types": [
+        "SessionListMode"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/TurnFailureRow.swift",
+      "layer": "app",
+      "lines": 51,
+      "types": [
+        "TurnFailureRow"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/UserQuestionCard.swift",
+      "layer": "app",
+      "lines": 115,
+      "types": [
+        "UserQuestionCard"
+      ],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocketUITests/DemoFlowUITests.swift",
+      "layer": "ui-tests",
+      "lines": 141,
+      "types": [
+        "DemoFlowUITests"
+      ],
+      "imports": [
+        "XCTest"
+      ]
+    }
+  ],
+  "violations": [
+    {
+      "rule": "pure-logic-no-ui",
+      "file": "DSHKit/Sources/DSHKit/UI/MotionPolicy.swift",
+      "detail": "导入了 SwiftUI"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
+      "detail": "602 行"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Session/ConnectionModel+Live.swift",
+      "detail": "993 行"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
+      "detail": "694 行"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Session/ConnectionModel.swift",
+      "detail": "630 行"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Views/ConnectView.swift",
+      "detail": "505 行"
+    },
+    {
+      "rule": "file-max-400",
+      "file": "DSHPocket/Views/ConversationView.swift",
+      "detail": "732 行"
+    },
+    {
+      "rule": "extension-split-smell",
+      "file": "ConnectionModel.swift",
+      "detail": "7 个 +Feature 文件"
+    }
+  ]
+}
