@@ -135,30 +135,10 @@ extension ConnectionModel {
         diagnostics.stopSampler()
     }
 
+    /// 采样一行。计算与去重在 Diagnostics（用 providers 读模型状态），这里只转发。
     @MainActor
     func captureDiagnosticSample(enterMs: Int? = nil) {
-        let counts = diagnosticSendCounts()
-        let sample = DiagnosticSample(
-            at: Date(),
-            memoryMB: Int(Diagnostics.memoryFootprintMB().rounded()),
-            pending: counts.pending,
-            queued: counts.queued,
-            failed: counts.failed,
-            network: diagnosticNetworkLabel(),
-            enterMs: enterMs
-        )
-        if let last = diagnosticSamples.last,
-           enterMs == nil,
-           last.at.timeIntervalSinceNow > -2,
-           last.pending == sample.pending,
-           last.queued == sample.queued,
-           last.failed == sample.failed,
-           last.network == sample.network,
-           last.memoryMB == sample.memoryMB {
-            return
-        }
-        // 上限与去重策略留在 Diagnostics；这里只负责算出一行样本。
-        diagnostics.appendSample(sample)
+        diagnostics.capture(enterMs: enterMs)
     }
 
     func noteNetworkEdgeForDiagnostics() {
