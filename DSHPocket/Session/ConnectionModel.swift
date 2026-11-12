@@ -222,6 +222,8 @@ final class ConnectionModel {
     let notificationBridge = NotificationBridge()
     /// 实时帧处理（快照/消息/过程事件）。
     let liveFrameApplier = LiveFrameApplier()
+    /// 实时流建连与重连循环。
+    let liveStreamRunner = LiveStreamRunner()
     /// 网络恢复监听：从断网恢复时立刻补发，不等列表轮询或 WS 重连。
     let networkWatcher = NetworkWatcher()
     /// 监听只启动一次。

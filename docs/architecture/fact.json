@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:29:45+08:00",
-  "commit": "7a306a4",
+  "generated_at": "2026-11-12T22:30:49+08:00",
+  "commit": "69c2689",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 78,
-      "lines": 10880
+      "files": 79,
+      "lines": 10985
     },
     {
       "layer": "ui-tests",
@@ -1361,7 +1361,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 910,
+      "lines": 828,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1451,7 +1451,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 574,
+      "lines": 576,
       "types": [
         "ConnectionModel"
       ],
@@ -1577,6 +1577,18 @@
       "lines": 106,
       "types": [
         "LiveFrameApplier"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/LiveStreamRunner.swift",
+      "layer": "app",
+      "lines": 184,
+      "types": [
+        "LiveStreamRunner"
       ],
       "imports": [
         "DSHKit",
@@ -2253,7 +2265,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 87,
+      "lines": 88,
       "types": [
         "RootView"
       ],
@@ -2367,7 +2379,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "910 行"
+      "detail": "828 行"
     },
     {
       "rule": "file-max-400",
@@ -2377,7 +2389,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "574 行"
+      "detail": "576 行"
     },
     {
       "rule": "file-max-400",

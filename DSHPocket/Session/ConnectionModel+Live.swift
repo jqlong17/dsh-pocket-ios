@@ -69,139 +69,8 @@ extension ConnectionModel {
         recordDiagnostic("历史轮询超时：30 次内未找到本次助手回复")
     }
 
-    @MainActor
-    func follow(_ session: PocketSession) async {
-        if isDemoMode { return }
-        defer {
-            if activeConversation?.sessionId == session.sessionId {
-                activeConversation?.isFollowing = false
-            }
-        }
-        guard let base = URL(string: serverAddress),
-              let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
-            recordDiagnostic("实时连接未启动：地址无效 \(serverAddress.debugDescription)")
-            return
-        }
-        activeConversation?.isFollowing = true
-        var retryDelay: Duration = LiveStreamPolicy.initialReconnectDelay
-        var retryCount = 0
-        var receivedSnapshot = false
-        var usedHistoryFallback = false
-        while !Task.isCancelled,
-              activeConversation?.sessionId == session.sessionId,
-              selectedSession?.sessionId == session.sessionId {
-            liveConnection = .connecting
-            let socket = URLSession.shared.webSocketTask(with: socketURL)
-            socket.resume()
-            recordDiagnostic("实时连接：发起连接")
-            pocketLogger.info("follow connecting session=\(session.sessionId, privacy: .public) url=\(socketURL.absoluteString, privacy: .private)")
-            let streamId = UUID().uuidString
-            let open = StreamOpen(type: "open", streamId: streamId, endpoint: "session/follow", payload: ["args": ["request": ["address": ["kind": "session", "sessionId": session.sessionId], "maxMessages": Self.conversationMessageLimit]]])
-            do {
-                let data = try JSONEncoder().encode(open)
-                guard let text = String(data: data, encoding: .utf8) else { throw ConnectionError.invalidPayload }
-                try await socket.send(.string(text))
-                let heartbeat = Task {
-                    while !Task.isCancelled {
-                        do {
-                            try await Task.sleep(for: LiveStreamPolicy.heartbeatInterval)
-                            try await sendPing(socket)
-                        } catch {
-                            if !Task.isCancelled { socket.cancel(with: .abnormalClosure, reason: nil) }
-                            return
-                        }
-                    }
-                }
-                defer { heartbeat.cancel() }
-                while !Task.isCancelled {
-                    let frame: URLSessionWebSocketTask.Message
-                    if isTurnRunning {
-                        // 生成中理应持续有事件；25 秒没有任何帧说明连接假死（常见于公网隧道），主动断开重连。
-                        frame = try await withThrowingTaskGroup(of: URLSessionWebSocketTask.Message.self) { group in
-                            group.addTask {
-                                try await withTaskCancellationHandler {
-                                    try await socket.receive()
-                                } onCancel: {
-                                    socket.cancel(with: .goingAway, reason: nil)
-                                }
-                            }
-                            group.addTask {
-                                try await Task.sleep(for: LiveStreamPolicy.runningIdleTimeout)
-                                throw ConnectionError.remote("生成中 \(LiveStreamPolicy.runningIdleTimeout) 无实时数据，主动重连")
-                            }
-                            guard let first = try await group.next() else {
-                                throw ConnectionError.remote("实时连接无数据")
-                            }
-                            group.cancelAll()
-                            return first
-                        }
-                    } else {
-                        frame = try await withTaskCancellationHandler {
-                            try await socket.receive()
-                        } onCancel: {
-                            socket.cancel(with: .goingAway, reason: nil)
-                        }
-                    }
-                    let data: Data
-                    switch frame {
-                    case .data(let received): data = received
-                    case .string(let text): data = Data(text.utf8)
-                    @unknown default: continue
-                    }
-                    // 只解析一次：原先 guard 里解一次、调试日志里又解三次，
-                    // 实时流高频时纯属浪费 CPU（每帧 4 次 JSONSerialization）。
-                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                    guard let object, let value = StreamFrames.itemValue(object, streamId: streamId) else {
-                        NSLog("DSH_DIAG ignored frame type=%@ streamMatch=%@",
-                              object?["type"] as? String ?? "nil",
-                              (object?["streamId"] as? String) == streamId ? "yes" : "no")
-                        continue
-                    }
-                    let valueType = value["type"] as? String ?? "未知"
-                    if valueType == "snapshot" { receivedSnapshot = true }
-                    liveConnection = .connected
-                    if conversationError?.hasPrefix("实时连接") == true { conversationError = nil }
-                    // 实时流一恢复就把各会话的断网暂存一并补发。
-                    flushQueuedSends()
-                    retryDelay = .seconds(1)
-                    pocketLogger.info("follow item valueType=\(valueType, privacy: .public) keys=\(value.keys.sorted().joined(separator: ","), privacy: .public)")
-                    acceptLive(value, sessionId: session.sessionId)
-                }
-                if !Task.isCancelled { throw ConnectionError.remote("实时连接已结束") }
-            } catch {
-                socket.cancel(with: .goingAway, reason: nil)
-                guard !Task.isCancelled else { break }
-                liveConnection = .reconnecting(attempt: retryCount)
-                if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-                conversationError = "实时连接中断，正在重连：\(error.localizedDescription)"
-                recordDiagnostic("实时连接中断，\(Int(retryDelay.components.seconds)) 秒后重试：\(error.localizedDescription)")
-                pocketLogger.error("follow failed: \(error.localizedDescription, privacy: .public)")
-                if !receivedSnapshot && !usedHistoryFallback {
-                    usedHistoryFallback = true
-                    await loadHistory(session)
-                }
-                // 重连多次仍失败时探测登录态：DSH 重启后 browser-auth cookie 会失效，
-                // WS 只会一直重连，必须回到连接页重新输入密码。
-                if retryCount >= 1 {
-                    do {
-                        _ = try await fetchSessions()
-                    } catch let authError as ConnectionError {
-                        if authError.isUnauthorized {
-                            handleAuthExpired()
-                            return
-                        }
-                    } catch { /* 其他网络错误继续重连 */ }
-                }
-                do { try await Task.sleep(for: retryDelay) } catch { break }
-                retryDelay = min(retryDelay * 2, .seconds(15))
-                retryCount += 1
-            }
-        }
-        if selectedSession?.sessionId == session.sessionId { liveConnection = .disconnected(reason: nil) }
-    }
-
-    @MainActor
     /// 帧处理实现在 LiveFrameApplier（依赖闭包注入）；这里只转发。
+    @MainActor
     func acceptLive(_ value: [String: Any], sessionId: String) {
         liveFrameApplier.accept(value, sessionId: sessionId)
     }
@@ -240,16 +109,7 @@ extension ConnectionModel {
     }
 
 
-    func sendPing(_ socket: URLSessionWebSocketTask) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            socket.sendPing { error in
-                if let error { continuation.resume(throwing: error) }
-                else { continuation.resume() }
-            }
-        }
-    }
-
-    /// 登录失效（DSH 重启导致 cookie 失效 / 密码被改）：回到连接页并要求重新输入密码。
+     /// 登录失效（DSH 重启导致 cookie 失效 / 密码被改）：回到连接页并要求重新输入密码。
     @MainActor
     func handleAuthExpired() {
         guard !isDemoMode else { return }
@@ -904,6 +764,64 @@ extension ConnectionModel {
             completionAlertsEnabled: { [weak self] in self?.completionAlertsEnabled ?? false },
             pushToken: { [weak self] in self?.pushToken },
             record: { @MainActor [weak self] message in self?.recordDiagnostic(message) }
+        )
+    }
+}
+
+// MARK: 实时流建连（实现在 LiveStreamRunner）
+
+extension ConnectionModel {
+    func follow(_ session: PocketSession) async {
+        await liveStreamRunner.run(sessionId: session.sessionId)
+    }
+
+    /// 装配实时流依赖（幂等）。
+    @MainActor
+    func installLiveStreamProviders() {
+        guard liveStreamRunner.providers == nil else { return }
+        liveStreamRunner.providers = LiveStreamRunner.Providers(
+            isDemoMode: { [weak self] in self?.isDemoMode ?? false },
+            socketURL: { [weak self] in
+                guard let self,
+                      let base = URL(string: self.serverAddress),
+                      let url = Self.webSocketURL(from: base, path: "api/remote.mux") else {
+                    throw ConnectionError.invalidURL("")
+                }
+                return url
+            },
+            isCurrentSession: { [weak self] sessionId in
+                self?.activeConversation?.sessionId == sessionId
+                    && self?.selectedSession?.sessionId == sessionId
+            },
+            setFollowing: { @MainActor [weak self] value in self?.activeConversation?.isFollowing = value },
+            setConnection: { @MainActor [weak self] state in self?.liveConnection = state },
+            conversationError: { [weak self] in self?.conversationError },
+            setConversationError: { @MainActor [weak self] value in self?.conversationError = value },
+            isTurnRunning: { [weak self] in self?.isTurnRunning ?? false },
+            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
+            log: { message in pocketLogger.info("\(message, privacy: .public)") },
+            logError: { message in pocketLogger.error("\(message, privacy: .public)") },
+            onItem: { @MainActor [weak self] value, sessionId in
+                self?.acceptLive(value, sessionId: sessionId)
+            },
+            flushQueued: { @MainActor [weak self] in self?.flushQueuedSends() },
+            loadHistory: { @MainActor [weak self] in
+                guard let self, let session = self.selectedSession else { return }
+                await self.loadHistory(session)
+            },
+            authExpired: { [weak self] in
+                guard let self else { return false }
+                do {
+                    _ = try await self.fetchSessions()
+                    return false
+                } catch let error as ConnectionError {
+                    return error.isUnauthorized
+                } catch {
+                    return false
+                }
+            },
+            onAuthExpired: { @MainActor [weak self] in self?.handleAuthExpired() },
+            maxMessages: Self.conversationMessageLimit
         )
     }
 }
