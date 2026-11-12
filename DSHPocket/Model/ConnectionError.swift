@@ -30,3 +30,29 @@ enum ConnectionError: LocalizedError {
         }
     }
 }
+
+extension ConnectionError {
+    /// 把 DSHKit 的协议错误适配成 App 的展示错误。
+    ///
+    /// 为什么需要这层：`DSHErrorKind` 负责「怎么处理」（可单测，在 DSHKit），
+    /// `ConnectionError` 负责「怎么显示」（文案/dialect），两者职责不同。
+    /// 传输层错误（URLError）不走这里——它原样向上抛，供 `isTransientNetworkError` 判断。
+    static func from(_ error: DSHError, address: String) -> ConnectionError {
+        switch error {
+        case .invalidAddress:
+            return .invalidURL(address)
+        case .unauthorized:
+            // 401/403 在 App 语义里就是「访问密码不对/已变更」。
+            return .invalidPin
+        case .rateLimited:
+            return .rateLimited(1)
+        case .invalidPayload, .decoding:
+            return .invalidPayload
+        case let .server(status, message):
+            if let message, !message.isEmpty { return .remote(message) }
+            return .server(status)
+        case .transport:
+            return .unexpectedResponse
+        }
+    }
+}

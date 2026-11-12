@@ -966,27 +966,16 @@ extension ConnectionModel {
         return sawReachableResponse ? .absent : .unreachable
     }
 
+    /// RPC 唯一入口。协议实现（envelope / 超时 / 状态码）在 DSHKit，这里只做错误适配。
+    ///
+    /// 分界线：传输层错误（`URLError`）原样向上抛，交给 `isTransientNetworkError` 判断可否重试；
+    /// 协议错误（`DSHError`）适配成 `ConnectionError`，保持 UI 文案与分类不变。
     func rpc(_ endpoint: String, args: [String: Any], timeout: TimeInterval = 20) async throws -> [String: Any] {
-        let root = try Self.serverURL(from: serverAddress)
-        let url = root.appending(path: "api/\(endpoint)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        // 手机在移动网络下连电脑，默认 60 秒太久：先失败再重试，比一直转圈体验好。
-        request.timeoutInterval = timeout
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpShouldHandleCookies = true
-        let requestBody: [String: Any] = ["type": "client-request", "rpcId": UUID().uuidString, "method": endpoint, "payload": ["args": args]]
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw ConnectionError.server((response as? HTTPURLResponse)?.statusCode ?? -1)
+        guard let client = syncClient else { throw ConnectionError.invalidURL(serverAddress) }
+        do {
+            return try await client.rpc(method: endpoint, args: args, timeout: timeout)
+        } catch let error as DSHError {
+            throw ConnectionError.from(error, address: serverAddress)
         }
-        guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let result = envelope["result"] as? [String: Any] else { throw ConnectionError.invalidPayload }
-        if result["ok"] as? Bool == false {
-            let error = result["error"] as? [String: Any]
-            throw ConnectionError.remote(error?["message"] as? String ?? "DSH 请求失败")
-        }
-        return result["value"] as? [String: Any] ?? [:]
     }
 }
