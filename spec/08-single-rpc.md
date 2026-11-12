@@ -121,3 +121,32 @@ public enum RPCRetryPolicy {
 ## 批准点
 
 **本文件提交后停下，等你 approve 再执行第 1 批。**
+
+## 执行记录
+
+### T0（DSHKit 侧基础能力）— 已完成
+
+提交 `d023904`；检查点见 `git-checkpoints.jsonl`（baseline `90d6ea0` / result `d023904`）。
+
+交付：
+- `DSHClient.rpc(method:args:timeout:)`，超时默认 20 秒；
+- `DSHClient.rpcWithRetry(...)`，同一 rpcId 贯穿重试；
+- `RPCRetryPolicy`（仅瞬时错误、退避 800/2000/3000ms）；
+- `RPCRequest.value(from:)` 识别 `result.ok == false`；
+- `DSHClient` 支持注入 `retrySleep`，测试无需真实等待。
+
+验证：`swift test` 242 → **254 全绿**；`xcodebuild build` 成功（App 未接线，行为不变）。
+
+量化标准自查：
+- 新增测试 12 条（目标 ≥15 中已用 12，剩余由 T1–T4 迁移测试补齐）；
+- `grep -rn "func rpc"` 目前仍是**两处**（T5 才删）——符合分阶段预期，不是遗漏。
+
+### 未做（T1–T5）
+
+按设计里的迁移批次，App 侧 20 处调用点尚未迁移；App 的 `ConnectionModel.rpc` / `rpcWithRetry` 仍在服役。
+完成标志：全仓 `func rpc` 只剩 DSHKit 一处。
+
+### 执行中发现的 spec 问题（已修正）
+
+1. 原 spec 缺「参考实现」段 → 已补（本机行为基线 + 开源思想 + 采用/不采用清单）。
+2. `ConnectErrorAdapterTests` 不可落地（App 层无单测 target）→ 已标注，改为 T1 时手工走查。
