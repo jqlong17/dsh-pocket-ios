@@ -65,6 +65,16 @@ public func rpcWithRetry(method: String, args: [String: Any],
                          attempts: Int = 3, timeout: TimeInterval = 20) async throws -> [String: Any]
 ```
 
+### 行为等价检查（迁移前必查）
+
+App 的 `rpc` 现在额外做了三件事，迁移时必须逐条确认 DSHKit 等价：
+
+| App 现在 | DSHKit | 结论 |
+| --- | --- | --- |
+| `request.httpShouldHandleCookies = true` | URLRequest 默认即为 true | 等价（显式写上更稳） |
+| `root.appending(path: "api/\(endpoint)")` | `baseURL.appendingPathComponent("api/\(method)")` | method 为纯 ASCII，等价 |
+| 非 2xx → `ConnectionError.server`；`result.ok==false` → `ConnectionError.remote` | `DSHError.server` / `DSHError.server` | **不等价，需适配层**：`ConnectionError.from(DSHError)` |
+
 ### 错误统一
 
 - `RPCRequest.value(from:)` 需要同时认两种失败形状：顶层 `error`，以及 `result.ok == false`（App 现在只认后者）。
@@ -91,11 +101,18 @@ public enum RPCRetryPolicy {
 | `RPCRetryPolicyTests` | 瞬时/永久/次数上限边界 |
 | ~~`ConnectErrorAdapterTests`~~ | **不可落地**：App 层没有单元测试 target（只有 XCUITests），适配器类测试无处可放。改为在 T1 迁移时用「连接页四类失败手工走查」验证，并在 spec 记一条待办：若后续加 App 单测 target 再补。 |
 
+## 与其它 spec 的顺序约束
+
+**RPC 收口必须先于 `spec/12`（拆 ConnectionModel）完成。**
+两者都改 `ConnectionModel+{Live,Sessions,Process,Outbox}`；先换实现（不改结构）再改结构，每批才能独立回滚。
+反过来先拆，21 个 RPC 调用点会散进新状态对象，本文件的批次表全部失效。
+
 ## 迁移批次（每批独立可回滚）
 
 | 批次 | 内容 | 验证 |
 | --- | --- | --- |
-| 1 | 只读接口：`session/page`（3 处）、`session/list`、`session/modelCatalog`、`session/attachment` | 测试 + 进会话、展开过程、加载图片 |
+| 1a | **内部委托**：`ConnectionModel.rpc` 改为调用 `DSHClient.rpc(timeout:)`，把 `DSHError` 适配回 `ConnectionError`；**调用点一行不改** | `swift test` + `xcodebuild` + 进会话/看图（错误分类不变） |
+| 1b | 只读接口 6 处调用点直接改调 `DSHClient`：`session/page`（3 处）、`session/list`、`session/modelCatalog`、`session/attachment` | 测试 + 进会话、展开过程、加载图片 |
 | 2 | 写接口（不含发送）：`session/rename`、`session/selectModel`、`session/create`、`session/cancel`、`workspace/*`（3 处）、`userQuestions/answer` | 测试 + 重命名/新建/归档/回答确认卡 |
 | 3 | `push.register`、`push.unregister` | 测试 + 冷启动看诊断里 APNs 注册结果 |
 | 4 | 发送路径：`session/prompt`（走 `rpcWithRetry`） | 测试 + 断网排队、恢复补发、网络抖动重试 |
