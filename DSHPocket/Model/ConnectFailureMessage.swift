@@ -137,7 +137,7 @@ private extension ConnectFailureMessage {
             return fromStatusCode(code)
         case .rateLimited(let seconds):
             return Self(.transient,
-                        L10n.t("试得太频繁，电脑暂时挡住了。等 \(max(seconds, 1)) 秒再点「连接」就行，不用重新配对。"),
+                        L10n.tf("试得太频繁，电脑暂时挡住了。等 %d 秒再点「连接」就行，不用重新配对。", max(seconds, 1)),
                         needsRescan: false)
         case .unexpectedResponse, .invalidPayload:
             return Self(.unknown,
@@ -145,7 +145,7 @@ private extension ConnectFailureMessage {
                         needsRescan: false)
         case .remote(let message):
             return Self(.unknown,
-                        L10n.t("电脑那边回了错误：\(message)。先点「连接」重试一次；反复出现就回电脑重新扫码配对。"),
+                        L10n.tf("电脑那边回了错误：%@。先点「连接」重试一次；反复出现就回电脑重新扫码配对。", message),
                         needsRescan: false)
         }
     }
@@ -159,16 +159,16 @@ private extension ConnectFailureMessage {
         }
         if tunnelDownStatusCodes.contains(code) {
             return Self(.invalidAddress,
-                        L10n.t("电脑的公网隧道连不上（HTTP \(code)），公网地址多半已经换了。在电脑上重新打开「手机访问」再扫一次码；同一 Wi-Fi 也可以改用局域网地址。"),
+                        L10n.tf("电脑的公网隧道连不上（HTTP %d），公网地址多半已经换了。在电脑上重新打开「手机访问」再扫一次码；同一 Wi-Fi 也可以改用局域网地址。", code),
                         needsRescan: true)
         }
         if (500..<600).contains(code) {
             return Self(.transient,
-                        L10n.t("电脑那边出错了（HTTP \(code)），像是暂时的。等一会儿再点「连接」就行，不用重新配对。"),
+                        L10n.tf("电脑那边出错了（HTTP %d），像是暂时的。等一会儿再点「连接」就行，不用重新配对。", code),
                         needsRescan: false)
         }
         return Self(.unknown,
-                    L10n.t("电脑回了 HTTP \(code)，不像是网络断了。先点「连接」重试一次；还是这样就回电脑重新扫码配对。"),
+                    L10n.tf("电脑回了 HTTP %d，不像是网络断了。先点「连接」重试一次；还是这样就回电脑重新扫码配对。", code),
                     needsRescan: false)
     }
 
