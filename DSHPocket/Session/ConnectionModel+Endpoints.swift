@@ -94,38 +94,16 @@ extension ConnectionModel {
     }
 
     /// 把回复切成有序片段：文本段与图片段交替，图片按 Markdown 中的原位置渲染。
+    /// 切分逻辑在 DSHKit（纯逻辑、可单测），这里只提供「怎么把地址变成 URL」。
     func markdownSegments(_ markdown: String) -> [MarkdownSegment] {
-        guard markdown.contains("![") else { return [.text(markdown)] }
-        var segments: [MarkdownSegment] = []
-        var buffer: [String] = []
-        let regex = try? NSRegularExpression(pattern: #"^!\[([^\]]*)\]\(([^)\s]+)\)$"#)
-
-        func flushText() {
-            let joined = buffer.joined(separator: "\n").trimmingCharacters(in: .newlines)
-            if !joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                segments.append(.text(joined))
+        MarkdownSegments.split(markdown) { [weak self] destination in
+            self?.markdownImageURL(for: destination)
+        }.map { segment in
+            switch segment {
+            case .text(let text): return MarkdownSegment.text(text)
+            case .image(let url, let caption): return MarkdownSegment.image(url, caption: caption)
             }
-            buffer.removeAll()
         }
-
-        for line in markdown.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let regex,
-               let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
-               let captionRange = Range(match.range(at: 1), in: trimmed),
-               let destinationRange = Range(match.range(at: 2), in: trimmed) {
-                let caption = String(trimmed[captionRange])
-                let destination = String(trimmed[destinationRange])
-                if let url = markdownImageURL(for: destination) {
-                    flushText()
-                    segments.append(.image(url, caption: caption.isEmpty ? nil : caption))
-                    continue
-                }
-            }
-            buffer.append(line)
-        }
-        flushText()
-        return segments.isEmpty ? [.text(markdown)] : segments
     }
 
     func markdownImageURL(for destination: String) -> URL? {

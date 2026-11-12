@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:32:05+08:00",
-  "commit": "ed944cb",
+  "generated_at": "2026-11-12T11:32:47+08:00",
+  "commit": "d7aced0",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 39,
-      "lines": 2507
+      "files": 40,
+      "lines": 2560
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 66,
-      "lines": 9873
+      "lines": 9851
     },
     {
       "layer": "ui-tests",
@@ -192,6 +192,18 @@
       "types": [
         "LoginOutcome",
         "LoginClassifier"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/MarkdownSegments.swift",
+      "layer": "pure-logic",
+      "lines": 53,
+      "types": [
+        "MarkdownSegment",
+        "MarkdownSegments"
       ],
       "imports": [
         "Foundation"
@@ -1162,7 +1174,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Endpoints.swift",
       "layer": "app",
-      "lines": 248,
+      "lines": 226,
       "types": [],
       "imports": [
         "AVFoundation",
