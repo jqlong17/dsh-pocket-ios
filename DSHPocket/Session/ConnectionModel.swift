@@ -117,16 +117,36 @@ final class ConnectionModel {
         set { connection.isConnected = newValue }
     }
     var isDemoMode = false
-    var sessions: [PocketSession] = []
-    var archivedSessionIds: Set<String> = []
-    /// 置顶会话（服务端返回顺序：最近置顶在前）。
-    var pinnedSessionIds: [String] = []
-    var isLoadingSessions = false
-    /// 会话列表拉取失败后的自动重试。
-    var sessionListRetryTask: Task<Void, Never>?
-    /// 后台任务面板是否展开。
-    var selectedSession: PocketSession?
-    var navigationPath: [PocketSession] = []
+    /// 会话列表与缓存的唯一真相（spec/12 第五个对象）。调用点走转发。
+    let sessionStore = SessionStore()
+    var sessions: [PocketSession] {
+        get { sessionStore.sessions }
+        set { sessionStore.sessions = newValue }
+    }
+    var archivedSessionIds: Set<String> {
+        get { sessionStore.archivedSessionIds }
+        set { sessionStore.archivedSessionIds = newValue }
+    }
+    var pinnedSessionIds: [String] {
+        get { sessionStore.pinnedSessionIds }
+        set { sessionStore.pinnedSessionIds = newValue }
+    }
+    var isLoadingSessions: Bool {
+        get { sessionStore.isLoadingSessions }
+        set { sessionStore.isLoadingSessions = newValue }
+    }
+    var sessionListRetryTask: Task<Void, Never>? {
+        get { sessionStore.retryTask }
+        set { sessionStore.retryTask = newValue }
+    }
+    var selectedSession: PocketSession? {
+        get { sessionStore.selected }
+        set { sessionStore.selected = newValue }
+    }
+    var navigationPath: [PocketSession] {
+        get { sessionStore.navigationPath }
+        set { sessionStore.navigationPath = newValue }
+    }
     var isSending = false
 
     /// 输入框草稿按会话隔离（转发到 activeConversation，并持久化到本地）。
@@ -146,8 +166,14 @@ final class ConnectionModel {
 
     // MARK: 会话级状态（按 sessionId 独立存放，切换会话即切换实例）
 
-    var conversations: [String: ConversationState] = [:]
-    var activeConversation: ConversationState?
+    var conversations: [String: ConversationState] {
+        get { sessionStore.conversations }
+        set { sessionStore.conversations = newValue }
+    }
+    var activeConversation: ConversationState? {
+        get { sessionStore.active }
+        set { sessionStore.active = newValue }
+    }
     /// 当前活动会话的 id。视图用它判断「这份数据是不是我要的那条」，避免进入瞬间渲染上一条。
     var activeSessionId: String? { activeConversation?.sessionId }
 
