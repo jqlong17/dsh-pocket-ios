@@ -44,3 +44,17 @@ struct PendingQuote: Identifiable, Equatable {
 }
 
 enum PendingSendState { case sending, acked(steered: Bool), failed, queued }
+
+/// 模型选择器的值类型（从 ConnectionModel 嵌套类型外移）。
+struct ModelOption: Identifiable, Hashable {
+    let provider: String
+    let model: String
+    let name: String
+    var id: String { "\(provider)/\(model)" }
+}
+
+struct ModelGroup: Identifiable {
+    let id: String
+    let name: String
+    let models: [ModelOption]
+}

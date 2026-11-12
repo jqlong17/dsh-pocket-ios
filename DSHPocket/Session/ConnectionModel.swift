@@ -213,6 +213,8 @@ final class ConnectionModel {
     let questionInbox = QuestionInbox()
     /// 会话列表的只读网络访问（spec/12）。
     let sessionAPI = SessionAPI()
+    /// 单条会话操作（spec/12）。
+    let sessionActions = SessionActions()
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }
@@ -497,19 +499,6 @@ final class ConnectionModel {
     }
 
     /// 最近一次被归档的会话（用于列表底部「撤销」）。
-    struct ModelOption: Identifiable, Hashable {
-        let provider: String
-        let model: String
-        let name: String
-        var id: String { "\(provider)/\(model)" }
-    }
-
-    struct ModelGroup: Identifiable {
-        let id: String
-        let name: String
-        let models: [ModelOption]
-    }
-
     var modelGroups: [ModelGroup] = []
     var selectedModelLabel: String?
 

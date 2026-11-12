@@ -40,6 +40,7 @@ struct RootView: View {
                 model.installDiagnosticsProviders()
                 model.installQuestionProviders()
                 model.installSessionAPIProviders()
+                model.installSessionActionProviders()
             }
             .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {

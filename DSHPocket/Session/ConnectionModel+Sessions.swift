@@ -181,174 +181,6 @@ extension ConnectionModel {
         )
     }
 
-    /// 重命名会话（DSH `session/rename`，桌面端同步）。
-    @MainActor
-    func rename(_ session: PocketSession, to rawTitle: String) async {
-        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return }
-        if !isDemoMode {
-            do {
-                _ = try await rpcClient.rpcAdapted("session/rename", args: ["request": [
-                    "sessionId": session.sessionId,
-                    "title": title
-                ]])
-            } catch {
-                errorMessage = "重命名失败：\(error.localizedDescription)"
-                return
-            }
-        }
-        let updated = PocketSession(
-            sessionId: session.sessionId, updatedAt: session.updatedAt,
-            running: session.running, blank: session.blank,
-            title: title, cwd: session.cwd,
-            origin: session.origin, parentSessionId: session.parentSessionId
-        )
-        if let index = sessions.firstIndex(where: { $0.sessionId == session.sessionId }) {
-            sessions[index] = updated
-        }
-        if selectedSession?.sessionId == session.sessionId { selectedSession = updated }
-    }
-
-    @MainActor
-    func loadModelCatalog() async {
-        guard !isDemoMode else { return }
-        do {
-            let value = try await rpcClient.rpcAdapted("session/modelCatalog", args: [:])
-            let groups = value["groups"] as? [[String: Any]] ?? []
-            modelGroups = groups.compactMap { group in
-                guard let id = group["id"] as? String,
-                      let name = group["name"] as? String else { return nil }
-                let models = (group["models"] as? [[String: Any]] ?? []).compactMap { item -> ModelOption? in
-                    guard let model = item["id"] as? String else { return nil }
-                    return ModelOption(provider: id, model: model,
-                                       name: item["name"] as? String ?? model)
-                }
-                return ModelGroup(id: id, name: name, models: models)
-            }
-            if selectedModelLabel == nil,
-               let defaultSel = value["default"] as? [String: Any],
-               let provider = defaultSel["provider"] as? String,
-               let model = defaultSel["model"] as? String {
-                selectedModelLabel = modelGroups.first { $0.id == provider }?
-                    .models.first { $0.model == model }?.name ?? model
-            }
-        } catch {
-            recordDiagnostic("模型列表加载失败：\(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    func selectModel(_ option: ModelOption) async {
-        guard let session = selectedSession else { return }
-        if isDemoMode { selectedModelLabel = option.name; return }
-        do {
-            _ = try await rpcClient.rpcAdapted("session/selectModel", args: ["request": [
-                "sessionId": session.sessionId,
-                "provider": option.provider,
-                "model": option.model
-            ]])
-            selectedModelLabel = option.name
-        } catch {
-            errorMessage = "切换模型失败：\(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    func dismissArchiveUndo() {
-        lastArchivedSession = nil
-    }
-
-    /// 撤销最近一次归档。
-    @MainActor
-    func undoArchive() async {
-        guard let session = lastArchivedSession else { return }
-        lastArchivedSession = nil
-        if isDemoMode {
-            archivedSessionIds.remove(session.sessionId)
-            await loadSessions(silently: true)
-            return
-        }
-        do {
-            _ = try await rpcClient.rpcAdapted("workspace/unarchiveSession", args: ["request": ["sessionId": session.sessionId]])
-            archivedSessionIds.remove(session.sessionId)
-            await loadSessions(silently: true)
-        } catch {
-            errorMessage = "撤销归档失败：\(error.localizedDescription)"
-        }
-    }
-
-    /// 置顶 / 取消置顶（服务端 workspace/pinSession，桌面端同步）。
-    @MainActor
-    func togglePin(_ session: PocketSession) async {
-        let pinned = pinnedSessionIds.contains(session.sessionId)
-        if isDemoMode {
-            if pinned { pinnedSessionIds.removeAll { $0 == session.sessionId } }
-            else { pinnedSessionIds.insert(session.sessionId, at: 0) }
-            return
-        }
-        do {
-            let endpoint = pinned ? "workspace/unpinSession" : "workspace/pinSession"
-            let value = try await rpcClient.rpcAdapted(endpoint, args: ["request": ["sessionId": session.sessionId]])
-            if let list = value["pinnedSessionIds"] as? [String] {
-                pinnedSessionIds = list
-            } else if pinned {
-                pinnedSessionIds.removeAll { $0 == session.sessionId }
-            } else {
-                pinnedSessionIds.insert(session.sessionId, at: 0)
-            }
-        } catch {
-            errorMessage = "置顶失败：\(error.localizedDescription)"
-        }
-    }
-
-    /// 归档会话（从列表移除，桌面端同步隐藏）。
-    @MainActor
-    func archive(_ session: PocketSession) async {
-        if isDemoMode {
-            sessions.removeAll { $0.sessionId == session.sessionId }
-            archivedSessionIds.insert(session.sessionId)
-            pinnedSessionIds.removeAll { $0 == session.sessionId }
-            return
-        }
-        do {
-            let value = try await rpcClient.rpcAdapted("workspace/archiveSession", args: ["request": [
-                "sessionId": session.sessionId,
-                "stopActivity": false
-            ]])
-            if let ids = value["archivedSessionIds"] as? [String] {
-                archivedSessionIds = Set(ids)
-            } else {
-                archivedSessionIds.insert(session.sessionId)
-            }
-            sessions.removeAll { $0.sessionId == session.sessionId }
-            pinnedSessionIds.removeAll { $0 == session.sessionId }
-            lastArchivedSession = session
-            if selectedSession?.sessionId == session.sessionId { selectedSession = nil }
-        } catch {
-            errorMessage = "归档失败：\(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    func createSession() async {
-        do {
-            var request: [String: Any] = [:]
-            if let initialized = try? await rpcClient.rpcAdapted("workspace/initializeDefault", args: [:]),
-               let workspace = initialized["workspace"] as? [String: Any],
-               let workspaceId = workspace["workspaceId"] as? String {
-                request["workspaceId"] = workspaceId
-            }
-            let value = try await rpcClient.rpcAdapted("session/create", args: ["request": request])
-            guard let id = value["sessionId"] as? String else { throw ConnectionError.invalidPayload }
-            let session = PocketSession(sessionId: id, updatedAt: Date().timeIntervalSince1970, running: false, blank: true)
-            await loadSessions()
-            if !sessions.contains(where: { $0.sessionId == id }) { sessions.insert(session, at: 0) }
-            open(session)
-        } catch {
-            errorMessage = "无法创建会话：\(error.localizedDescription)"
-        }
-    }
-
     /// 只保留最近打开过的几条会话内容，其余只留 ID（草稿另存在 DraftStore）。
     /// 原生不会把聊过的每条会话都摊在内存里；我们也别一直涨。
     @MainActor
@@ -372,6 +204,43 @@ extension ConnectionModel {
             conversations.removeValue(forKey: id)
         }
         recordDiagnostic("会话缓存回收 \(doomed.count) 条，剩 \(conversations.count) 条")
+    }
+
+    // MARK: 单条会话操作（实现在 SessionActions）
+
+    @MainActor func rename(_ session: PocketSession, to rawTitle: String) async {
+        await sessionActions.rename(session, to: rawTitle)
+    }
+    @MainActor func loadModelCatalog() async { await sessionActions.loadModelCatalog() }
+    @MainActor func selectModel(_ option: ModelOption) async { await sessionActions.selectModel(option) }
+    @MainActor func dismissArchiveUndo() { sessionActions.dismissArchiveUndo() }
+    @MainActor func undoArchive() async { await sessionActions.undoArchive() }
+    @MainActor func togglePin(_ session: PocketSession) async { await sessionActions.togglePin(session) }
+    @MainActor func archive(_ session: PocketSession) async { await sessionActions.archive(session) }
+    @MainActor func createSession() async { await sessionActions.createSession() }
+
+    /// 装配会话操作的依赖（幂等）。
+    @MainActor
+    func installSessionActionProviders() {
+        guard sessionActions.providers == nil else { return }
+        sessionActions.providers = SessionActions.Providers(
+            client: { [weak self] in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try self.rpcClient
+            },
+            store: sessionStore,
+            isDemoMode: { [weak self] in self?.isDemoMode ?? false },
+            reportError: { @MainActor [weak self] message in self?.errorMessage = message },
+            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
+            reload: { @MainActor [weak self] in await self?.loadSessions() },
+            modelGroups: { [weak self] in self?.modelGroups ?? [] },
+            setModelGroups: { @MainActor [weak self] groups in self?.modelGroups = groups },
+            selectedModelLabel: { [weak self] in self?.selectedModelLabel },
+            setSelectedModelLabel: { @MainActor [weak self] label in self?.selectedModelLabel = label },
+            lastArchived: { [weak self] in self?.lastArchivedSession },
+            setLastArchived: { @MainActor [weak self] session in self?.lastArchivedSession = session },
+            open: { @MainActor [weak self] session in self?.open(session) }
+        )
     }
 
     @MainActor
