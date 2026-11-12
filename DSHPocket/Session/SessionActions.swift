@@ -199,6 +199,9 @@ extension ConnectionModel {
                 sessionStore.sessions.insert(session, at: 0)
             }
             open(session)
+            // 列表页是靠 NavigationLink(value:) 推进导航栈的，代码里创建不会自动跳转，
+            // 必须显式把新会话压栈，否则用户会停在列表页等一个不存在的点击。
+            sessionStore.navigationPath = [session]
         } catch {
             reportActionError("无法创建会话：\(error.localizedDescription)")
         }
