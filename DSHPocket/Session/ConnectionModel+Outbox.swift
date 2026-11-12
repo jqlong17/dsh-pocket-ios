@@ -153,20 +153,25 @@ extension ConnectionModel {
     func pendingSendState(for message: PocketMessage) -> PendingSendState? {
         guard message.isPending, let rpcId = message.rpcId else { return nil }
         let id = rpcId.lowercased()
-        if failedSendRpcIds.contains(rpcId) || failedSendRpcIds.contains(id)
-            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.sendFailed }) {
+        let failed = failedSendRpcIds.contains(rpcId) || failedSendRpcIds.contains(id)
+            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.sendFailed })
+        let acked = ackedSendRpcIds.contains(rpcId) || ackedSendRpcIds.contains(id)
+            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.accepted })
+        let queued = queuedSendRpcIds.contains(rpcId) || queuedSendRpcIds.contains(id)
+            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.heldOffline })
+        // 优先级在 DSHKit（可测）：失败 > 已确认 > 断网 > 发送中。
+        // 「已确认」必须压过残留的断网标记，否则已受理的消息会显示「现在断网」。
+        switch PendingSendStatePriority.resolve(failed: failed, acked: acked, queued: queued) {
+        case .failed:
             return .failed
-        }
-        if queuedSendRpcIds.contains(rpcId) || queuedSendRpcIds.contains(id)
-            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.heldOffline }) {
-            return .queued
-        }
-        if ackedSendRpcIds.contains(rpcId) || ackedSendRpcIds.contains(id)
-            || outboxEntries.contains(where: { $0.id.lowercased() == id && $0.accepted }) {
+        case .acked:
             return .acked(steered: (activeConversation?.steeredRpcIds.contains(rpcId) ?? false)
                           || (activeConversation?.steeredRpcIds.contains(id) ?? false))
+        case .queued:
+            return .queued
+        case .sending:
+            return .sending
         }
-        return .sending
     }
 
     /// 失败消息重发：从发件箱取回文本，作为新消息重新发送。

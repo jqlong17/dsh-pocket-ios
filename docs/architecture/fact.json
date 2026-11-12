@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T12:02:56+08:00",
-  "commit": "4b670ce",
+  "generated_at": "2026-11-12T21:20:40+08:00",
+  "commit": "900f5b5",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 52,
-      "lines": 3037
+      "files": 53,
+      "lines": 3061
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 74,
-      "lines": 10364
+      "lines": 10369
     },
     {
       "layer": "ui-tests",
@@ -491,6 +491,17 @@
       "types": [
         "PendingCandidate",
         "PendingReconciler"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/PendingSendStatePriority.swift",
+      "layer": "pure-logic",
+      "lines": 24,
+      "types": [
+        "PendingSendStatePriority"
       ],
       "imports": [
         "Foundation"
@@ -1360,7 +1371,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Outbox.swift",
       "layer": "app",
-      "lines": 370,
+      "lines": 375,
       "types": [
         "HeldOfflineDelivery"
       ],
