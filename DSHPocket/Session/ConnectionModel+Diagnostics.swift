@@ -26,10 +26,80 @@ extension ConnectionModel {
     }
 
 
-   func diagnosticReport() -> String {
+    /// 复制诊断信息：结构化英文报告（格式见 DSHKit 的 DiagnosticsReport）。
+    ///
+    /// 为什么全英文而不是跟随语言：这份文本的读者是排查问题的人，跨语言时英文是默认约定；
+    /// App 内其他文案继续本地化。
+    @MainActor
+    func diagnosticReport() -> String {
         captureDiagnosticSample()
-        let title = currentConversationTitle.isEmpty ? "未打开会话" : currentConversationTitle
-        return diagnostics.report(title: title, memoryLine: diagnosticMemoryLine())
+        let s = conversationSizeSnapshot()
+        let hasSession = !currentConversationTitle.isEmpty
+        let counts = diagnosticSendCounts()
+        let breakdown = Diagnostics.memoryBreakdown()
+        let images = ImageMemory.shared.stats()
+        let kept = diagnostics.providers?.retainedStats() ?? (0, 0, 0, 0)
+
+        var sections: [DiagnosticsReport.Section] = []
+        sections.append(.init("Connection", [
+            ("State", connection.isConnected ? "connected" : "disconnected"),
+            // 脱敏函数同时服务于 UI 弹窗，解析失败时返回中文；报告是英文的，
+            // 所以这里只在「能解析出 host」时用它，否则用占位符。
+            ("Server", URL(string: connection.serverAddress)?.host?.isEmpty == false
+                ? DSHURL.redactedAddress(connection.serverAddress)
+                : DiagnosticsReport.missing),
+            ("Live", liveConnection.label),
+            ("Demo mode", isDemoMode ? "yes" : "no")
+        ]))
+        sections.append(.init("Session", hasSession ? [
+            ("Title", s.title),
+            ("Messages", "\(s.messages)  (user \(s.userMessages) / assistant \(s.assistantMessages) / pending \(s.pendingMessages))"),
+            ("Steps", "\(s.steps)  (unfinished \(s.unfinishedSteps) / error \(s.errorSteps) / groups \(s.stepGroups))"),
+            ("Timeline", "\(s.timelineRows) rows · failed turns \(s.failures)"),
+            ("Has more", s.hasMore ? "yes" : "no"),
+            ("Load", s.loadMs.map { "\($0) ms via \(s.loadSource ?? "unknown")" } ?? DiagnosticsReport.missing)
+        ] : [("Title", DiagnosticsReport.missing)]))
+        sections.append(.init("Storage", [
+            ("Message text", DiagnosticsReport.bytes(s.messageBytes)),
+            ("Step results", DiagnosticsReport.bytes(s.stepBytes)),
+            ("Images", "\(s.images) refs · cache \(s.cachedImages) / \(DiagnosticsReport.bytes(s.cachedImageBytes))"),
+            ("Live views", "\(s.liveViews)")
+        ]))
+        sections.append(.init("Memory", [
+            ("Footprint", "\(breakdown.footprintMB) MB"),
+            ("Compressed", "\(breakdown.compressedMB) MB"),
+            ("Images held", "\(images.count) / \(DiagnosticsReport.bytes(images.bytes))"),
+            ("Retained", "\(kept.0) sessions · \(kept.1) msgs · text \(DiagnosticsReport.bytes(kept.2))")
+        ]))
+        sections.append(.init("Outbox", [
+            ("Counts", "pending \(counts.pending) · queued \(counts.queued) · failed \(counts.failed)"),
+            ("Flushing", outbox.flushInFlight ? "yes" : "no")
+        ]))
+
+        // 事件行固定英文：样本里存的是本地化网络文案（「通」「演示」），
+        // 报告是给跨语言排查用的，所以在这里映射回英文，不改样本本身的存储。
+        let events = diagnostics.samples.map { sample in
+            DiagnosticsReport.eventLine(
+                at: sample.at,
+                text: "mem \(sample.memoryMB)MB · pending \(sample.pending) · queued \(sample.queued) · failed \(sample.failed) · net \(Self.englishNetworkLabel(sample.network))"
+            )
+        }
+        let notes = [
+            "Footprint is phys_footprint for the whole process, not the conversation's text size.",
+            "Step count is not row count — the UI draws one row per step group.",
+            "Live views should return to 0 after leaving a conversation."
+        ]
+        return DiagnosticsReport.render(.init(
+            header: .init(generated: Date(),
+                          appVersion: AppInfo.version,
+                          build: AppInfo.build,
+                          device: AppInfo.deviceModel,
+                          system: AppInfo.systemVersion,
+                          locale: AppInfo.localeIdentifier),
+            sections: sections,
+            events: events,
+            notes: notes
+        ))
     }
 
 
@@ -194,4 +264,15 @@ extension ConnectionModel {
         diagnostics.setEnterMsForOpenVisit(ms)
     }
 
+
+    /// 把样本里存的中文网络文案映射成英文（只用于诊断报告输出）。
+    static func englishNetworkLabel(_ raw: String) -> String {
+        if raw.hasPrefix("通") { return "connected" }
+        if raw.hasPrefix("演示") { return "demo" }
+        if raw.hasPrefix("连接中") { return "connecting" }
+        if raw.hasPrefix("重连") { return "reconnecting" }
+        if raw.hasPrefix("断") { return "disconnected" }
+        if raw.hasPrefix("未连接") { return "idle" }
+        return raw.allSatisfy(\.isASCII) ? raw : "unknown"
+    }
 }

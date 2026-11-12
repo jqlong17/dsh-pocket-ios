@@ -58,6 +58,7 @@
 		D1CFA11E0000000000000036 /* ConnectionModel+Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000035 /* ConnectionModel+Diagnostics.swift */; };
 		D1CFA11E0000000000000038 /* ConnectionModel+History.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000037 /* ConnectionModel+History.swift */; };
 		D1CFA11E000000000000003A /* LaunchPlaceholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000039 /* LaunchPlaceholder.swift */; };
+		D1CFA11E000000000000003C /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000003B /* AppInfo.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -151,6 +152,7 @@
 		D1CFA11E0000000000000035 /* ConnectionModel+Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Diagnostics.swift"; sourceTree = "<group>"; };
 		D1CFA11E0000000000000037 /* ConnectionModel+History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+History.swift"; sourceTree = "<group>"; };
 		D1CFA11E0000000000000039 /* LaunchPlaceholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchPlaceholder.swift; sourceTree = "<group>"; };
+		D1CFA11E000000000000003B /* AppInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInfo.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -258,6 +260,7 @@
 				99116BD77194DF3FA35B0EE8 /* AppSupport.swift */,
 				97313FE375E37A4D2B14B193 /* Localization.swift */,
 				D1CFA11E0000000000000003 /* PocketMotion.swift */,
+				D1CFA11E000000000000003B /* AppInfo.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -547,6 +550,7 @@
 				D1CFA11E000000000000002A /* ConversationMoreMenu.swift in Sources */,
 				D1CFA11E000000000000002C /* ConversationStatusViews.swift in Sources */,
 				D1CFA11E000000000000003A /* LaunchPlaceholder.swift in Sources */,
+				D1CFA11E000000000000003C /* AppInfo.swift in Sources */,
 				D1CFA11E0000000000000010 /* ConnectionState.swift in Sources */,
 				D1CFA11E0000000000000012 /* OutboxCoordinator.swift in Sources */,
 				D1CFA11E0000000000000014 /* SessionStore.swift in Sources */,

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T23:48:09+08:00",
-  "commit": "24c110c",
+  "generated_at": "2026-11-13T00:06:50+08:00",
+  "commit": "ab10c45",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 55,
-      "lines": 3144
+      "files": 56,
+      "lines": 3298
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 83,
-      "lines": 10819
+      "files": 84,
+      "lines": 10947
     },
     {
       "layer": "ui-tests",
@@ -536,6 +536,17 @@
       "lines": 28,
       "types": [
         "ThumbnailCachePolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Support/DiagnosticsReport.swift",
+      "layer": "pure-logic",
+      "lines": 154,
+      "types": [
+        "DiagnosticsReport"
       ],
       "imports": [
         "Foundation"
@@ -1351,7 +1362,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Diagnostics.swift",
       "layer": "app",
-      "lines": 198,
+      "lines": 279,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1750,6 +1761,18 @@
       "imports": [
         "Foundation",
         "Observation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Support/AppInfo.swift",
+      "layer": "app",
+      "lines": 47,
+      "types": [
+        "AppInfo"
+      ],
+      "imports": [
+        "Foundation",
+        "UIKit"
       ]
     },
     {
