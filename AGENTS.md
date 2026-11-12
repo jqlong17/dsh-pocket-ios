@@ -44,7 +44,7 @@
 - `docs/architecture/journey.jsonl`：架构决策只追加，字段固定。改动分层/抽象时写一条。
 - `./scripts/check-architecture.sh`：违规检查，退出码 1。**新增违规当次修掉**，存量按 spec 还债。
 
-当前存量 8 处违规（6 个超 400 行、ConnectionModel 7 个 extension、MotionPolicy 在纯逻辑层 import SwiftUI）。
+当前存量 6 处违规（5 个超 400 行、ConnectionModel 仍有 7 个 +Feature 文件）。
 
 ## 3.5 提交时必须包含工程文件
 
