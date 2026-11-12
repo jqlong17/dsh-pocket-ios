@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-12T11:31:26+08:00",
-  "commit": "6e373af",
+  "generated_at": "2026-11-12T11:32:05+08:00",
+  "commit": "ed944cb",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 38,
-      "lines": 2441
+      "files": 39,
+      "lines": 2507
     },
     {
       "layer": "app",
@@ -203,6 +203,17 @@
       "lines": 22,
       "types": [
         "DSHNetworkErrorPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/PendingQuestionDecoding.swift",
+      "layer": "pure-logic",
+      "lines": 66,
+      "types": [
+        "PendingQuestionPayload"
       ],
       "imports": [
         "Foundation"
@@ -842,7 +853,7 @@
     {
       "file": "DSHPocket/Model/PendingUserQuestion.swift",
       "layer": "app",
-      "lines": 37,
+      "lines": 52,
       "types": [
         "PendingUserQuestion"
       ],
@@ -1173,7 +1184,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 956,
+      "lines": 941,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2030,7 +2041,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "956 行"
+      "detail": "941 行"
     },
     {
       "rule": "file-max-400",

@@ -548,27 +548,12 @@ extension ConnectionModel {
         activeConversation?.pendingQuestionTurn = nil
     }
 
-    /// 解析 `ask_user_question` 的 arguments（questions/options）。
+    /// 解析交由 DSHKit（纯逻辑、可单测），这里只做类型转换。
     static func parsePendingQuestion(callId: String, arguments: String) -> PendingUserQuestion? {
-        guard let data = arguments.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rawQuestions = object["questions"] as? [[String: Any]] else { return nil }
-        let items: [PendingUserQuestion.Item] = rawQuestions.compactMap { raw in
-            guard let id = raw["id"] as? String,
-                  let question = raw["question"] as? String else { return nil }
-            let options: [PendingUserQuestion.Option] = (raw["options"] as? [[String: Any]] ?? []).compactMap { opt in
-                guard let label = opt["label"] as? String else { return nil }
-                return PendingUserQuestion.Option(label: label, description: opt["description"] as? String)
-            }
-            return PendingUserQuestion.Item(id: id,
-                                            header: raw["header"] as? String,
-                                            question: question,
-                                            detail: raw["detail"] as? String,
-                                            options: options,
-                                            multiSelect: raw["multiSelect"] as? Bool ?? false)
+        guard let payload = PendingQuestionPayload.decode(callId: callId, arguments: arguments) else {
+            return nil
         }
-        guard !items.isEmpty else { return nil }
-        return PendingUserQuestion(callId: callId, questions: items)
+        return PendingUserQuestion(payload: payload)
     }
 
     /// 回答 `ask_user_question`（userQuestions/answer）。

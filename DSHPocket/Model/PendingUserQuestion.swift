@@ -34,3 +34,18 @@ struct PendingUserQuestion: Equatable {
     let callId: String
     let questions: [Item]
 }
+
+extension PendingUserQuestion {
+    /// 从 DSHKit 的解析结果构造（解析与类型转换分离，见 spec/12）。
+    init(payload: PendingQuestionPayload) {
+        self.init(callId: payload.callId,
+                  questions: payload.questions.map { item in
+                      Item(id: item.id,
+                           header: item.header,
+                           question: item.question,
+                           detail: item.detail,
+                           options: item.options.map { Option(label: $0.label, description: $0.description) },
+                           multiSelect: item.multiSelect)
+                  })
+    }
+}
