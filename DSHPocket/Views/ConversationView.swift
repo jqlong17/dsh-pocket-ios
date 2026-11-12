@@ -74,6 +74,8 @@ struct ConversationView: View {
             switch (lhs.message, rhs.message) {
             case let (.some(l), .some(r)):
                 if l.isPending != r.isPending { return !l.isPending }
+                // 两条都在等地发送：按本地发送顺序，不要用随机 id。
+                if l.localOrder != r.localOrder { return l.localOrder < r.localOrder }
                 return l.id < r.id
             case (.some, nil):
                 return true
