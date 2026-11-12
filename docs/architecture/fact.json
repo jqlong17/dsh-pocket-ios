@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:40:12+08:00",
-  "commit": "7282a14",
+  "generated_at": "2026-11-12T11:40:38+08:00",
+  "commit": "dcf53aa",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 43,
-      "lines": 2671
+      "files": 44,
+      "lines": 2707
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 68,
-      "lines": 9974
+      "lines": 9955
     },
     {
       "layer": "ui-tests",
@@ -281,6 +281,17 @@
       "lines": 25,
       "types": [
         "RPCRetryPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/SendLandedScan.swift",
+      "layer": "pure-logic",
+      "lines": 36,
+      "types": [
+        "SendLandedScan"
       ],
       "imports": [
         "Foundation"
@@ -1231,7 +1242,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 942,
+      "lines": 923,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2111,7 +2122,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "942 行"
+      "detail": "923 行"
     },
     {
       "rule": "file-max-400",

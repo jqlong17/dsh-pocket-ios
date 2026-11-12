@@ -909,27 +909,8 @@ extension ConnectionModel {
             ]]) else { continue }
             sawReachableResponse = true
             let records = value["records"] as? [[String: Any]] ?? []
-            for record in records {
-                guard let event = record["event"] as? [String: Any],
-                      let data = event["data"] as? [String: Any] else { continue }
-                // 正常落库：user/message 带 rpcId
-                if event["type"] as? String == "user/message",
-                   let source = data["source"] as? [String: Any],
-                   let rpcId = source["rpcId"] as? String,
-                   RPCId.matches(rpcId, requestId) {
-                    return .landed
-                }
-                // 生成中 steer：先进入 agent inbox（agent/inbox/spliced），
-                // 不会立刻变成 user/message；这里也视为"已送达，排队等待处理"。
-                if event["type"] as? String == "agent/inbox/spliced",
-                   let inserted = data["inserted"] as? [[String: Any]] {
-                    for item in inserted {
-                        guard let source = item["source"] as? [String: Any],
-                              let rpcId = source["rpcId"] as? String else { continue }
-                        if RPCId.matches(rpcId, requestId) { return .landed }
-                    }
-                }
-            }
+            // 扫描规则在 DSHKit（可测）：user/message 或 agent/inbox/spliced 都算已送达。
+            if SendLandedScan.landed(inRecords: records, requestId: requestId) { return .landed }
         }
         return sawReachableResponse ? .absent : .unreachable
     }
