@@ -20,7 +20,7 @@ extension ConnectionModel {
     /// 用最新 session 列表更新 running 状态机，识别"运行中 → 已结束"的会话。
     @MainActor
     func detectSessionCompletions() {
-        let latest = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0.running) })
+        let latest = Dictionary(sessions.map { ($0.sessionId, $0.running) }, uniquingKeysWith: { first, _ in first })
         let completed = completionTracker.update(latest: latest)
         UserDefaults.standard.set(latest, forKey: Self.runningSnapshotKey)
         recordDiagnostic("可用会话刷新：\(latest.count) 个，完成事件 \(completed.count) 个")
@@ -556,7 +556,7 @@ extension ConnectionModel {
     @MainActor
     func mergeMessages(_ incoming: [PocketMessage]) {
         loadOutboxIfNeeded()
-        var bySequence = Dictionary(uniqueKeysWithValues: messages.filter { !$0.isPending }.map { ($0.sequence, $0) })
+        var bySequence = Dictionary(messages.filter { !$0.isPending }.map { ($0.sequence, $0) }, uniquingKeysWith: { first, _ in first })
         for message in incoming where !message.isPending { bySequence[message.sequence] = message }
         let incomingUserMessages = incoming.filter(\.isUser)
         let incomingRpcIds = Set(incoming.compactMap(\.rpcId).map { $0.lowercased() })

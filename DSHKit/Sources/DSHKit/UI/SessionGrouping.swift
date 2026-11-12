@@ -31,7 +31,7 @@ public enum SessionGrouping {
 
     public static func groups(items: [Item], pinnedIds: [String]) -> [Group] {
         var result: [Group] = []
-        let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.sessionId, $0) })
+        let byId = Dictionary(items.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         let pinned = pinnedIds.compactMap { byId[$0] }
         if !pinned.isEmpty {
             result.append(Group(id: pinnedGroupId, folder: nil,
@@ -59,7 +59,7 @@ public enum SessionGrouping {
     /// 展示顺序：置顶在前（按 pinnedIds 顺序），其余保持原顺序。
     public static func displayOrder(items: [Item], pinnedIds: [String]) -> [String] {
         guard !pinnedIds.isEmpty else { return items.map(\.sessionId) }
-        let byId = Dictionary(uniqueKeysWithValues: items.map { ($0.sessionId, $0) })
+        let byId = Dictionary(items.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         let pinned = pinnedIds.compactMap { byId[$0]?.sessionId }
         let pinnedSet = Set(pinnedIds)
         return pinned + items.map(\.sessionId).filter { !pinnedSet.contains($0) }

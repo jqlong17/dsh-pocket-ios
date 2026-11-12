@@ -61,6 +61,21 @@ for f in $(git status --porcelain | awk '$1=="??"{print $2}' | grep '\.swift$');
 done
 ```
 
+## 3.6 改了 DSHKit 必须全新构建
+
+本地 Swift Package 修改后，**增量构建可能继续链接旧的包产物**——表现是「代码改了、行为没变」，
+甚至「修的 bug 还在」（2026-11-12 真机闪退就是这样：源码已修，设备上仍是旧二进制）。
+
+验证或装机时用干净产物：
+
+```bash
+rm -rf /tmp/dd-fresh && xcodebuild build -scheme DSHPocket \
+  -destination 'platform=iOS,id=<udid>' -derivedDataPath /tmp/dd-fresh ...
+```
+
+另外：`Dictionary(uniqueKeysWithValues:)` 遇到重复 key 是 **fatalError**（不是可选失败）。
+服务端返回的列表可能重复，一律改用 `Dictionary(_:uniquingKeysWith:)`。
+
 ## 4. 硬性禁止
 
 - 不要把公网地址、token、凭证写进代码或日志（历史已因此重写过一次）。

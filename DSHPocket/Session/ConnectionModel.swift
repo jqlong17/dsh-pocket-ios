@@ -466,7 +466,7 @@ final class ConnectionModel {
     var sessionGroups: [SessionGroup] {
         // 分组规则在 DSHKit（可测）；这里只做类型映射与文案。
         let items = sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) }
-        let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0) })
+        let byId = Dictionary(sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         return SessionGrouping.groups(items: items, pinnedIds: pinnedSessionIds).compactMap { group in
             let members = group.sessionIds.compactMap { byId[$0] }
             guard !members.isEmpty else { return nil }
@@ -487,7 +487,7 @@ final class ConnectionModel {
     /// 列表展示顺序：置顶在前（最近置顶优先），其余保持服务端顺序。
     var displaySessions: [PocketSession] {
         guard !pinnedSessionIds.isEmpty else { return sessions }
-        let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0) })
+        let byId = Dictionary(sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         return SessionGrouping.displayOrder(
             items: sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) },
             pinnedIds: pinnedSessionIds

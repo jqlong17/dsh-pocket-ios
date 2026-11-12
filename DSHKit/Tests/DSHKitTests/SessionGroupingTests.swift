@@ -40,3 +40,24 @@ final class SessionGroupingTests: XCTestCase {
         XCTAssertEqual(SessionGrouping.displayOrder(items: items, pinnedIds: []), ["a", "b"])
     }
 }
+
+// 回归：服务端列表出现过重复 sessionId，用 Dictionary(uniqueKeysWithValues:) 会 fatalError。
+// 2026-11-12 真机闪退就是这个：Fatal error: Dictionary literal contains duplicate keys。
+final class SessionGroupingDuplicateTests: XCTestCase {
+    private func item(_ id: String, _ cwd: String?) -> SessionGrouping.Item {
+        .init(sessionId: id, cwd: cwd)
+    }
+
+    func testDuplicateSessionIdsDoNotCrash() {
+        let items = [item("a", "/p/one"), item("a", "/p/one"), item("b", "/p/two")]
+        let groups = SessionGrouping.groups(items: items, pinnedIds: ["a"])
+        XCTAssertEqual(groups.first?.sessionIds, ["a"])
+        XCTAssertEqual(groups.last?.sessionIds, ["b"])
+    }
+
+    func testDuplicateIdsInDisplayOrderKeepFirst() {
+        // 与原实现等价：置顶取第一个，其余过滤掉所有同 id，所以重复 id 最终只出现一次。
+        let items = [item("a", nil), item("a", nil)]
+        XCTAssertEqual(SessionGrouping.displayOrder(items: items, pinnedIds: ["a"]), ["a"])
+    }
+}
