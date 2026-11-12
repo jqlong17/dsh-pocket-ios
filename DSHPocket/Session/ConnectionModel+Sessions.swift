@@ -410,32 +410,8 @@ extension ConnectionModel {
         liveTask?.cancel()
         fallbackTask?.cancel()
 
-        let isNewConversation = conversations[session.sessionId] == nil
-        let conversation = conversations[session.sessionId] ?? ConversationState(sessionId: session.sessionId)
-        conversations[session.sessionId] = conversation
-        conversation.lastOpenedAt = Date()
-        activeConversation = conversation
-        conversation.conversationToken = UUID()
-        conversation.turnStarts.removeAll()
-        conversation.turnEnds.removeAll()
-        conversation.isLoadingConversation = false
-        conversation.conversationError = nil
-        // 打开时先用会话列表里的 running 状态（快照窗口可能不包含 turn/start 边界）。
-        conversation.isTurnRunning = session.running
-        conversation.turnStartedAt = session.running
-            ? Self.dateFromSessionUpdatedAt(session.updatedAt)
-            : nil
-        conversation.hasMoreOlder = false
-        conversation.isLoadingOlder = false
-        conversation.olderAnchorID = nil
-        conversation.liveTurnEventsSeen = false
-        if isNewConversation {
-            conversation.messages = []
-            conversation.steps = []
-            conversation.turnFailures = []
-        }
-
-        selectedSession = session
+        // 纯状态切换在 SessionStore（可单测）；这里只负责取消旧流与后续编排。
+        let (conversation, isNewConversation) = sessionStore.activate(session)
         // 可见会话归模型维护，视图不再写（通知直达等入口也能覆盖到）。
         visibleSessionId = session.sessionId
         markFinishedAwaitingRead(session.sessionId)

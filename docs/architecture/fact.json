@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:42:12+08:00",
-  "commit": "7ea0735",
+  "generated_at": "2026-11-12T11:42:46+08:00",
+  "commit": "b88ed85",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 69,
-      "lines": 10033
+      "lines": 10049
     },
     {
       "layer": "ui-tests",
@@ -1322,7 +1322,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 692,
+      "lines": 668,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1476,7 +1476,7 @@
     {
       "file": "DSHPocket/Session/SessionStore.swift",
       "layer": "app",
-      "lines": 27,
+      "lines": 67,
       "types": [
         "SessionStore"
       ],
@@ -2152,7 +2152,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
-      "detail": "692 行"
+      "detail": "668 行"
     },
     {
       "rule": "file-max-400",

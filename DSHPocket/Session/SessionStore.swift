@@ -24,3 +24,43 @@ final class SessionStore {
     var conversations: [String: ConversationState] = [:]
     var active: ConversationState?
 }
+
+extension SessionStore {
+    /// 切换到一条会话：只做**纯状态**（查/建缓存、重置时间线标记、设为当前）。
+    /// 取消旧流、恢复发件箱、启动订阅这些编排动作留在 ConnectionModel。
+    ///
+    /// - Returns: 该会话的状态对象，以及是不是第一次打开。
+    @discardableResult
+    func activate(_ session: PocketSession, now: Date = Date()) -> (conversation: ConversationState, isNew: Bool) {
+        let isNew = conversations[session.sessionId] == nil
+        let conversation = conversations[session.sessionId] ?? ConversationState(sessionId: session.sessionId)
+        conversations[session.sessionId] = conversation
+        conversation.lastOpenedAt = now
+        active = conversation
+        conversation.conversationToken = UUID()
+        conversation.turnStarts.removeAll()
+        conversation.turnEnds.removeAll()
+        conversation.isLoadingConversation = false
+        conversation.conversationError = nil
+        // 打开时先用列表里的 running 状态：快照窗口可能不包含 turn/start 边界。
+        conversation.isTurnRunning = session.running
+        conversation.turnStartedAt = session.running ? Self.updatedAt(session.updatedAt) : nil
+        conversation.hasMoreOlder = false
+        conversation.isLoadingOlder = false
+        conversation.olderAnchorID = nil
+        conversation.liveTurnEventsSeen = false
+        if isNew {
+            conversation.messages = []
+            conversation.steps = []
+            conversation.turnFailures = []
+        }
+        selected = session
+        return (conversation, isNew)
+    }
+
+    /// 列表的 updatedAt 可能是毫秒或秒。
+    static func updatedAt(_ value: TimeInterval) -> Date {
+        let seconds = value > 10_000_000_000 ? value / 1000 : value
+        return Date(timeIntervalSince1970: seconds)
+    }
+}
