@@ -545,34 +545,18 @@ final class ConnectionModel {
 
     /// 按 turn 分组的工具步骤，供会话页折叠成"过程"一行。
     var stepGroups: [PocketStepGroup] {
-        let sortedSteps = steps.sorted { $0.sequence < $1.sequence }
-        // 助手文字消息（非 pending）是过程段之间的分隔点：桌面端会把工具活动拆成多段。
+        // 分组规则在 DSHKit（可测）：轮次变化与「助手文字消息」都是分隔点。
+        let source = steps.sorted { $0.sequence < $1.sequence }
         let boundaries = messages
             .filter { !$0.isUser && !$0.isPending && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map(\.sequence)
-            .sorted()
-
-        var groups: [PocketStepGroup] = []
-        var current: [PocketStep] = []
-        var lastSeq = Int.min
-        var lastTurn: Int?
-
-        func flush() {
-            guard let first = current.first else { return }
-            groups.append(PocketStepGroup(turn: first.turn, sequence: first.sequence, steps: current))
-            current = []
+        let groups = StepGrouping.groups(steps: source.map { StepGrouping.Step(turn: $0.turn, sequence: $0.sequence) },
+                                         textBoundaries: boundaries)
+        return groups.compactMap { indices in
+            guard let first = indices.first.map({ source[$0] }) else { return nil }
+            return PocketStepGroup(turn: first.turn, sequence: first.sequence,
+                                   steps: indices.map { source[$0] })
         }
-
-        for step in sortedSteps {
-            let turnChanged = lastTurn != nil && step.turn != lastTurn
-            let crossedText = boundaries.contains { $0 > lastSeq && $0 < step.sequence }
-            if turnChanged || crossedText { flush() }
-            current.append(step)
-            lastSeq = step.sequence
-            lastTurn = step.turn
-        }
-        flush()
-        return groups
     }
 
     /// 用 DSHKit 构建的协议客户端（共享 URLSession cookie）。
