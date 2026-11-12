@@ -130,28 +130,28 @@ extension ConnectionModel {
 
     func loadImage(_ ref: PocketImageRef, tier: ImagePipeline.Tier) async -> UIImage? {
         guard let session = sessionStore.selected else { return nil }
+        let screenLongSide = Int(max(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+                                 * UIScreen.main.scale)
+        // 全屏按屏幕像素取（1:1 不放大）；缩略图仍是 640。
         let maxPixel: CGFloat = tier == .full
-            ? CGFloat(ImageFetchPolicy.fullMaxPixel)
+            ? CGFloat(ImageFetchPolicy.fullMaxPixel(screenLongSide: screenLongSide))
             : CGFloat(ImageFetchPolicy.thumbnailMaxPixel)
-        let bytes = ref.bytes
-        let sessionId = session.sessionId
-        let request = ref.requestJSON
-        return await ImagePipeline.shared.image(attachmentId: ref.attachmentId,
-                                                tier: tier,
-                                                maxPixel: maxPixel) { [weak self] in
-            guard let self else { return nil }
-            // 尺寸协商：服务端支持就按需缩放，不支持会忽略 maxPixel，行为不变。
-            let payload = ImageFetchPolicy.requestArgs(sessionId: sessionId,
-                                                       attachment: request,
-                                                       maxPixel: Int(maxPixel))
-            let value = try await rpcClient.rpcAdapted("session/attachment", args: ["request": payload])
-            guard let base64 = value["data"] as? String else {
-                // 附件不存在：清掉本地磁盘副本，避免一直占着 5 MB 预算。
-                if bytes > 0 { ImagePipeline.shared.forget(attachmentId: ref.attachmentId) }
-                return nil
+        let source = AttachmentByteSource(
+            attachmentId: ref.attachmentId,
+            sessionId: session.sessionId,
+            requestJSON: ref.requestJSON,
+            knownBytes: ref.bytes,
+            rpc: { [weak self] method, args in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try await self.rpcClient.rpcAdapted(method, args: args)
             }
-            return Data(base64Encoded: base64)
+        )
+        let image = await ImagePipeline.shared.image(source: source, tier: tier, maxPixel: maxPixel)
+        // 附件不存在：清掉本地缓存，避免一直占着预算。
+        if image == nil, ref.bytes > 0 {
+            ImagePipeline.shared.forget(cacheKey: source.cacheKey)
         }
+        return image
     }
 
     /// 打开任务面板时才订阅。重复调用无副作用。
@@ -286,5 +286,22 @@ extension ConnectionModel {
         if let id = sessionStore.selected?.sessionId {
             DraftImageStore.save(draftImages, sessionId: id)
         }
+    }
+
+    /// 当前会话里全部 Markdown 内嵌图片（按消息顺序），供全屏左右翻页。
+    ///
+    /// 只收 `.image` 段：文本段里的行内图片在 Markdown 解析阶段就已经是图片段了。
+    var conversationMarkdownImageURLs: [URL] {
+        var seen = Set<String>()
+        var urls: [URL] = []
+        for message in messages where !message.isPending {
+            for segment in markdownSegments(message.text) {
+                if case .image(let url, _) = segment, !seen.contains(url.absoluteString) {
+                    seen.insert(url.absoluteString)
+                    urls.append(url)
+                }
+            }
+        }
+        return urls
     }
 }

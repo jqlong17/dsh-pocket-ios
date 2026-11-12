@@ -28,17 +28,22 @@ final class ImagePipeline {
         return cache
     }()
 
-    /// 取图。`load` 只在内存与磁盘都没命中时调用。
-    func image(attachmentId: String,
+    /// 取图。附件图与 Markdown 图共用这一条路径，差异只在 `source`。
+    ///
+    /// 分层规则：
+    /// - `.thumbnail`：内存 → 磁盘 → 网络，解码到 640，磁盘留一份（5MB 预算）；
+    /// - `.full`：只用内存缓存，解码到屏幕像素。**不写磁盘**——高清动辄 1MB，
+    ///   存了会把 5MB 预算里的缩略图挤出去，反而让列表更慢。
+    func image(source: ImageByteSource,
                tier: Tier,
-               maxPixel: CGFloat,
-               load: @escaping () async throws -> Data?) async -> UIImage? {
-        let key = "\(tier.rawValue):\(attachmentId)"
+               maxPixel: CGFloat) async -> UIImage? {
+        let key = "\(tier.rawValue):\(source.cacheKey)"
 
-        if let cached = memoryImage(attachmentId: attachmentId, tier: tier) { return cached }
-        if tier == .thumbnail, let fromDisk = disk.read(ThumbnailCachePolicy.fileName(attachmentId: attachmentId,
-                                                                                      maxPixel: Int(maxPixel))) {
-            ImageMemory.shared.store(fromDisk, forKey: attachmentId)
+        if let cached = memoryImage(key: source.cacheKey, tier: tier) { return cached }
+        if tier == .thumbnail,
+           let fromDisk = disk.read(ThumbnailCachePolicy.fileName(attachmentId: source.cacheKey,
+                                                                  maxPixel: Int(maxPixel))) {
+            ImageMemory.shared.store(fromDisk, forKey: source.cacheKey)
             return fromDisk
         }
 
@@ -50,12 +55,12 @@ final class ImagePipeline {
         }
         let task = Task<UIImage?, Never> { [weak self] in
             defer { self?.clearInFlight(key) }
-            guard let data = try? await load() else { return nil }
+            guard let data = try? await source.data(maxPixel: Int(maxPixel)) else { return nil }
             // 解码放到后台，避免大图首次显示卡主线程。
             guard let image = await Task.detached(priority: .utility, operation: {
                 ImageMemory.thumbnail(data: data, maxPixel: maxPixel)
             }).value else { return nil }
-            self?.store(image, attachmentId: attachmentId, tier: tier, maxPixel: maxPixel)
+            self?.store(image, key: source.cacheKey, tier: tier, maxPixel: maxPixel)
             return image
         }
         inFlight[key] = task
@@ -69,31 +74,31 @@ final class ImagePipeline {
         lock.unlock()
     }
 
-    private func memoryImage(attachmentId: String, tier: Tier) -> UIImage? {
+    private func memoryImage(key: String, tier: Tier) -> UIImage? {
         switch tier {
         case .thumbnail:
-            return ImageMemory.shared.image(forKey: attachmentId)
+            return ImageMemory.shared.image(forKey: key)
         case .full:
-            return fullCache.object(forKey: attachmentId as NSString)
+            return fullCache.object(forKey: key as NSString)
         }
     }
 
-    private func store(_ image: UIImage, attachmentId: String, tier: Tier, maxPixel: CGFloat) {
+    private func store(_ image: UIImage, key: String, tier: Tier, maxPixel: CGFloat) {
         switch tier {
         case .thumbnail:
-            ImageMemory.shared.store(image, forKey: attachmentId)
+            ImageMemory.shared.store(image, forKey: key)
             disk.write(image,
-                       name: ThumbnailCachePolicy.fileName(attachmentId: attachmentId, maxPixel: Int(maxPixel)))
+                       name: ThumbnailCachePolicy.fileName(attachmentId: key, maxPixel: Int(maxPixel)))
         case .full:
             let cost = max(image.cgImage.map { $0.width * $0.height * 4 } ?? 1, 1)
-            fullCache.setObject(image, forKey: attachmentId as NSString, cost: cost)
+            fullCache.setObject(image, forKey: key as NSString, cost: cost)
         }
     }
 
     /// 附件失效时清掉磁盘副本。
-    func forget(attachmentId: String) {
-        disk.removePrefix(attachmentId)
-        fullCache.removeObject(forKey: attachmentId as NSString)
+    func forget(cacheKey: String) {
+        disk.removePrefix(cacheKey)
+        fullCache.removeObject(forKey: cacheKey as NSString)
     }
 }
 

@@ -21,9 +21,13 @@ import UserNotifications
 struct RemoteMarkdownImage: View {
     let url: URL
     var caption: String? = nil
+    /// 同会话的全部图片（按消息顺序）：点开后可以左右翻。
+    var allImageURLs: [URL] = []
     @State private var image: UIImage?
     @State private var failed = false
     @State private var showsPreview = false
+    /// 视图消失后的延迟清理任务（5 秒内回来就取消）。
+    @State private var clearTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -49,7 +53,18 @@ struct RemoteMarkdownImage: View {
         .contentShape(Rectangle())
         .onTapGesture { if image != nil { showsPreview = true } }
         .fullScreenCover(isPresented: $showsPreview) {
-            if let image { FullscreenImageViewer(image: image) }
+            // 有点开上下文就带上整组图，支持左右翻页；否则退化成单张。
+            let urls = allImageURLs.isEmpty ? [url] : allImageURLs
+            let index = urls.firstIndex(of: url) ?? 0
+            let entries = urls.map { target in
+                FullscreenEntry(
+                    id: ImageSourceKey.remote(target),
+                    source: RemoteURLByteSource(url: target),
+                    // 只有当前这张已经解码过，其余页进来再拉（避免一次解码十几张）。
+                    preview: target == url ? image : nil
+                )
+            }
+            FullscreenImageViewer(entries: entries, startIndex: index)
         }
         .overlay(alignment: .bottomLeading) {
             if let caption, !caption.isEmpty {
@@ -63,21 +78,34 @@ struct RemoteMarkdownImage: View {
         }
         .task {
             guard image == nil else { return }
-            let key = "md:" + url.absoluteString
-            if let cached = ImageMemory.shared.image(forKey: key) { image = cached; return }
-            do {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                      let loaded = ImageMemory.thumbnail(data: data) else {
-                    failed = true
-                    return
-                }
-                ImageMemory.shared.store(loaded, forKey: key)
+            // 与附件图走同一条管线：缓存、降采样、并发去重都由 ImagePipeline 负责，
+            // 这里只提供「怎么拿字节」。以前这条线自己缩到 640，导致全屏时是放大的缩略图。
+            let source = RemoteURLByteSource(url: url)
+            let loaded = await ImagePipeline.shared.image(
+                source: source,
+                tier: .thumbnail,
+                maxPixel: CGFloat(ImageFetchPolicy.thumbnailMaxPixel)
+            )
+            if let loaded {
                 image = loaded
-            } catch {
+            } else {
                 failed = true
             }
         }
-        .onDisappear { image = nil }
+        .onAppear {
+            // 重新出现在屏幕上：取消待执行的清理。
+            clearTask?.cancel()
+            clearTask = nil
+        }
+        .onDisappear {
+            // 不立即清空：列表快速滑动时图片反复进出，立即清会一直看到占位图。
+            // 5 秒足够覆盖「滑过去又滑回来」，也不会长期占着解码后的位图。
+            clearTask?.cancel()
+            clearTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                image = nil
+            }
+        }
     }
 }

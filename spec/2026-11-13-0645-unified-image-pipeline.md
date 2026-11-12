@@ -1,9 +1,9 @@
 # 统一图片管线 + 全屏翻页 + 延迟清理
 
-> **Status**: In Review
+> **Status**: In Review（代码完成，待真机验证）
 > **起始日期**：2026-11-13
 > **预估工时**：185 分钟（单元累加）
-> **对应提交**：（完成后回填）
+> **对应提交**：`c4dbb2a`（待记录）
 > **文件名**：`spec/2026-11-13-0645-unified-image-pipeline.md`
 
 ## 背景 / 问题
@@ -226,3 +226,23 @@ struct FullscreenImageViewer: View {
 | 编译 + 测试 + 架构 | 4 轮 | 每轮约 2 | 8 分钟 |
 | 真机验证三条 | 1 | 实测 20 | 20 分钟 |
 | **合计** | | | **185 分钟** |
+
+---
+
+## 实现进度（2026-11-13 07:30）
+
+| 步骤 | 状态 |
+| --- | --- |
+| 1. `ImageByteSource` 协议 + 键前缀 | ✅ DSHKit，+3 条测试 |
+| 2. `ImagePipeline` 改 source 驱动 | ✅ 附件与 Markdown 共用同一套缓存/分层/去重 |
+| 3. `fullMaxPixel` 按屏幕算 | ✅ 函数化，2868 屏幕取 2868（原固定 2048） |
+| 4. 全屏翻页 | ✅ `TabView(.page)`，翻到才拉高清，页脚显示 `n / N` |
+| 5. 延迟 5 秒清理 | ✅ `onAppear` 取消 + `Task.isCancelled` 双保险 |
+| 6. Markdown 图接入管线 | ✅ 不再自己 `URLSession` + 硬编码 640 |
+
+**本轮未做（记入未决问题）**：`AttachmentThumbnail`（过程区附件图）仍是单张全屏，
+没有接入翻页。它和 Markdown 图的数据源不同（`PocketImageRef` 列表需要从 `steps` 里收集），
+本轮先做用户实际遇到的 Markdown 图。
+
+**验证状态**：`swift test` 359 绿；架构 0 违规；已装机。
+真机三条待验：Markdown 图全屏清晰、左右翻页、快速滑动不重新转圈。

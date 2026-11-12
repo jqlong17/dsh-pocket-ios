@@ -85,7 +85,8 @@ struct MessageRow: View {
                             .textSelection(.enabled)
                             .tint(Color(red: 0.10, green: 0.35, blue: 0.95))
                     case .image(let url, let caption):
-                        RemoteMarkdownImage(url: url, caption: caption)
+                        RemoteMarkdownImage(url: url, caption: caption,
+                                        allImageURLs: model.conversationMarkdownImageURLs)
                     }
                 }
             }
@@ -106,7 +107,8 @@ struct MessageRow: View {
                         // 助手气泡保持默认主题色。
                         .tint(message.isUser ? Color(red: 0.66, green: 0.95, blue: 0.84) : nil)
                 case .image(let url, let caption):
-                    RemoteMarkdownImage(url: url, caption: caption)
+                    RemoteMarkdownImage(url: url, caption: caption,
+                                        allImageURLs: model.conversationMarkdownImageURLs)
                 }
             }
         }

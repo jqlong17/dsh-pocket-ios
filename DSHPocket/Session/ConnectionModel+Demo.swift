@@ -279,11 +279,11 @@ extension ConnectionModel {
                 PocketMessage(demoText: """
                 Done. Here is how the client is assembled:
 
-                | Layer | Plugin | Role |
-                | --- | --- | --- |
-                | Connection | dsh-pocket-ios | Phone → Mac |
-                | Usage | dsh-usage | Balance, tokens |
-                | Transcribe | parse-convert | Audio → text |
+                | Plugin | What it does |
+                | --- | --- |
+                | dsh-pocket-ios | Phone → Mac |
+                | dsh-usage | Balance, tokens |
+                | parse-convert | Audio → text |
 
                 ### What shipped
 
@@ -301,12 +301,12 @@ extension ConnectionModel {
                 PocketMessage(demoText: """
                 The whole idea of DSH is that everything is a plugin — connectors, tools, UI, skills all load and unload independently.
 
-                | Category | Example | What it does |
-                | --- | --- | --- |
-                | Connection | dsh-pocket-ios | Phone → Mac DSH |
-                | Usage | dsh-usage | Balance, tokens |
-                | Transcribe | parse-convert | Audio → text |
-                | Design | huashu-design | Prototypes, slides |
+                | Plugin | What it does |
+                | --- | --- |
+                | dsh-pocket-ios | Phone → Mac DSH |
+                | dsh-usage | Balance, tokens |
+                | parse-convert | Audio → text |
+                | huashu-design | Prototypes, slides |
 
                 Installing one needs no launcher change — restart and the new capability shows up in settings.
                 """, isUser: false, sequence: 2)
@@ -318,13 +318,13 @@ extension ConnectionModel {
                 PocketMessage(demoText: """
                 One focus per half-day, leaving room for coffee and walking:
 
-                | Day | Morning | Afternoon | Evening |
-                | --- | --- | --- | --- |
-                | D1 | Shinjuku | Gov. observatory | Omoide Yokocho |
-                | D2 | Senso-ji | Sumida walk | Jimbocho books |
-                | D3 | Omotesando | Aoyama coffee | Roppongi view |
-                | D4 | Daikanyama | Nakameguro | Meguro river |
-                | D5 | Tsukiji | Ginza | Departure |
+                | Day | Morning | Evening |
+                | --- | --- | --- |
+                | D1 | Shinjuku | Omoide Yokocho |
+                | D2 | Senso-ji | Jimbocho books |
+                | D3 | Omotesando | Roppongi view |
+                | D4 | Daikanyama | Meguro river |
+                | D5 | Tsukiji | Departure |
 
                 **Tip**: get a Suica, and cluster coffee stops by area so you don't zig-zag across the city.
                 """, isUser: false, sequence: 2)
