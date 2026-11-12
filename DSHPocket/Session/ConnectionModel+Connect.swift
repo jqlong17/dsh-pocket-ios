@@ -19,89 +19,41 @@ extension ConnectionModel {
 
     @MainActor
     func recordDiagnostic(_ message: String) {
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)"
-        liveDiagnosticHistory.append(line)
-        if liveDiagnosticHistory.count > 30 { liveDiagnosticHistory.removeFirst(liveDiagnosticHistory.count - 30) }
-        NSLog("DSH_DIAG %@", line)
-        Self.appendDiagnosticFile(line)
-    }
-
-    /// 设备日志不可靠（idevicesyslog 过滤/断连），同时落盘到 App 沙盒，
-    /// 可通过 `devicectl device copy from --domain-type appDataContainer` 直接拉取。
-    static func appendDiagnosticFile(_ line: String) {
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let fileURL = directory.appendingPathComponent("diagnostics.log")
-        guard let data = (line + "\n").data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: fileURL) {
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
-        } else {
-            try? data.write(to: fileURL, options: .atomic)
-        }
+        diagnostics.record(message)
     }
 
     @MainActor
     func diagnosticReport() -> String {
         captureDiagnosticSample()
         let title = currentConversationTitle.isEmpty ? "未打开会话" : currentConversationTitle
-        let visits = diagnosticVisits.map(\.line)
-        let rows = diagnosticSamples.map(\.line)
-        return """
-        \(title)
-        进出
-        \(visits.isEmpty ? "还没有进出记录" : visits.joined(separator: "\n"))
-        此刻
-        \(diagnosticMemoryLine())
-        采样
-        \(rows.isEmpty ? "还没有采样" : rows.joined(separator: "\n"))
-        """
+        return diagnostics.report(title: title, memoryLine: diagnosticMemoryLine())
     }
 
     /// 最近一小段时间的采样。进出记录不随再次进入清掉。
     @MainActor
     func startDiagnosticSampler() {
-        guard diagnosticSampleTask == nil else { return }
-        diagnosticSampleTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                if Task.isCancelled { break }
-                await MainActor.run { self?.captureDiagnosticSample() }
-            }
+        diagnostics.startSampler { [weak self] in
+            self?.captureDiagnosticSample()
         }
     }
 
     @MainActor
     func beginDiagnosticVisit(reusedMessages: Int) {
-        let visit = DiagnosticVisit(
-            index: (diagnosticVisits.last?.index ?? 0) + 1,
-            enterMs: nil,
-            leaveMs: nil,
-            reusedMessages: reusedMessages,
-            memoryEnter: Int(Self.memoryFootprintMB().rounded()),
-            memoryLeave: nil,
-            viewsAfterLeave: nil
-        )
-        diagnosticVisits.append(visit)
-        if diagnosticVisits.count > 6 {
-            diagnosticVisits.removeFirst(diagnosticVisits.count - 6)
-        }
+        diagnostics.beginVisit(reusedMessages: reusedMessages,
+                               memoryMB: Int(Self.memoryFootprintMB().rounded()))
         captureDiagnosticSample()
     }
 
     @MainActor
     func finishDiagnosticVisit(leaveMs: Int) {
-        guard let index = diagnosticVisits.lastIndex(where: { $0.leaveMs == nil }) else { return }
-        diagnosticVisits[index].leaveMs = leaveMs
-        diagnosticVisits[index].memoryLeave = Int(Self.memoryFootprintMB().rounded())
-        let visitIndex = diagnosticVisits[index].index
+        guard let visitIndex = diagnostics.finishVisit(leaveMs: leaveMs,
+                                                       memoryMB: Int(Self.memoryFootprintMB().rounded())) else { return }
         captureDiagnosticSample()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(700))
-            guard let slot = self.diagnosticVisits.lastIndex(where: { $0.index == visitIndex }),
-                  self.diagnosticVisits[slot].leaveMs != nil,
-                  self.visibleSessionId == nil else { return }
-            self.diagnosticVisits[slot].viewsAfterLeave = ConversationViewLifetime.liveCount
+            guard self.visibleSessionId == nil else { return }
+            self.diagnostics.setViewsAfterLeave(visitIndex: visitIndex,
+                                                views: ConversationViewLifetime.liveCount)
         }
     }
 
@@ -126,8 +78,7 @@ extension ConnectionModel {
 
     @MainActor
     func stopDiagnosticSampler() {
-        diagnosticSampleTask?.cancel()
-        diagnosticSampleTask = nil
+        diagnostics.stopSampler()
     }
 
     @MainActor
@@ -152,10 +103,8 @@ extension ConnectionModel {
            last.memoryMB == sample.memoryMB {
             return
         }
-        diagnosticSamples.append(sample)
-        if diagnosticSamples.count > 18 {
-            diagnosticSamples.removeFirst(diagnosticSamples.count - 18)
-        }
+        // 上限与去重策略留在 Diagnostics；这里只负责算出一行样本。
+        diagnostics.appendSample(sample)
     }
 
     func noteNetworkEdgeForDiagnostics() {
@@ -320,9 +269,7 @@ extension ConnectionModel {
         conversation.lastLoadSource = source
         recordDiagnostic("会话加载 \(ms) ms source=\(source) 消息=\(conversation.messages.count) 过程=\(conversation.steps.count)")
         captureDiagnosticSample(enterMs: ms)
-        if let index = diagnosticVisits.lastIndex(where: { $0.leaveMs == nil }) {
-            diagnosticVisits[index].enterMs = ms
-        }
+        diagnostics.setEnterMsForOpenVisit(ms)
     }
 
     @discardableResult

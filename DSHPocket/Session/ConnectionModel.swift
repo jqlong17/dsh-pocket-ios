@@ -223,11 +223,12 @@ final class ConnectionModel {
     }
     /// 进入断开或重连的时刻。用来在诊断行里写「断了多久」。
     var networkDownSince: Date?
-    var diagnosticSamples: [DiagnosticSample] = []
-    var diagnosticVisits: [DiagnosticVisit] = []
-    var diagnosticSampleTask: Task<Void, Never>?
+    /// 诊断数据由 Diagnostics 持有（见 spec/12 第一批）。这里保留只读转发，避免一次性改所有调用点。
+    let diagnostics = Diagnostics()
+    var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
+    var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }
-    var liveDiagnosticHistory: [String] = []
+    var liveDiagnosticHistory: [String] { diagnostics.history }
     var liveTask: Task<Void, Never>? {
         get { activeConversation?.liveTask }
         set { activeConversation?.liveTask = newValue }
