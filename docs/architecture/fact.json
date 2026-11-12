@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:46:06+08:00",
-  "commit": "5d59c32",
+  "generated_at": "2026-11-12T11:46:26+08:00",
+  "commit": "d6af327",
   "layers": [
     {
       "layer": "pure-logic",
@@ -1379,7 +1379,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 603,
+      "lines": 594,
       "types": [
         "ConnectionModel"
       ],
@@ -1415,10 +1415,12 @@
     {
       "file": "DSHPocket/Session/ConnectionValueTypes.swift",
       "layer": "app",
-      "lines": 38,
+      "lines": 47,
       "types": [
         "LiveConnectionState",
-        "SendVerification"
+        "SendVerification",
+        "PendingQuote",
+        "PendingSendState"
       ],
       "imports": [
         "Foundation"
@@ -2204,7 +2206,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "603 行"
+      "detail": "594 行"
     },
     {
       "rule": "file-max-400",

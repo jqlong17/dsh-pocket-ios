@@ -133,7 +133,7 @@ struct MessageRow: View {
         }
     }
 
-    private func pendingStateColor(_ state: ConnectionModel.PendingSendState) -> Color {
+    private func pendingStateColor(_ state: PendingSendState) -> Color {
         switch state {
         case .failed: return Color.red.opacity(0.85)
         case .queued: return Color.orange

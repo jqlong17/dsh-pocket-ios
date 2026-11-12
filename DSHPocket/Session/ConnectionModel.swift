@@ -284,13 +284,6 @@ final class ConnectionModel {
     var focusComposerTick = 0
 
 
-    struct PendingQuote: Identifiable, Equatable {
-        let id: String
-        let sequence: Int
-        let sender: String
-        let text: String
-    }
-
     /// 输入框上方显示的"正在引用"状态；发送时转成 DSH 原生 Markdown 引用块。
     var pendingQuote: PendingQuote?
 
@@ -549,8 +542,6 @@ final class ConnectionModel {
     }
 
     // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
-
-    enum PendingSendState { case sending, acked(steered: Bool), failed, queued }
 
     /// 按 turn 分组的工具步骤，供会话页折叠成"过程"一行。
     var stepGroups: [PocketStepGroup] {

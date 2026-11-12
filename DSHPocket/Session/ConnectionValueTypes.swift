@@ -35,3 +35,12 @@ enum SendVerification {
     case absent        // 请求成功但历史里确实没有这条消息
     case unreachable   // 网络失败，无法判断——不能当作失败提示用户
 }
+
+struct PendingQuote: Identifiable, Equatable {
+    let id: String
+    let sequence: Int
+    let sender: String
+    let text: String
+}
+
+enum PendingSendState { case sending, acked(steered: Bool), failed, queued }
