@@ -34,7 +34,11 @@ struct RootView: View {
             .navigationTitle("DSH Pocket")
             .navigationBarTitleDisplayMode(.inline)
             // 系统「减少动态效果」写入统一门闸，模型层的 withAnimation 也跟着关。
-            .onAppear { PocketMotion.reduceMotion = reduceMotion }
+            .onAppear {
+                PocketMotion.reduceMotion = reduceMotion
+                // 诊断数据源装配一次（幂等）：诊断不反向依赖模型，只能由入口注入。
+                model.installDiagnosticsProviders()
+            }
             .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

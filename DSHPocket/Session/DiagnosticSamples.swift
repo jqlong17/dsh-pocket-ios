@@ -50,3 +50,28 @@ struct DiagnosticSample {
         return formatter
     }()
 }
+
+/// 诊断索引用的会话规模快照（纯数据，无依赖）。
+struct ConversationSizeSnapshot {
+    var title: String
+    var messages: Int
+    var userMessages: Int
+    var assistantMessages: Int
+    var pendingMessages: Int
+    var steps: Int
+    var unfinishedSteps: Int
+    var errorSteps: Int
+    var stepGroups: Int
+    var failures: Int
+    var timelineRows: Int
+    var messageBytes: Int
+    var stepBytes: Int
+    var images: Int
+    var cachedImages: Int
+    var cachedImageBytes: Int
+    var liveViews: Int
+    var hasMore: Bool
+    var loadMs: Int?
+    var loadSource: String?
+    var memoryMB: String
+}

@@ -296,30 +296,6 @@ final class ConnectionModel {
     var cancelledDraft = ""
     var cancelledImages: [PocketDraftImage] = []
 
-    struct ConversationSizeSnapshot {
-        var title: String
-        var messages: Int
-        var userMessages: Int
-        var assistantMessages: Int
-        var pendingMessages: Int
-        var steps: Int
-        var unfinishedSteps: Int
-        var errorSteps: Int
-        var stepGroups: Int
-        var failures: Int
-        var timelineRows: Int
-        var messageBytes: Int
-        var stepBytes: Int
-        var images: Int
-        var cachedImages: Int
-        var cachedImageBytes: Int
-        var liveViews: Int
-        var hasMore: Bool
-        var loadMs: Int?
-        var loadSource: String?
-        var memoryMB: String
-    }
-
     /// 带 `?token=` 的 DSH 认证 URL（浏览器复制出来的地址）：直接用 GET 换 cookie，无需密码。
     var pendingLoginToken: String?
     /// 扫码得到的一次性配对 token（免密码登录）。

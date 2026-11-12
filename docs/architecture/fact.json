@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:37:17+08:00",
-  "commit": "421df3f",
+  "generated_at": "2026-11-12T11:39:25+08:00",
+  "commit": "0f91b03",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 68,
-      "lines": 9889
+      "lines": 9973
     },
     {
       "layer": "ui-tests",
@@ -1153,7 +1153,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 549,
+      "lines": 499,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1309,7 +1309,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 653,
+      "lines": 629,
       "types": [
         "ConnectionModel"
       ],
@@ -1379,10 +1379,11 @@
     {
       "file": "DSHPocket/Session/DiagnosticSamples.swift",
       "layer": "app",
-      "lines": 53,
+      "lines": 78,
       "types": [
         "DiagnosticVisit",
-        "DiagnosticSample"
+        "DiagnosticSample",
+        "ConversationSizeSnapshot"
       ],
       "imports": [
         "Foundation"
@@ -1391,7 +1392,7 @@
     {
       "file": "DSHPocket/Session/Diagnostics.swift",
       "layer": "app",
-      "lines": 136,
+      "lines": 265,
       "types": [
         "Diagnostics"
       ],
@@ -1984,7 +1985,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 77,
+      "lines": 81,
       "types": [
         "RootView"
       ],
@@ -2093,7 +2094,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
-      "detail": "549 行"
+      "detail": "499 行"
     },
     {
       "rule": "file-max-400",
@@ -2108,7 +2109,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "653 行"
+      "detail": "629 行"
     },
     {
       "rule": "file-max-400",

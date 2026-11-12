@@ -203,7 +203,7 @@ extension ConnectionModel {
         if visibleSessionId == session.sessionId {
             visibleSessionId = nil
         }
-        recordDiagnostic("离开会话：\(session.displayTitle) 内存 \(String(format: "%.1f", Self.memoryFootprintMB())) MB 会话页 \(ConversationViewLifetime.liveCount)")
+        recordDiagnostic("离开会话：\(session.displayTitle) 内存 \(String(format: "%.1f", Diagnostics.memoryFootprintMB())) MB 会话页 \(ConversationViewLifetime.liveCount)")
     }
 
     /// 展开某一组过程时才拉取正文。分页按序号切开，不把整段历史再装进内存。

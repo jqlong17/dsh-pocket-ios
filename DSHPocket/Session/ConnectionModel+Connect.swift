@@ -22,6 +22,7 @@ extension ConnectionModel {
         diagnostics.record(message)
     }
 
+    /// 诊断文本的拼装在 Diagnostics（spec/12）；这里只聚合标题与内存行。
     @MainActor
     func diagnosticReport() -> String {
         captureDiagnosticSample()
@@ -37,17 +38,77 @@ extension ConnectionModel {
         }
     }
 
+    func diagnosticMemoryLine() -> String { diagnostics.memoryLine() }
+
+    /// 会话规模快照：读模型状态，因此留在模型侧；文本拼装在 Diagnostics。
+    func conversationSizeSnapshot() -> ConversationSizeSnapshot {
+        let user = messages.filter(\.isUser).count
+        return ConversationSizeSnapshot(
+            title: currentConversationTitle,
+            messages: messages.count,
+            userMessages: user,
+            assistantMessages: messages.count - user,
+            pendingMessages: messages.filter(\.isPending).count,
+            steps: steps.count,
+            unfinishedSteps: steps.filter { !$0.finished }.count,
+            errorSteps: steps.filter(\.isError).count,
+            stepGroups: stepGroups.count,
+            failures: turnFailures.count,
+            timelineRows: messages.count + stepGroups.count + turnFailures.count,
+            messageBytes: messages.reduce(0) { $0 + $1.text.utf8.count },
+            stepBytes: steps.reduce(0) { $0 + $1.resultText.utf8.count + $1.detail.utf8.count },
+            images: messages.reduce(0) { $0 + $1.images.count + $1.localImages.count }
+                + steps.reduce(0) { $0 + $1.images.count },
+            cachedImages: ImageMemory.shared.stats().count,
+            cachedImageBytes: ImageMemory.shared.stats().bytes,
+            liveViews: ConversationViewLifetime.liveCount,
+            hasMore: hasMoreOlder,
+            loadMs: activeConversation?.lastLoadMs,
+            loadSource: activeConversation?.lastLoadSource,
+            memoryMB: String(format: "%.1f", Diagnostics.memoryFootprintMB())
+        )
+    }
+
+    /// 装配诊断的数据来源（幂等）。诊断不反向依赖模型，所以用闭包注入。
+    func installDiagnosticsProviders() {
+        guard diagnostics.providers == nil else { return }
+        diagnostics.providers = Diagnostics.Providers(
+            memoryBreakdown: { Diagnostics.memoryBreakdown() },
+            retainedStats: { [weak self] in
+                self?.retainedConversationStats() ?? (0, 0, 0, 0)
+            },
+            sendCounts: { [weak self] in
+                self?.diagnosticSendCounts() ?? (0, 0, 0)
+            },
+            networkLabel: { [weak self] in
+                self?.diagnosticNetworkLabel() ?? "未知"
+            },
+            conversationStats: { [weak self] in
+                self?.conversationSizeSnapshot() ?? ConversationSizeSnapshot(
+                    title: "", messages: 0, userMessages: 0, assistantMessages: 0,
+                    pendingMessages: 0, steps: 0, unfinishedSteps: 0, errorSteps: 0,
+                    stepGroups: 0, failures: 0, timelineRows: 0, messageBytes: 0,
+                    stepBytes: 0, images: 0, cachedImages: 0, cachedImageBytes: 0,
+                    liveViews: 0, hasMore: false, loadMs: nil, loadSource: nil, memoryMB: "—")
+            },
+            logPath: { [weak self] in self?.sessionLogPath },
+            sessionAddress: { [weak self] in self?.sessionAddress ?? "" }
+        )
+    }
+
+    func conversationDiagnosticsBlock() -> String { diagnostics.indexBlock() }
+
     @MainActor
     func beginDiagnosticVisit(reusedMessages: Int) {
         diagnostics.beginVisit(reusedMessages: reusedMessages,
-                               memoryMB: Int(Self.memoryFootprintMB().rounded()))
+                               memoryMB: Int(Diagnostics.memoryFootprintMB().rounded()))
         captureDiagnosticSample()
     }
 
     @MainActor
     func finishDiagnosticVisit(leaveMs: Int) {
         guard let visitIndex = diagnostics.finishVisit(leaveMs: leaveMs,
-                                                       memoryMB: Int(Self.memoryFootprintMB().rounded())) else { return }
+                                                       memoryMB: Int(Diagnostics.memoryFootprintMB().rounded())) else { return }
         captureDiagnosticSample()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(700))
@@ -57,14 +118,7 @@ extension ConnectionModel {
         }
     }
 
-    func diagnosticMemoryLine() -> String {
-        let detail = Self.memoryBreakdown()
-        let kept = retainedConversationStats()
-        let images = ImageMemory.shared.stats()
-        return "内存 \(detail.footprintMB)MB  压缩 \(detail.compressedMB)MB  图 \(images.count)张/\(Self.formatBytes(images.bytes))  文字 \(Self.formatBytes(kept.textBytes))  过程正文 \(Self.formatBytes(kept.stepBytes))  页 \(ConversationViewLifetime.liveCount)  留着会话 \(kept.sessions)（消息 \(kept.messages)）"
-    }
-
-    func retainedConversationStats() -> (sessions: Int, messages: Int, textBytes: Int, stepBytes: Int) {
+     func retainedConversationStats() -> (sessions: Int, messages: Int, textBytes: Int, stepBytes: Int) {
         var messageCount = 0
         var textBytes = 0
         var stepBytes = 0
@@ -86,7 +140,7 @@ extension ConnectionModel {
         let counts = diagnosticSendCounts()
         let sample = DiagnosticSample(
             at: Date(),
-            memoryMB: Int(Self.memoryFootprintMB().rounded()),
+            memoryMB: Int(Diagnostics.memoryFootprintMB().rounded()),
             pending: counts.pending,
             queued: counts.queued,
             failed: counts.failed,
@@ -155,112 +209,8 @@ extension ConnectionModel {
     }
 
     /// 复制出来给排查用的状态索引。菜单里不展示这些数字。
-    func conversationDiagnosticsBlock() -> String {
-        let s = conversationSizeSnapshot()
-        let load = s.loadMs.map { "\($0) ms，来源 \(s.loadSource ?? "未知")" } ?? "这次打开还没记到加载完成"
-        let log = sessionLogPath ?? "没有 cwd，推不出电脑上的会话日志路径"
-        return """
-        --- 状态索引 ---
-        这份文本是给排查用的，不是给用户看的菜单。上面是此刻的汇总，下面是最近事件。要更早的记录，按「去哪看」取文件。
-
-        会话: \(s.title)
-        地址: \(sessionAddress.isEmpty ? "未打开会话" : sessionAddress)
-        电脑日志: \(log)
-        手机日志: App 沙盒 Documents/diagnostics.log。用 devicectl device copy from --domain-type appDataContainer 拉取。控制台过滤 DSH_DIAG。
-        会话日志格式: ~/.dsh/sessions/--<cwd 里的 / 换成 ->--/<sessionId>/session.v4.jsonl.zstd
-
-        消息 \(s.messages)（用户 \(s.userMessages) / 助手 \(s.assistantMessages) / 待发 \(s.pendingMessages)）
-        含义: 手机上这次加载进来的消息条数，不是电脑上的全部历史。待发是还没被服务端确认的本地气泡。
-        还有更早: \(s.hasMore ? "是，向上翻还会再拉" : "否，当前窗口已经到最早")
-
-        过程 \(s.steps)（未完成 \(s.unfinishedSteps) / 出错 \(s.errorSteps) / 界面上折叠成 \(s.stepGroups) 组）
-        含义: 工具步骤。未完成=还在跑；出错=工具结果是错误。组数才是屏幕上画出来的过程行，不要用步骤数当行数。
-        失败轮次: \(s.failures)。时间线上要布局的行: \(s.timelineRows)（消息 + 过程组 + 失败提示）。
-
-        文本体积: 消息 \(Self.formatBytes(s.messageBytes))，过程结果 \(Self.formatBytes(s.stepBytes))
-        含义: 只算已留在内存里的文字。过程正文默认不保留，展开后才会变大。这不是 内存 那一项。
-
-        图片 \(s.images) 张，缩略图缓存 \(s.cachedImages) 张 / \(Self.formatBytes(s.cachedImageBytes))
-        含义: 图片引用数，加上 ImageMemory 里实际解码的缩略图。缓存有上限（48 张 / 32 MB）。全尺寸图不应该留在这里。
-
-        会话页还活着: \(s.liveViews)
-        含义: ConversationView 实例数。离开会话后应回到 0。大于 1 说明旧页面没释放，反复进出时内存会叠。
-
-        上次加载: \(load)
-        含义: 从开始打开到首屏内容到齐的耗时。follow=实时流快照，history=HTTP 拉的历史。慢的时候先看过程组数和图片数，不要先怪网络。
-
-        App 内存: \(s.memoryMB) MB
-        含义: phys_footprint，整个进程现在有多重，不是这段对话的文本大小。iOS 杀后台看的就是这个数。文字通常只有几十 KB；涨到几百 MB 时先看图片缓存和会话页是否还活着。
-
-        --- 最近事件（最多 30 条，更早的在手机日志文件） ---
-        """
-    }
-
-    func conversationSizeSnapshot() -> ConversationSizeSnapshot {
-        let user = messages.filter(\.isUser).count
-        let pending = messages.filter(\.isPending).count
-        let groups = stepGroups.count
-        let failures = turnFailures.count
-        return ConversationSizeSnapshot(
-            title: currentConversationTitle,
-            messages: messages.count,
-            userMessages: user,
-            assistantMessages: messages.count - user,
-            pendingMessages: pending,
-            steps: steps.count,
-            unfinishedSteps: steps.filter { !$0.finished }.count,
-            errorSteps: steps.filter(\.isError).count,
-            stepGroups: groups,
-            failures: failures,
-            timelineRows: messages.count + groups + failures,
-            messageBytes: messages.reduce(0) { $0 + $1.text.utf8.count },
-            stepBytes: steps.reduce(0) { $0 + $1.resultText.utf8.count + $1.detail.utf8.count },
-            images: messages.reduce(0) { $0 + $1.images.count + $1.localImages.count }
-                + steps.reduce(0) { $0 + $1.images.count },
-            cachedImages: ImageMemory.shared.stats().count,
-            cachedImageBytes: ImageMemory.shared.stats().bytes,
-            liveViews: ConversationViewLifetime.liveCount,
-            hasMore: hasMoreOlder,
-            loadMs: activeConversation?.lastLoadMs,
-            loadSource: activeConversation?.lastLoadSource,
-            memoryMB: String(format: "%.1f", Self.memoryFootprintMB())
-        )
-    }
-
-    /// Jetsam 看的物理占用，比 resident size 更接近「这个 App 现在有多重」。
-    static func memoryFootprintMB() -> Double {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return -1 }
-        return Double(info.phys_footprint) / 1_048_576
-    }
-
-    static func memoryBreakdown() -> (footprintMB: Int, compressedMB: Int) {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return (-1, -1) }
-        let footprint = Int((Double(info.phys_footprint) / 1_048_576).rounded())
-        let compressed = Int((Double(info.compressed) / 1_048_576).rounded())
-        return (footprint, compressed)
-    }
-
-    static func formatBytes(_ bytes: Int) -> String {
-        if bytes < 1024 { return "\(bytes) B" }
-        if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
-        return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-    }
-
-    @MainActor
+      /// Jetsam 看的物理占用，比 resident size 更接近「这个 App 现在有多重」。
+       @MainActor
     func noteLoadFinished(source: String, conversation: ConversationState) {
         guard conversation.loadTimingPending, let started = conversation.loadStartedAt else { return }
         conversation.loadTimingPending = false
