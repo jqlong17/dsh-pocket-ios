@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-13T00:06:50+08:00",
-  "commit": "ab10c45",
+  "generated_at": "2026-11-13T07:36:15+08:00",
+  "commit": "19b8a0c",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 56,
-      "lines": 3298
+      "files": 57,
+      "lines": 3341
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 84,
-      "lines": 10947
+      "files": 86,
+      "lines": 11447
     },
     {
       "layer": "ui-tests",
@@ -411,9 +411,21 @@
       ]
     },
     {
+      "file": "DSHKit/Sources/DSHKit/Store/ImageByteSource.swift",
+      "layer": "pure-logic",
+      "lines": 33,
+      "types": [
+        "ImageByteSource",
+        "ImageSourceKey"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
       "file": "DSHKit/Sources/DSHKit/Store/ImageFetchPolicy.swift",
       "layer": "pure-logic",
-      "lines": 25,
+      "lines": 35,
       "types": [
         "ImageFetchPolicy"
       ],
@@ -953,6 +965,18 @@
       ]
     },
     {
+      "file": "DSHPocket/Model/FullscreenEntry.swift",
+      "layer": "app",
+      "lines": 25,
+      "types": [
+        "FullscreenEntry"
+      ],
+      "imports": [
+        "DSHKit",
+        "UIKit"
+      ]
+    },
+    {
       "file": "DSHPocket/Model/ImageMemory.swift",
       "layer": "app",
       "lines": 88,
@@ -980,7 +1004,7 @@
     {
       "file": "DSHPocket/Model/ImagePipeline.swift",
       "layer": "app",
-      "lines": 153,
+      "lines": 161,
       "types": [
         "ImagePipeline",
         "ThumbnailDiskCache"
@@ -988,6 +1012,21 @@
       "imports": [
         "DSHKit",
         "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Model/ImageSources.swift",
+      "layer": "app",
+      "lines": 68,
+      "types": [
+        "AttachmentByteSource",
+        "RemoteURLByteSource",
+        "ImageSourceError"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation",
+        "os"
       ]
     },
     {
@@ -1340,7 +1379,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Demo.swift",
       "layer": "app",
-      "lines": 261,
+      "lines": 366,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1362,7 +1401,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Diagnostics.swift",
       "layer": "app",
-      "lines": 279,
+      "lines": 260,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1474,7 +1513,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Process.swift",
       "layer": "app",
-      "lines": 291,
+      "lines": 367,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1540,7 +1579,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 507,
+      "lines": 511,
       "types": [
         "ConnectionModel"
       ],
@@ -1576,7 +1615,7 @@
     {
       "file": "DSHPocket/Session/ConnectionValueTypes.swift",
       "layer": "app",
-      "lines": 61,
+      "lines": 76,
       "types": [
         "LiveConnectionState",
         "SendVerification",
@@ -1744,7 +1783,7 @@
     {
       "file": "DSHPocket/Session/SessionActions.swift",
       "layer": "app",
-      "lines": 207,
+      "lines": 214,
       "types": [],
       "imports": [
         "DSHKit",
@@ -1807,7 +1846,7 @@
     {
       "file": "DSHPocket/Support/Localization.swift",
       "layer": "app",
-      "lines": 262,
+      "lines": 329,
       "types": [
         "AppLanguage",
         "LanguageStore",
@@ -1868,7 +1907,7 @@
     {
       "file": "DSHPocket/Views/AttachmentThumbnail.swift",
       "layer": "app",
-      "lines": 69,
+      "lines": 91,
       "types": [
         "AttachmentThumbnail"
       ],
@@ -2068,25 +2107,16 @@
     {
       "file": "DSHPocket/Views/FullscreenImageViewer.swift",
       "layer": "app",
-      "lines": 127,
+      "lines": 219,
       "types": [
         "FullscreenImageViewer"
       ],
       "imports": [
-        "AVFoundation",
-        "AudioToolbox",
         "DSHKit",
         "ImageIO",
-        "Observation",
         "Photos",
-        "PhotosUI",
-        "Security",
         "SwiftUI",
-        "Textual",
-        "UIKit",
-        "UserNotifications",
-        "VisionKit",
-        "os"
+        "UIKit"
       ]
     },
     {
@@ -2201,7 +2231,7 @@
     {
       "file": "DSHPocket/Views/MessageRow.swift",
       "layer": "app",
-      "lines": 261,
+      "lines": 263,
       "types": [
         "MessageRow"
       ],
@@ -2345,7 +2375,7 @@
     {
       "file": "DSHPocket/Views/RemoteMarkdownImage.swift",
       "layer": "app",
-      "lines": 84,
+      "lines": 112,
       "types": [
         "RemoteMarkdownImage"
       ],

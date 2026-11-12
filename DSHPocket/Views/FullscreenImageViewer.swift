@@ -6,26 +6,6 @@ import UIKit
 import Photos
 import ImageIO
 
-/// 全屏里的一张图。
-///
-/// 为什么把「来源」和「预览图」放在一起：翻页时新的一页要先有东西显示（预览图），
-/// 再异步换成高清。两者分属不同来源（URL / 附件 RPC），统一成 `ImageByteSource` 后
-/// 全屏组件不需要知道图片从哪来。
-struct FullscreenEntry: Identifiable {
-    /// 稳定 id：翻页时靠它区分「哪一页已经加载过高清」。
-    let id: String
-    /// 高清来源；纯本地图（草稿预览）为 nil，不做二次加载。
-    let source: ImageByteSource?
-    /// 调用方已经拿到的图（缩略图或本地图），用于首帧立即显示。
-    var preview: UIImage?
-
-    init(id: String, source: ImageByteSource?, preview: UIImage?) {
-        self.id = id
-        self.source = source
-        self.preview = preview
-    }
-}
-
 struct FullscreenImageViewer: View {
     @State private var entries: [FullscreenEntry]
     @State private var index: Int
@@ -98,41 +78,45 @@ struct FullscreenImageViewer: View {
             .tabViewStyle(.page(indexDisplayMode: entries.count > 1 ? .automatic : .never))
             .indexViewStyle(.page(backgroundDisplayMode: .interactive))
             .ignoresSafeArea()
-            // 放大查看时禁用翻页，否则双指缩放手势会和翻页抢事件。
-            .disabled(scale > 1)
+            // 不 disabled(scale > 1)：那会把 TabView 的分页手势一起禁掉，
+            // 一旦缩放状态没复位就再也翻不动。放大与翻页靠 simultaneousGesture 共存。
         }
         .overlay(alignment: .top) { topBar }
         .overlay(alignment: .bottom) { bottomBar }
+        // 进入时预加载当前页与左右相邻；滑动到新页时补加载。
+        // 页面容器已固定尺寸（见 pageView），所以加载完成不会改变布局；
+        // 写入 loaded 时再关掉动画，避免任何残留的隐式动画干扰分页。
         .task(id: index) { await loadFullForCurrentPage() }
     }
 
-    @ViewBuilder
     private func pageView(for entry: FullscreenEntry) -> some View {
-        Group {
-            if let shown = loaded[entry.id] ?? entry.preview {
-                Image(uiImage: shown)
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(scale)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { value in scale = min(max(lastScale * value, 1), 5) }
-                            .onEnded { _ in lastScale = scale }
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(PocketMotion.animation(.easeInOut(duration: 0.2))) {
-                            scale = scale > 1 ? 1 : 2.5
-                            lastScale = scale
+        // 固定容器：图片从 640（预览）换成 2868（高清）时，显示区域始终是整屏。
+        // 否则每次替换都会改变页面尺寸 → TabView 重新布局 → 首次滑动停在两页中间（实测）。
+        GeometryReader { geo in
+            ZStack {
+                if let shown = loaded[entry.id] ?? entry.preview {
+                    Image(uiImage: shown)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .scaleEffect(scale)
+                        // 不挂 MagnificationGesture：连续手势会和分页拖拽在识别层竞争。
+                        .onTapGesture(count: 2) {
+                            withAnimation(PocketMotion.animation(.easeInOut(duration: 0.2))) {
+                                scale = scale > 1 ? 1 : 2.5
+                                lastScale = scale
+                            }
                         }
+                } else if loadingIds.contains(entry.id) {
+                    ProgressView().tint(.white)
+                } else {
+                    VStack(spacing: 8) {
+                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(.white.opacity(0.6))
+                        Text(L10n.t("图片加载失败")).font(.caption).foregroundStyle(.white.opacity(0.6))
                     }
-            } else if loadingIds.contains(entry.id) {
-                ProgressView().tint(.white)
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "photo").font(.largeTitle).foregroundStyle(.white.opacity(0.6))
-                    Text(L10n.t("图片加载失败")).font(.caption).foregroundStyle(.white.opacity(0.6))
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 
@@ -173,22 +157,40 @@ struct FullscreenImageViewer: View {
         }
     }
 
-    /// 翻到某页才拉该页高清（用户明确要求滑动时才请求，不预取相邻页）。
+    /// 加载当前页 + 左右相邻各一张的高清。
+    ///
+    /// 为什么要预加载相邻页：只加载当前页时，滑过去要等一次网络往返，
+    /// 用户看到的是「先糊后清」；预加载让滑动当下就是高清。
+    /// 只预取相邻一张（不是全部），三张的流量与内存是可接受的。
     private func loadFullForCurrentPage() async {
-        guard let entry = currentEntry, let source = entry.source else { return }
-        guard loaded[entry.id] == nil else { return }
-        loadingIds.insert(entry.id)
-        defer { loadingIds.remove(entry.id) }
+        let targets = [index - 1, index, index + 1].filter { entries.indices.contains($0) }
+        await withTaskGroup(of: Void.self) { group in
+            for target in targets {
+                group.addTask { await loadFull(at: target, showFailureToast: target == index) }
+            }
+        }
+    }
+
+    private func loadFull(at target: Int, showFailureToast: Bool) async {
+        guard entries.indices.contains(target) else { return }
+        let entry = entries[target]
+        guard let source = entry.source else { return }
+        if loaded[entry.id] != nil { return }
+        await MainActor.run { _ = loadingIds.insert(entry.id) }
         let image = await ImagePipeline.shared.image(source: source, tier: .full, maxPixel: fullMaxPixel)
-        if let image {
-            loaded[entry.id] = image
-        } else if entry.preview == nil {
-            // 预览也没有、高清也失败：让 pageView 显示失败态。
-        } else {
-            toast = L10n.t("高清图没拉到，当前是预览图")
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(2))
-                toast = nil
+        await MainActor.run {
+            loadingIds.remove(entry.id)
+            if let image {
+                // 关闭动画：图片替换本身不需要动效，带隐式动画会让分页手势的动画被重置。
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { loaded[entry.id] = image }
+            } else if showFailureToast, entry.preview != nil {
+                toast = L10n.t("高清图没拉到，当前是预览图")
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    toast = nil
+                }
             }
         }
     }

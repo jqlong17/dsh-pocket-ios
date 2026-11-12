@@ -304,4 +304,63 @@ extension ConnectionModel {
         }
         return urls
     }
+
+    /// 当前会话里全部可全屏查看的图片（按消息顺序 + 步骤顺序）。
+    ///
+    /// 三个来源合一：先在气泡里出现过的用户图片（`message.images` / `localImages`，
+    /// 后者是还没被服务端确认的本地图），再是过程步骤附带的图片。
+    /// 全屏翻页靠这个列表——用户发多张图时能左右翻。
+    var conversationImageEntries: [FullscreenEntry] {
+        var entries: [FullscreenEntry] = []
+        var seen = Set<String>()
+
+        func appendAttachment(_ ref: PocketImageRef, preview: UIImage?) {
+            let key = ImageSourceKey.attachment(ref.attachmentId)
+            guard !seen.contains(key) else { return }
+            seen.insert(key)
+            guard let sessionId = sessionStore.selected?.sessionId else { return }
+            let source = AttachmentByteSource(
+                attachmentId: ref.attachmentId,
+                sessionId: sessionId,
+                requestJSON: ref.requestJSON,
+                knownBytes: ref.bytes,
+                rpc: { [weak self] method, args in
+                    guard let self else { throw ConnectionError.invalidURL("") }
+                    return try await self.rpcClient.rpcAdapted(method, args: args)
+                }
+            )
+            entries.append(FullscreenEntry(id: key, source: source, preview: preview))
+        }
+
+        for message in messages where !message.isPending {
+            for ref in message.images { appendAttachment(ref, preview: nil) }
+            for image in message.localImages {
+                let key = "local:\(ObjectIdentifier(image).hashValue)"
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                entries.append(FullscreenEntry(id: key, source: nil, preview: image))
+            }
+        }
+        for step in steps {
+            for ref in step.images { appendAttachment(ref, preview: nil) }
+        }
+        return entries
+    }
+
+    /// 单个附件图的全屏条目（列表里找不到时兜底用）。
+    func fullscreenEntry(for ref: PocketImageRef, preview: UIImage?) -> FullscreenEntry? {
+        guard let sessionId = sessionStore.selected?.sessionId else { return nil }
+        let source = AttachmentByteSource(
+            attachmentId: ref.attachmentId,
+            sessionId: sessionId,
+            requestJSON: ref.requestJSON,
+            knownBytes: ref.bytes,
+            rpc: { [weak self] method, args in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try await self.rpcClient.rpcAdapted(method, args: args)
+            }
+        )
+        return FullscreenEntry(id: ImageSourceKey.attachment(ref.attachmentId),
+                               source: source, preview: preview)
+    }
 }

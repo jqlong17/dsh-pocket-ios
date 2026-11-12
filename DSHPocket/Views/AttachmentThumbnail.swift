@@ -23,7 +23,9 @@ struct AttachmentThumbnail: View {
     var size: CGFloat = 140
     @State private var image: UIImage?
     @State private var failed = false
-    @State private var showsPreview = false
+    /// 点开全屏的上下文。用 item 而不是「布尔 + 数据」两个状态：
+    /// 后者在 SwiftUI 里存在时序竞争——弹窗读到的可能还是空的旧数组，表现为黑屏。
+    @State private var previewContext: PreviewContext?
 
     var body: some View {
         Group {
@@ -47,15 +49,12 @@ struct AttachmentThumbnail: View {
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(Rectangle())
-        .onTapGesture { if image != nil { showsPreview = true } }
+        .onTapGesture { openPreview() }
         .accessibilityElement()
         .accessibilityLabel(AccessibilityLabels.attachment(index: nil, total: nil))
         .accessibilityAddTraits(.isButton)
-        .fullScreenCover(isPresented: $showsPreview) {
-            if let image {
-                // 有 ref 就按需拉高清；缩略图只是占位。
-                FullscreenImageViewer(ref: ref, model: model, startingWith: image)
-            }
+        .fullScreenCover(item: $previewContext) { context in
+            FullscreenImageViewer(entries: context.entries, startIndex: context.startIndex)
         }
         .task {
             if image == nil {
@@ -64,5 +63,28 @@ struct AttachmentThumbnail: View {
             }
         }
         .onDisappear { image = nil }
+    }
+
+    /// 点开全屏：把整组图连同起始位置一起塞进 context 再弹。
+    ///
+    /// 为什么不先写两个 @State 再置 bool：SwiftUI 会在同一个更新周期里读它们，
+    /// 曾出现弹窗拿到空数组 → 全屏黑屏、第二次点才正常（实测）。
+    private func openPreview() {
+        guard let image else { return }
+        let key = ImageSourceKey.attachment(ref.attachmentId)
+        var entries = model.conversationImageEntries
+        if let index = entries.firstIndex(where: { $0.id == key }) {
+            entries[index].preview = image
+            previewContext = PreviewContext(entries: entries, startIndex: index)
+        } else if let single = model.fullscreenEntry(for: ref, preview: image) {
+            previewContext = PreviewContext(entries: [single], startIndex: 0)
+        }
+    }
+
+    /// 全屏上下文：一组图 + 从哪张开始。`id` 让每次点击都触发一次全新的呈现。
+    struct PreviewContext: Identifiable {
+        let id = UUID()
+        let entries: [FullscreenEntry]
+        let startIndex: Int
     }
 }

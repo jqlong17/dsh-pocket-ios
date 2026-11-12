@@ -1,7 +1,10 @@
 // 图片来源实现
 
 import Foundation
+import os
 import DSHKit
+
+let imageLog = Logger(subsystem: "com.ruska.dsh-pocket-ios", category: "image")
 
 /// 附件来源：走 `session/attachment` RPC，支持服务端按 `maxPixel` 协商尺寸。
 ///
@@ -19,14 +22,20 @@ struct AttachmentByteSource: ImageByteSource {
     var cacheKey: String { ImageSourceKey.attachment(attachmentId) }
 
     func data(maxPixel: Int) async throws -> Data {
+        let started = Date()
         let payload = ImageFetchPolicy.requestArgs(sessionId: sessionId,
                                                   attachment: requestJSON,
                                                   maxPixel: maxPixel)
         let value = try await rpc("session/attachment", ["request": payload])
+        let rpcMs = Int(Date().timeIntervalSince(started) * 1000)
         guard let base64 = value["data"] as? String,
               let data = Data(base64Encoded: base64) else {
             throw ImageSourceError.empty
         }
+        let decodeMs = Int(Date().timeIntervalSince(started) * 1000) - rpcMs
+        // 附件线是 RPC + base64：传输体积比原文件大 33%，两端各做一次编解码。
+        // 这里分开记，用来和 Markdown 线（纯二进制 GET）对比。
+        imageLog.info("attachment fetch id=\(attachmentId, privacy: .public) maxPixel=\(maxPixel) rpc=\(rpcMs)ms base64=\(decodeMs)ms bytes=\(data.count)")
         return data
     }
 }
@@ -41,10 +50,13 @@ struct RemoteURLByteSource: ImageByteSource {
     var cacheKey: String { ImageSourceKey.remote(url) }
 
     func data(maxPixel: Int) async throws -> Data {
+        let started = Date()
         let (data, response) = try await URLSession.shared.data(from: url)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ImageSourceError.badStatus(http.statusCode)
         }
+        let ms = Int(Date().timeIntervalSince(started) * 1000)
+        imageLog.info("remote fetch url=\(url.lastPathComponent, privacy: .public) maxPixel=\(maxPixel) http=\(ms)ms bytes=\(data.count)")
         return data
     }
 }

@@ -57,10 +57,13 @@ final class ImagePipeline {
             defer { self?.clearInFlight(key) }
             guard let data = try? await source.data(maxPixel: Int(maxPixel)) else { return nil }
             // 解码放到后台，避免大图首次显示卡主线程。
+            let decodeStart = Date()
             guard let image = await Task.detached(priority: .utility, operation: {
                 ImageMemory.thumbnail(data: data, maxPixel: maxPixel)
             }).value else { return nil }
+            let decodeMs = Int(Date().timeIntervalSince(decodeStart) * 1000)
             self?.store(image, key: source.cacheKey, tier: tier, maxPixel: maxPixel)
+            imageLog.info("decode key=\(source.cacheKey, privacy: .public) tier=\(tier.rawValue, privacy: .public) ms=\(decodeMs) px=\(Int(maxPixel))")
             return image
         }
         inFlight[key] = task
