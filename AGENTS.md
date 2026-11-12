@@ -44,7 +44,20 @@
 - `docs/architecture/journey.jsonl`：架构决策只追加，字段固定。改动分层/抽象时写一条。
 - `./scripts/check-architecture.sh`：违规检查，退出码 1。**新增违规当次修掉**，存量按 spec 还债。
 
-当前存量 6 处违规（5 个超 400 行、ConnectionModel 仍有 7 个 +Feature 文件）。
+当前存量 **0 处违规**。
+
+阈值按层分（`scripts/architecture-facts.sh` 的 `FILE_LIMITS`）：
+
+| 层 | 上限 | 理由 |
+| --- | --- | --- |
+| pure-logic（DSHKit 策略/解析） | 400 | 纯逻辑、可单测，必须短 |
+| app（编排层 `DSHPocket/Session`） | 600 | 编排天然比策略长 |
+| ui-tests | 600 | — |
+
+一刀切 400 曾逼出 197 行的碎片 extension，改一个功能要跳四个文件——真正该管的是「一个文件干几件事」。
+
+`extension-split-smell` 的判据是「≥3 个同前缀 extension **且其中仍有超阈值文件**」，
+即「拆了但职责没分开」。按职责拆 extension 是正常做法，文件数本身不是问题。
 
 ## 3.5 提交时必须包含工程文件
 

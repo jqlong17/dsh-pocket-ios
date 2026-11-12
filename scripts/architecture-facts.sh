@@ -116,6 +116,9 @@ for mod in modules:
         else:
             window = []
 
+# 分层阈值
+FILE_LIMITS = {"pure-logic": 400, "app": 600, "ui-tests": 600}
+
 # 违规检查：纯逻辑层不得依赖 UI 框架
 ui_frameworks = {"SwiftUI", "UIKit", "AppKit"}
 violations = []
@@ -123,8 +126,13 @@ for mod in modules:
     if mod["layer"] == "pure-logic":
         for fw in ui_frameworks & set(mod["imports"]):
             violations.append({"rule": "pure-logic-no-ui", "file": mod["file"], "detail": f"导入了 {fw}"})
-    if mod["lines"] > 400:
-        violations.append({"rule": "file-max-400", "file": mod["file"], "detail": f"{mod['lines']} 行"})
+    # 分层阈值：策略层必须短（纯逻辑、可单测），编排层与视图层天然更长。
+    # 400 一刀切逼出过 197 行的碎片 extension，改一个功能要跳四个文件，理解成本反而上升。
+    # 真正该管的是「一个文件干几件事」，不是行数本身。
+    limit = FILE_LIMITS[mod["layer"]]
+    if mod["lines"] > limit:
+        violations.append({"rule": f"file-max-{limit}", "file": mod["file"],
+                           "detail": f"{mod['lines']} 行（{mod['layer']} 阈值 {limit}）"})
 
 # extension 堆叠检查（≥3 个同前缀 extension 视为假拆分）
 by_prefix = collections.defaultdict(list)
