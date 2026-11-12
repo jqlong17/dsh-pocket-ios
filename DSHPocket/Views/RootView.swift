@@ -38,6 +38,7 @@ struct RootView: View {
                 PocketMotion.reduceMotion = reduceMotion
                 // 诊断数据源装配一次（幂等）：诊断不反向依赖模型，只能由入口注入。
                 model.installDiagnosticsProviders()
+                model.installQuestionProviders()
             }
             .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {

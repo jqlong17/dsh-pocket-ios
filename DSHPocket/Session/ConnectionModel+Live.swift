@@ -522,32 +522,6 @@ extension ConnectionModel {
     }
 
     /// 只有「还没结果，且这一轮还没结束」才占输入区。历史重放不能把答过的问题再抬出来。
-    @MainActor
-    func noteQuestionAsked(callId: String, turn: Int, arguments: String) {
-        let answered = activeConversation?.answeredQuestionCallIds.contains(callId) ?? false
-        let turnEnded = activeConversation?.endedTurnNumbers.contains(turn) ?? false
-        guard PendingQuestionPolicy.shouldShow(hasResult: answered, turnEnded: turnEnded),
-              let parsed = Self.parsePendingQuestion(callId: callId, arguments: arguments) else { return }
-        pendingQuestion = parsed
-        activeConversation?.pendingQuestionTurn = turn
-    }
-
-    /// 电脑端已经给出结果，或本机刚提交了回答。
-    @MainActor
-    func noteQuestionSettled(callId: String) {
-        guard !callId.isEmpty else { return }
-        activeConversation?.answeredQuestionCallIds.insert(callId)
-        if pendingQuestion?.callId == callId {
-            clearPendingQuestion()
-        }
-    }
-
-    @MainActor
-    func clearPendingQuestion() {
-        pendingQuestion = nil
-        activeConversation?.pendingQuestionTurn = nil
-    }
-
     /// 解析交由 DSHKit（纯逻辑、可单测），这里只做类型转换。
     static func parsePendingQuestion(callId: String, arguments: String) -> PendingUserQuestion? {
         guard let payload = PendingQuestionPayload.decode(callId: callId, arguments: arguments) else {
@@ -558,41 +532,7 @@ extension ConnectionModel {
 
     /// 回答 `ask_user_question`（userQuestions/answer）。
     @MainActor
-    func answerQuestion(_ request: PendingUserQuestion,
-                        selected: [String: Set<String>],
-                        custom: [String: String]) {
-        guard let session = selectedSession else { return }
-        let answers: [[String: Any]] = request.questions.map { item in
-            var answer: [String: Any] = [
-                "id": item.id,
-                "selected": Array(selected[item.id] ?? [])
-            ]
-            let text = (custom[item.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { answer["custom"] = text }
-            return answer
-        }
-        let args: [String: Any] = [
-            "agentId": session.sessionId,
-            "callId": request.callId,
-            "answer": ["answers": answers]
-        ]
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                _ = try await rpcClient.rpcAdapted("userQuestions/answer", args: args)
-                await MainActor.run {
-                    self.noteQuestionSettled(callId: request.callId)
-                    self.recordDiagnostic("已回答用户问题：\(request.callId)")
-                }
-            } catch {
-                await MainActor.run {
-                    self.conversationError = "回答问题失败：\(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    static func pocketMessage(from message: DSHMessage) -> PocketMessage {
+     static func pocketMessage(from message: DSHMessage) -> PocketMessage {
         PocketMessage(sequence: message.sequence,
                       kind: message.kind,
                       text: message.text,
@@ -619,6 +559,45 @@ extension ConnectionModel {
     }
 
     /// 手动重连实时流（状态机断开时 UI 上的"重连"按钮）。
+    // MARK: 问答卡（实现在 QuestionInbox）
+
+    @MainActor
+    func noteQuestionAsked(callId: String, turn: Int, arguments: String) {
+        questionInbox.noteAsked(callId: callId, turn: turn, arguments: arguments)
+    }
+
+    @MainActor
+    func noteQuestionSettled(callId: String) {
+        questionInbox.noteSettled(callId: callId)
+    }
+
+    @MainActor
+    func clearPendingQuestion() {
+        questionInbox.clear()
+    }
+
+    @MainActor
+    func answerQuestion(_ request: PendingUserQuestion,
+                        selected: [String: Set<String>],
+                        custom: [String: String]) {
+        questionInbox.answer(request, selected: selected, custom: custom)
+    }
+
+    /// 装配问答卡的依赖（幂等，RootView onAppear 调用）。
+    func installQuestionProviders() {
+        guard questionInbox.providers == nil else { return }
+        questionInbox.providers = QuestionInbox.Providers(
+            sessionId: { [weak self] in self?.selectedSession?.sessionId },
+            conversation: { [weak self] in self?.activeConversation },
+            client: { [weak self] in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try self.rpcClient
+            },
+            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
+            reportError: { @MainActor [weak self] message in self?.conversationError = message }
+        )
+    }
+
     @MainActor
     func manualReconnect() {
         guard let session = selectedSession, !isDemoMode else { return }

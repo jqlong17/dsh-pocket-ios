@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:40:38+08:00",
-  "commit": "dcf53aa",
+  "generated_at": "2026-11-12T11:41:33+08:00",
+  "commit": "39119a8",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 68,
-      "lines": 9955
+      "files": 69,
+      "lines": 10027
     },
     {
       "layer": "ui-tests",
@@ -1242,7 +1242,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 923,
+      "lines": 902,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1332,7 +1332,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 629,
+      "lines": 631,
       "types": [
         "ConnectionModel"
       ],
@@ -1444,6 +1444,19 @@
         "OutboxCoordinator"
       ],
       "imports": [
+        "Foundation",
+        "Observation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/QuestionInbox.swift",
+      "layer": "app",
+      "lines": 90,
+      "types": [
+        "QuestionInbox"
+      ],
+      "imports": [
+        "DSHKit",
         "Foundation",
         "Observation"
       ]
@@ -2008,7 +2021,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 81,
+      "lines": 82,
       "types": [
         "RootView"
       ],
@@ -2122,7 +2135,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "923 行"
+      "detail": "902 行"
     },
     {
       "rule": "file-max-400",
@@ -2132,7 +2145,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "629 行"
+      "detail": "631 行"
     },
     {
       "rule": "file-max-400",

@@ -232,6 +232,8 @@ final class ConnectionModel {
     let diagnostics = Diagnostics()
     /// 任务名单订阅器（服务，不持有业务数据；名单在 ConversationState.jobs）。
     let jobRoster = JobRoster()
+    /// 问答卡状态机（spec/12 第六个抽取对象）。
+    let questionInbox = QuestionInbox()
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }
