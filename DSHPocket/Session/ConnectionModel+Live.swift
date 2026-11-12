@@ -510,7 +510,7 @@ extension ConnectionModel {
             },
             flushQueued: { @MainActor [weak self] in self?.flushQueuedSends() },
             loadHistory: { @MainActor [weak self] in
-                guard let self, let session = self.selectedSession else { return }
+                guard let self, let session = self.sessionStore.selected else { return }
                 await self.loadHistory(session)
             },
             authExpired: { [weak self] in

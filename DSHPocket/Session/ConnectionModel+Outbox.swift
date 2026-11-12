@@ -252,7 +252,7 @@ extension ConnectionModel {
                 }
                 if stop { break }
             }
-            if let session = await MainActor.run(body: { self.selectedSession }) {
+            if let session = await MainActor.run(body: { self.sessionStore.selected }) {
                 await self.loadHistory(session)
             }
             await MainActor.run {

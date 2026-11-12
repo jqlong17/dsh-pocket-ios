@@ -53,10 +53,6 @@ final class ConnectionModel {
     var isDemoMode = false
     /// 会话列表与缓存的唯一真相（spec/12 第五个对象）。调用点走转发。
     let sessionStore = SessionStore()
-    var selectedSession: PocketSession? {
-        get { sessionStore.selected }
-        set { sessionStore.selected = newValue }
-    }
     var isSending = false
 
     /// 输入框草稿按会话隔离（转发到 activeConversation，并持久化到本地）。

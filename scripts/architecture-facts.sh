@@ -116,6 +116,28 @@ for mod in modules:
         else:
             window = []
 
+# 纯转发属性（spec/17）：ConnectionModel 出现 `get { <对象>.<字段> }` 且 set 也只转一手，
+# 就是「字段所有权」被藏在了门面后面——调用点看不到自己在跟谁说话，
+# 而 SwiftUI 的 @Bindable 根本无法穿过这种转发取绑定（实测会报 let 常量不可赋值）。
+FORWARDING_WHITELIST = {
+    # 场景核心句柄：模型要持有「当前打开哪个会话」，这不是别人的字段。
+    "activeConversation",
+}
+forwarding_smell = []
+for mod in modules:
+    if not mod["file"].endswith("ConnectionModel.swift"):
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for match in re.finditer(r"var (\w+):[^\{\n]*\{\s*\n\s*get \{ \w+\.(\w+) \}", body):
+        name = match.group(1)
+        if name in FORWARDING_WHITELIST:
+            continue
+        forwarding_smell.append({"rule": "pure-forwarding-smell", "file": mod["file"],
+                                 "detail": f"{name} 只是转发给 {match.group(2)}，调用点应直读"})
+
 # 视图不得穿过模型的纯转发属性（spec/13 批次 3）
 # 带副作用的访问器（如 draft 写入要持久化）不算违规；只抓「纯粹是 let 对象的转发」。
 PURE_FORWARDING = [
@@ -148,7 +170,29 @@ for mod in modules:
     if mod["layer"] == "pure-logic":
         for fw in ui_frameworks & set(mod["imports"]):
             violations.append({"rule": "pure-logic-no-ui", "file": mod["file"], "detail": f"导入了 {fw}"})
-    # 视图不得穿过模型的纯转发属性（spec/13 批次 3）
+    # 纯转发属性（spec/17）：ConnectionModel 出现 `get { <对象>.<字段> }` 且 set 也只转一手，
+# 就是「字段所有权」被藏在了门面后面——调用点看不到自己在跟谁说话，
+# 而 SwiftUI 的 @Bindable 根本无法穿过这种转发取绑定（实测会报 let 常量不可赋值）。
+FORWARDING_WHITELIST = {
+    # 场景核心句柄：模型要持有「当前打开哪个会话」，这不是别人的字段。
+    "activeConversation",
+}
+forwarding_smell = []
+for mod in modules:
+    if not mod["file"].endswith("ConnectionModel.swift"):
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for match in re.finditer(r"var (\w+):[^\{\n]*\{\s*\n\s*get \{ \w+\.(\w+) \}", body):
+        name = match.group(1)
+        if name in FORWARDING_WHITELIST:
+            continue
+        forwarding_smell.append({"rule": "pure-forwarding-smell", "file": mod["file"],
+                                 "detail": f"{name} 只是转发给 {match.group(2)}，调用点应直读"})
+
+# 视图不得穿过模型的纯转发属性（spec/13 批次 3）
 # 带副作用的访问器（如 draft 写入要持久化）不算违规；只抓「纯粹是 let 对象的转发」。
 PURE_FORWARDING = [
     "isConnected", "errorMessage", "serverAddress", "pin", "isConnecting", "addressNeedsRescan",
@@ -212,9 +256,9 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations + banned_hits + duplicate_attr + view_leaks,
+    "violations": violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell,
 }
-all_violations = violations + banned_hits + duplicate_attr + view_leaks
+all_violations = violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 
