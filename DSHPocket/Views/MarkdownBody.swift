@@ -41,6 +41,9 @@ struct MarkdownBody: View {
 /// `.overflow` 能横滑却没有网格线。这里把两者合成：横滑 + 网格线 + 外框，
 /// 字号比正文小一点（正文 17，表格 15）。
 struct PhoneTableStyle: StructuredText.TableStyle {
+    /// 内部网格线的厚度（单元格间距就是线宽）。0.5 点在 3x 屏上是 1.5 像素，比 1 点细一半。
+    private static let gridWidth: CGFloat = 0.5
+    /// 外框单独一条，略粗于内部线。
     private static let borderWidth: CGFloat = 1
     private static let maxWidthRatio: CGFloat = 2.2
     private static let fontSize: CGFloat = 15
@@ -54,7 +57,7 @@ struct PhoneTableStyle: StructuredText.TableStyle {
                 .font(.system(size: Self.fontSize))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: maxWidth, alignment: .leading)
-                .textual.tableCellSpacing(horizontal: Self.borderWidth, vertical: Self.borderWidth)
+                .textual.tableCellSpacing(horizontal: Self.gridWidth, vertical: Self.gridWidth)
                 .textual.tableBackground { layout in
                     Canvas { context, _ in
                         for row in layout.rowIndices.dropFirst() where row.isMultiple(of: 2) {
