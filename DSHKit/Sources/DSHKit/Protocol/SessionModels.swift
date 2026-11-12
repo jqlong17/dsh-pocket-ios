@@ -99,6 +99,16 @@ public enum DSHStepEvent: Equatable, Sendable {
     case toolResult(seq: Int, turn: Int, callId: String, text: String, isError: Bool, images: [DSHImageRef])
     case turnStart(seq: Int, turn: Int)
     case turnEnd(seq: Int, turn: Int, failure: DSHTurnFailure?)
+
+    /// 事件在会话里的序号。分页按序号切时用得到。
+    public var sequence: Int {
+        switch self {
+        case .toolCall(let seq, _, _, _, _, _): return seq
+        case .toolResult(let seq, _, _, _, _, _): return seq
+        case .turnStart(let seq, _): return seq
+        case .turnEnd(let seq, _, _): return seq
+        }
+    }
 }
 
 /// 历史分页（用例 P40）。

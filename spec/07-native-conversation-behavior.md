@@ -90,7 +90,12 @@
   - 附件字典 → 图片引用：正常、缺 attachmentId。
 - 验收：`ConnectionModel+Process.applyStepEvent` 不再手工取 `data["message"]`、`block["attachment"]`；App 层 `as? [String: Any]` 数量明显下降。
 
-状态：**进行中**（并行任务 task-1）。
+状态：**已实现**。
+- DSHKit 侧：`ProcessEventDecoding`（记录→事件、分页记录、附件、时间戳），17 条测试。
+- App 侧已接线：`mergeSteps` 走 `records(fromRecords:)`（保留标题分支）、
+  `loadProcessDetails` 走 `stepEvents(fromRecords:)` 按序号过滤、任务名单帧走
+  `StreamFrames.itemValue`（新增 5 条测试）、事件序号走 `DSHStepEvent.sequence`（6 条测试）。
+- App 层手工 `as? [String: Any]` 从 33 处降到 26 处，剩余集中在 follow 帧与会话列表。
 
 ### R9 连接失败分型
 
@@ -101,7 +106,8 @@
   - 其余 → 未知，不吞掉原始错误描述。
 - 验收：连接页不再对四类错误显示同一句话。
 
-状态：**进行中**（并行任务 task-2）。
+状态：**已实现**（未验证文案的英文词条）。
+- 待补：`L10n.en` 里新文案的英文词条；四类失败目前只有「重试 / 重新扫码」两种视觉。
 
 ## 非目标
 

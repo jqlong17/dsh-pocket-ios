@@ -19,85 +19,86 @@ extension ConnectionModel {
 
     @MainActor
     func mergeSteps(from records: [[String: Any]]) {
+        // 分页记录统一在 DSHKit 里分发：步骤走 applyStep，标题单独落，其余忽略。
+        applyRecords(DSHDecoding.records(fromRecords: records))
+    }
+
+    @MainActor
+    func applyRecords(_ records: [DSHRecord]) {
         for record in records {
-            guard let event = record["event"] as? [String: Any] else { continue }
-            applyStepEvent(event)
+            switch record {
+            case .step(let step):
+                applyStep(step)
+            case .title(_, let title):
+                if !title.isEmpty { updateSessionTitle(title) }
+            case .message, .unknown:
+                break
+            }
         }
     }
 
-    /// 处理 tool/call、tool/result、turn/start、turn/end 等过程事件。
+    /// 处理 tool/call、tool/result、turn/start、turn/end。
+    /// 解析全在 DSHKit（DSHDecoding）；这里只把结果落到会话状态上。
     @MainActor
     func applyStepEvent(_ event: [String: Any], storeBodies: Bool = false) {
-        guard let type = event["type"] as? String,
-              let sequence = (event["seq"] as? NSNumber)?.intValue else { return }
-        let data = event["data"] as? [String: Any] ?? [:]
-        switch type {
-        case "tool/call":
-            guard let callId = data["callId"] as? String,
-                  let name = data["name"] as? String else { return }
-            guard !steps.contains(where: { $0.id == callId }) else { return }
-            let turn = (data["turn"] as? NSNumber)?.intValue ?? 0
-            let number = (data["step"] as? NSNumber)?.intValue ?? 0
-            let arguments = (data["arguments"] as? String).flatMap {
-                try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any]
-            } ?? [:]
-            let step = PocketStep(id: callId, sequence: sequence, turn: turn, number: number,
-                                  name: name, detail: Self.stepDetail(name: name, arguments: arguments))
+        if let step = DSHDecoding.stepEvent(fromEvent: event) {
+            applyStep(step, storeBodies: storeBodies,
+                      startedAt: DSHDecoding.eventTimestamp(fromEvent: event))
+            return
+        }
+        // 不是过程事件时，标题变更也要能落到界面。
+        if case .title(_, let title) = DSHDecoding.record(fromEvent: event), !title.isEmpty {
+            updateSessionTitle(title)
+        }
+    }
+
+    @MainActor
+    func applyStep(_ event: DSHStepEvent, storeBodies: Bool = false, startedAt: Date? = nil) {
+        switch event {
+        case .toolCall(let sequence, let turn, _, let name, let detail, _):
+            let callId = Self.callId(of: event)
+            guard !callId.isEmpty, !steps.contains(where: { $0.id == callId }) else { return }
+            // 未知工具时 DSHKit 会把工具名当 detail：与标题重复，界面上不再显示一遍。
+            let shownDetail = detail == name ? "" : detail
+            let step = PocketStep(id: callId, sequence: sequence, turn: turn, number: 0,
+                                  name: name, detail: shownDetail)
             steps.append(step)
             steps.sort { $0.sequence < $1.sequence }
             recordDiagnostic("过程：\(step.label)\(step.detail.isEmpty ? "" : "（\(step.detail)）")")
-        case "tool/result":
-            let message = data["message"] as? [String: Any] ?? [:]
-            guard let callId = (message["toolCallId"] as? String) ?? (data["callId"] as? String),
-                  let index = steps.firstIndex(where: { $0.id == callId }) else { return }
-            let content = message["content"] as? [[String: Any]] ?? []
-            steps[index].isError = message["isError"] as? Bool ?? false
+        case .toolResult(_, _, let callId, let text, let isError, let images):
+            guard let index = steps.firstIndex(where: { $0.id == callId }) else { return }
+            steps[index].isError = isError
             steps[index].finished = true
             // 过程正文默认不进内存。展开时 storeBodies=true 再填。
             guard storeBodies else { return }
-            steps[index].resultText = content.compactMap { block -> String? in
-                guard block["type"] as? String == "text" else { return nil }
-                return block["text"] as? String
-            }.joined()
-            steps[index].images = content.compactMap { block -> PocketImageRef? in
-                guard block["type"] as? String == "image",
-                      let attachment = block["attachment"] as? [String: Any] else { return nil }
-                return PocketImageRef(json: attachment)
+            steps[index].resultText = text
+            steps[index].images = images.map {
+                PocketImageRef(attachmentId: $0.attachmentId,
+                               mediaType: $0.mediaType,
+                               bytes: $0.bytes ?? 0,
+                               width: $0.width,
+                               height: $0.height,
+                               name: $0.name)
             }
             steps[index].detailsLoaded = true
-        case "turn/start":
+            if !images.isEmpty {
+                recordDiagnostic("工具结果包含图片：\(images.count) 张")
+            }
+        case .turnStart(let sequence, _):
             if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
             isTurnRunning = true
-            let time = (event["time"] as? NSNumber)?.doubleValue ?? 0
-            turnStartedAt = time > 0 ? Date(timeIntervalSince1970: time / 1000) : Date()
-        case "turn/end":
-            recordTurnFailure(sequence: sequence, failure: DSHDecoding.turnFailure(from: data))
-        case "session/title":
-            if let title = data["title"] as? String, !title.isEmpty {
-                updateSessionTitle(title)
-            }
-        default:
-            break
+            turnStartedAt = startedAt ?? Date()
+        case .turnEnd(let sequence, _, let failure):
+            recordTurnFailure(sequence: sequence, failure: failure)
         }
     }
 
-    static func stepDetail(name: String, arguments: [String: Any]) -> String {
-        switch name {
-        case "bash":
-            let command = (arguments["command"] as? String) ?? ""
-            let first = command.split(separator: "\n").first.map(String.init) ?? command
-            return String(first.prefix(80))
-        case "read", "read_image", "write", "edit":
-            guard let path = arguments["file_path"] as? String else { return "" }
-            return URL(fileURLWithPath: path).lastPathComponent
-        case "web_search":
-            return (arguments["queries"] as? [String])?.joined(separator: " / ").prefix(80).description ?? ""
-        case "web_fetch":
-            return (arguments["url"] as? String) ?? ""
-        case "ask_user_question":
-            return "等待你的回答"
-        default:
-            return ""
+    /// 事件里带 callId 的只有 toolCall，单独取出来避免在模式匹配里塞参数。
+    static func callId(of event: DSHStepEvent) -> String {
+        switch event {
+        case .toolCall(_, _, let callId, _, _, _): return callId
+        case .toolResult(_, _, let callId, _, _, _): return callId
+        case .turnStart, .turnEnd: return ""
         }
     }
 
@@ -153,9 +154,7 @@ extension ConnectionModel {
                         return nil
                     }() else { continue }
                     guard let object = try JSONSerialization.jsonObject(with: frameData) as? [String: Any],
-                          object["streamId"] as? String == streamId,
-                          object["type"] as? String == "item",
-                          let value = object["value"] as? [String: Any],
+                          let value = StreamFrames.itemValue(object, streamId: streamId),
                           let rows = DSHJobRoster.rows(fromValue: value) else { continue }
                     let next = rows.map(PocketJob.init(row:))
                     await MainActor.run {
@@ -215,11 +214,9 @@ extension ConnectionModel {
                 "maxMessages": 4
             ]])
             let records = page["records"] as? [[String: Any]] ?? []
-            for record in records {
-                guard let event = record["event"] as? [String: Any],
-                      let seq = (event["seq"] as? NSNumber)?.intValue,
-                      seq >= first, seq <= last else { continue }
-                applyStepEvent(event, storeBodies: true)
+            for step in DSHDecoding.stepEvents(fromRecords: records)
+            where step.sequence >= first && step.sequence <= last {
+                applyStep(step, storeBodies: true)
             }
             recordDiagnostic("过程详情已加载：seq \(first)-\(last)")
         } catch {
