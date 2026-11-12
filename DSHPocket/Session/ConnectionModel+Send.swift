@@ -186,6 +186,16 @@ extension ConnectionModel {
             cancelledDraft = ""
             cancelledImages = []
         }
+        // 发送前预判：已知网络不可达就别白等三次重试（实测原本要 18 秒才切到「断网暂存」）。
+        // 注意顺序——必须在「写入发件箱」之后，否则预判后 return 会丢掉用户输入。
+        if SendPreflightPolicy.action(isReachable: networkWatcher.isReachable) == .holdOffline {
+            queuedSendRpcIds.insert(requestId)
+            failedSendRpcIds.remove(requestId)
+            markOutboxHeldOffline(rpcId: requestId)
+            conversationError = nil
+            recordDiagnostic("发送前预判网络不可达，直接写入断网暂存：\(requestId)")
+            return
+        }
         do {
             timingLog("prompt_start chars=\(text.count) images=\(attachments.count)")
             // 请求体结构在 DSHKit（可测）：空文本不产生 text block、图片字段名固定。

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T22:44:17+08:00",
-  "commit": "ce80452",
+  "generated_at": "2026-11-12T22:48:50+08:00",
+  "commit": "e942d87",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 54,
-      "lines": 3120
+      "files": 55,
+      "lines": 3144
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 82,
-      "lines": 11015
+      "lines": 11026
     },
     {
       "layer": "ui-tests",
@@ -331,6 +331,18 @@
       "lines": 36,
       "types": [
         "SendLandedScan"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/SendPreflightPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 24,
+      "types": [
+        "SendPreflightAction",
+        "SendPreflightPolicy"
       ],
       "imports": [
         "Foundation"
@@ -1473,7 +1485,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Send.swift",
       "layer": "app",
-      "lines": 330,
+      "lines": 340,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1664,7 +1676,7 @@
     {
       "file": "DSHPocket/Session/NetworkWatcher.swift",
       "layer": "app",
-      "lines": 42,
+      "lines": 43,
       "types": [
         "NetworkWatcher"
       ],

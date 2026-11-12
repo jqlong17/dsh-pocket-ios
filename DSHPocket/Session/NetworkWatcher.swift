@@ -15,7 +15,8 @@ import Network
 final class NetworkWatcher {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "dsh-pocket.network-watcher")
-    private var lastSatisfied: Bool?
+    /// 当前是否可达。`nil` = 还没探测到（冷启动头几秒），调用方必须按「可以试」处理。
+    private(set) var isReachable: Bool?
 
     /// 网络从不可用变为可用时回调（主线程）。
     var onBecomeReachable: (@MainActor () -> Void)?
@@ -24,8 +25,8 @@ final class NetworkWatcher {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             let satisfied = path.status == .satisfied
-            let previous = self.lastSatisfied
-            self.lastSatisfied = satisfied
+            let previous = self.isReachable
+            self.isReachable = satisfied
             // 只在「第一次知道可用」或「从不可用变可用」时通知。
             guard satisfied, previous != true else { return }
             Task { @MainActor [weak self] in
