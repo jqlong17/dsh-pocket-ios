@@ -79,3 +79,24 @@
 ## 预估工时
 
 预估 **30–45 分钟**（含写测试、搬移、全量测试、重新生成 fact.json、记录检查点）。
+
+## 执行记录
+
+提交 `f07b495`；检查点 baseline `b2323ae` / result `f07b495`。
+
+- 交付：`ArchitectureBoundaryTests`（2 条：边界扫描 + 扫描器自测）、删除 `MotionPolicy.swift` 与 3 条 UI 测试、门闸内联 `PocketMotion`。
+- 验证：`swift test` 254 → **253 绿**；`xcodebuild` 成功；`check-architecture.sh` 违规 **8 → 7**，`pure-logic-no-ui` 归零。
+- 预估 40 分钟，实际 ≈1 分钟（偏差 0.02×）——又一次系统性高估，已计入 `estimate-accuracy` 样本。
+
+### 回看量化标准
+
+| 标准 | 结果 |
+| --- | --- |
+| 纯逻辑层无 UI import | ✅ 由测试强制 |
+| 规则变成单测 | ✅ `swift test` 默认执行 |
+| 违规 8 → 7 | ✅ |
+| 行为不变 | ✅ 编译通过、253 测试绿 |
+
+### 未做
+
+其余 7 处存量违规（6 个超 400 行文件、ConnectionModel 7 个 extension）未动——按 spec 只修一条，不夹带。
