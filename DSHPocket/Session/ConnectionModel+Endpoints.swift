@@ -183,6 +183,9 @@ extension ConnectionModel {
 
     @MainActor
     func restoreConnection() async {
+        // 所有退出路径都必须标记「恢复已结束」，否则视图会停在占位页（永久白屏）。
+        // 这里用 defer：本函数有 5 条提前 return，手写必然漏掉一条。
+        defer { connection.hasFinishedRestore = true }
         if isDemoMode { return }
 #if DEBUG
         if DebugLaunch.showConnect { return }

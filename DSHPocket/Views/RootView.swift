@@ -27,7 +27,12 @@ struct RootView: View {
     var body: some View {
         NavigationStack(path: $sessionStore.navigationPath) {
             Group {
-                if model.connection.isConnected {
+                // 三态：还没确定（占位）→ 已连接（列表）→ 确定未连接（连接页）。
+                // 中间态不可省：直接用 isConnected 会在启动瞬间渲染完整连接页（含扫码引导），
+                // 恢复完成后才切走，用户看到「闪一下连接页」。
+                if !model.connection.hasFinishedRestore {
+                    LaunchPlaceholder()
+                } else if model.connection.isConnected {
                     ConnectedView(model: model)
                 } else {
                     ConnectView(model: model, connection: model.connection)
@@ -43,6 +48,7 @@ struct RootView: View {
                 model.installQuestionProviders()
                 model.installSessionAPIProviders()
                 model.installNetworkWatcher()
+                startRestoreWatchdog()
             }
             .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {
@@ -80,6 +86,18 @@ struct RootView: View {
                 if Task.isCancelled { break }
                 await model.loadSessions(silently: true)
             }
+        }
+    }
+
+    /// 恢复超时兜底：`fetchSessions` 可能因网络问题长时间挂起，
+    /// 没有兜底就会停在没有任何文字与转圈的占位页——用户只会觉得 App 死了。
+    /// 超时不是放弃恢复，`restoreConnection` 仍在后台跑，完成时会自然切换页面。
+    private func startRestoreWatchdog() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            guard !model.connection.hasFinishedRestore else { return }
+            model.connection.hasFinishedRestore = true
+            model.recordDiagnostic("启动恢复超时 2 秒，先显示界面")
         }
     }
 }

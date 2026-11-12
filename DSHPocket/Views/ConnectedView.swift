@@ -243,16 +243,16 @@ struct ConnectedView: View {
                 ))
                 .contextMenu {
                     Button {
-                        renamingSession = session
-                        renameDraft = session.displayTitle
-                    } label: {
-                        Label(L10n.t("重命名"), systemImage: "pencil")
-                    }
-                    Button {
                         Task { await model.togglePin(session) }
                     } label: {
                         Label(model.sessionStore.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
                               systemImage: model.sessionStore.pinnedSessionIds.contains(session.sessionId) ? "pin.slash" : "pin")
+                    }
+                    Button {
+                        renamingSession = session
+                        renameDraft = session.displayTitle
+                    } label: {
+                        Label(L10n.t("重命名"), systemImage: "pencil")
                     }
                     Button(role: .destructive) {
                         Task { await model.archive(session) }

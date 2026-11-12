@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:58:11+08:00",
-  "commit": "2462f1f",
+  "generated_at": "2026-11-12T23:32:36+08:00",
+  "commit": "8821d35",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 82,
-      "lines": 11035
+      "files": 83,
+      "lines": 10820
     },
     {
       "layer": "ui-tests",
@@ -1373,7 +1373,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Endpoints.swift",
       "layer": "app",
-      "lines": 238,
+      "lines": 241,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1417,7 +1417,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 532,
+      "lines": 380,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1507,7 +1507,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 300,
+      "lines": 266,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1529,7 +1529,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 514,
+      "lines": 507,
       "types": [
         "ConnectionModel"
       ],
@@ -1553,7 +1553,7 @@
     {
       "file": "DSHPocket/Session/ConnectionState.swift",
       "layer": "app",
-      "lines": 33,
+      "lines": 36,
       "types": [
         "ConnectionState"
       ],
@@ -1652,10 +1652,8 @@
     {
       "file": "DSHPocket/Session/LiveFrameApplier.swift",
       "layer": "app",
-      "lines": 106,
-      "types": [
-        "LiveFrameApplier"
-      ],
+      "lines": 81,
+      "types": [],
       "imports": [
         "DSHKit",
         "Foundation"
@@ -1664,10 +1662,8 @@
     {
       "file": "DSHPocket/Session/LiveStreamRunner.swift",
       "layer": "app",
-      "lines": 184,
-      "types": [
-        "LiveStreamRunner"
-      ],
+      "lines": 171,
+      "types": [],
       "imports": [
         "DSHKit",
         "Foundation"
@@ -1688,10 +1684,8 @@
     {
       "file": "DSHPocket/Session/NotificationBridge.swift",
       "layer": "app",
-      "lines": 134,
-      "types": [
-        "NotificationBridge"
-      ],
+      "lines": 124,
+      "types": [],
       "imports": [
         "DSHKit",
         "Foundation",
@@ -1739,10 +1733,8 @@
     {
       "file": "DSHPocket/Session/SessionActions.swift",
       "layer": "app",
-      "lines": 227,
-      "types": [
-        "SessionActions"
-      ],
+      "lines": 207,
+      "types": [],
       "imports": [
         "DSHKit",
         "Foundation"
@@ -2148,6 +2140,17 @@
       ]
     },
     {
+      "file": "DSHPocket/Views/LaunchPlaceholder.swift",
+      "layer": "app",
+      "lines": 26,
+      "types": [
+        "LaunchPlaceholder"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
       "file": "DSHPocket/Views/MarkdownBody.swift",
       "layer": "app",
       "lines": 78,
@@ -2343,7 +2346,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 90,
+      "lines": 104,
       "types": [
         "RootView"
       ],
@@ -2448,26 +2451,5 @@
       ]
     }
   ],
-  "violations": [
-    {
-      "rule": "stateless-type-smell",
-      "file": "DSHPocket/Session/LiveFrameApplier.swift",
-      "detail": "自有状态 0 个但要注入 19 个依赖，应改为 extension"
-    },
-    {
-      "rule": "stateless-type-smell",
-      "file": "DSHPocket/Session/LiveStreamRunner.swift",
-      "detail": "自有状态 0 个但要注入 17 个依赖，应改为 extension"
-    },
-    {
-      "rule": "stateless-type-smell",
-      "file": "DSHPocket/Session/NotificationBridge.swift",
-      "detail": "自有状态 0 个但要注入 17 个依赖，应改为 extension"
-    },
-    {
-      "rule": "stateless-type-smell",
-      "file": "DSHPocket/Session/SessionActions.swift",
-      "detail": "自有状态 0 个但要注入 13 个依赖，应改为 extension"
-    }
-  ]
+  "violations": []
 }

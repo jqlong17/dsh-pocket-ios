@@ -21,6 +21,9 @@ final class ConnectionState {
 
     var isConnecting = false
     var isConnected = false
+    /// 启动恢复流程是否已结束（成功、失败、无地址都算结束）。
+    /// 视图靠它区分「还没确定」与「确定未连接」——前者不能显示连接页，否则启动会闪一下。
+    var hasFinishedRestore = false
     /// 连接失败的提示文案；成功或重试时清空。
     var errorMessage: String?
     /// 扫到/输入的地址不可用，界面要给「重新扫码」入口。
