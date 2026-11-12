@@ -48,7 +48,7 @@ extension ConnectionModel {
             }
             do {
                 let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
-                let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
+                let page = try await rpcClient.rpcAdapted("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
                 // await 期间可能已切换会话，返回后必须再校验，否则旧会话消息会串进当前会话。
                 guard !Task.isCancelled,
                       activeConversation?.sessionId == session.sessionId,
@@ -594,7 +594,7 @@ extension ConnectionModel {
         Task { [weak self] in
             guard let self else { return }
             do {
-                _ = try await self.rpc("userQuestions/answer", args: args)
+                _ = try await rpcClient.rpcAdapted("userQuestions/answer", args: args)
                 await MainActor.run {
                     self.noteQuestionSettled(callId: request.callId)
                     self.recordDiagnostic("已回答用户问题：\(request.callId)")
@@ -653,7 +653,7 @@ extension ConnectionModel {
     func cancelTurn() async {
         guard let session = selectedSession, !isDemoMode else { return }
         do {
-            _ = try await rpc("session/cancel", args: ["request": ["sessionId": session.sessionId]])
+            _ = try await rpcClient.rpcAdapted("session/cancel", args: ["request": ["sessionId": session.sessionId]])
             isTurnRunning = false
             recordDiagnostic("已请求停止当前生成")
         } catch {
@@ -685,14 +685,14 @@ extension ConnectionModel {
     func syncPushRegistration() async {
         guard completionAlertsEnabled else {
             if let token = pushToken {
-                _ = try? await rpc("push.unregister", args: ["token": token])
+                _ = try? await rpcClient.rpcAdapted("push.unregister", args: ["token": token])
             }
             return
         }
         UIApplication.shared.registerForRemoteNotifications()
         guard let token = pushToken, isConnected else { return }
         do {
-            _ = try await rpc("push.register", args: [
+            _ = try await rpcClient.rpcAdapted("push.register", args: [
                 "token": token,
                 "environment": "sandbox",
                 "bundleId": Bundle.main.bundleIdentifier ?? "",
@@ -735,7 +735,7 @@ extension ConnectionModel {
         let mode = running ? "steer" : "queue"
         let requestId = UUID().uuidString.lowercased()
         do {
-            _ = try await rpcWithRetry("session/prompt", args: ["request": [
+            _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": requestId,
                 "sessionId": sessionId,
                 "mode": mode,
@@ -803,7 +803,7 @@ extension ConnectionModel {
             // 没见到实时事件时按 queue 处理——queue 最多排到本轮之后，steer 会打断正在做的事。
             let promptMode = (liveTurnEventsSeen && isTurnRunning) ? "steer" : "queue"
             recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
-            _ = try await rpcWithRetry("session/prompt", args: ["request": [
+            _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": requestId,
                 "sessionId": session.sessionId,
                 "mode": promptMode,
@@ -906,25 +906,7 @@ extension ConnectionModel {
     }
 
     /// 对网络抖动做有限重试（仅用于幂等请求：session/prompt 按 requestId 去重、session/page 只读）。
-    func rpcWithRetry(_ endpoint: String, args: [String: Any], attempts: Int = 3) async throws -> [String: Any] {
-        var lastError: Error?
-        for attempt in 0..<attempts {
-            if Task.isCancelled { throw CancellationError() }
-            do {
-                return try await rpc(endpoint, args: args)
-            } catch {
-                lastError = error
-                guard isTransientNetworkError(error), attempt < attempts - 1 else { throw error }
-                await MainActor.run { [weak self] in
-                    self?.recordDiagnostic("网络抖动，重试 \(endpoint)（第 \(attempt + 2) 次）")
-                }
-                try? await Task.sleep(for: .milliseconds(attempt == 0 ? 800 : 2000))
-            }
-        }
-        throw lastError ?? ConnectionError.server(-1)
-    }
-
-    func isTransientNetworkError(_ error: Error) -> Bool {
+     func isTransientNetworkError(_ error: Error) -> Bool {
         DSHNetworkErrorPolicy.isTransient(error)
     }
 
@@ -935,7 +917,7 @@ extension ConnectionModel {
             if attempt > 0 {
                 try? await Task.sleep(for: .seconds(attempt == 1 ? 1 : attempt == 2 ? 2 : 4))
             }
-            guard let value = try? await rpc("session/page", args: ["request": [
+            guard let value = try? await rpcClient.rpcAdapted("session/page", args: ["request": [
                 "address": ["kind": "session", "sessionId": session.sessionId],
                 "maxMessages": 30
             ]]) else { continue }
@@ -970,12 +952,4 @@ extension ConnectionModel {
     ///
     /// 分界线：传输层错误（`URLError`）原样向上抛，交给 `isTransientNetworkError` 判断可否重试；
     /// 协议错误（`DSHError`）适配成 `ConnectionError`，保持 UI 文案与分类不变。
-    func rpc(_ endpoint: String, args: [String: Any], timeout: TimeInterval = 20) async throws -> [String: Any] {
-        guard let client = syncClient else { throw ConnectionError.invalidURL(serverAddress) }
-        do {
-            return try await client.rpc(method: endpoint, args: args, timeout: timeout)
-        } catch let error as DSHError {
-            throw ConnectionError.from(error, address: serverAddress)
-        }
-    }
-}
+ }

@@ -144,7 +144,7 @@ extension ConnectionModel {
             let payload = ImageFetchPolicy.requestArgs(sessionId: sessionId,
                                                        attachment: request,
                                                        maxPixel: Int(maxPixel))
-            let value = try await self.rpc("session/attachment", args: ["request": payload])
+            let value = try await rpcClient.rpcAdapted("session/attachment", args: ["request": payload])
             guard let base64 = value["data"] as? String else {
                 // 附件不存在：清掉本地磁盘副本，避免一直占着 5 MB 预算。
                 if bytes > 0 { ImagePipeline.shared.forget(attachmentId: ref.attachmentId) }
@@ -213,7 +213,7 @@ extension ConnectionModel {
         let first = group.steps.map(\.sequence).min() ?? group.sequence
         let last = group.steps.map(\.sequence).max() ?? group.sequence
         do {
-            let page = try await rpc("session/page", args: ["request": [
+            let page = try await rpcClient.rpcAdapted("session/page", args: ["request": [
                 "address": ["kind": "session", "sessionId": session.sessionId],
                 "throughSeq": last,
                 "beforeSeq": last + 1,

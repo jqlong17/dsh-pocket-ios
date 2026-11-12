@@ -60,7 +60,7 @@ extension ConnectionModel {
             CompletionNotifier.shared.requestPermission()
             Task { await syncPushRegistration() }
         } else if let token = pushToken {
-            Task { _ = try? await rpc("push.unregister", args: ["token": token]) }
+            Task { _ = try? await rpcClient.rpcAdapted("push.unregister", args: ["token": token]) }
         }
         recordDiagnostic("完成提醒：\(completionAlertsEnabled ? "开启" : "关闭")")
     }
@@ -141,7 +141,7 @@ extension ConnectionModel {
 
     func fetchSessions() async throws -> [PocketSession] {
         // 列表只拉一份摘要，20 秒还没回来基本就是连不上，早点交给重试。
-        let value = try await rpc("session/list", args: ["_request": ["excludeArchived": true]], timeout: 20)
+        let value = try await rpcClient.rpcAdapted("session/list", args: ["_request": ["excludeArchived": true]], timeout: 20)
         let items = value["items"] as? [[String: Any]] ?? []
         let sessions = items.compactMap(PocketSession.init(json:))
         let archived: Set<String>
@@ -208,7 +208,7 @@ extension ConnectionModel {
         guard !title.isEmpty else { return }
         if !isDemoMode {
             do {
-                _ = try await rpc("session/rename", args: ["request": [
+                _ = try await rpcClient.rpcAdapted("session/rename", args: ["request": [
                     "sessionId": session.sessionId,
                     "title": title
                 ]])
@@ -233,7 +233,7 @@ extension ConnectionModel {
     func loadModelCatalog() async {
         guard !isDemoMode else { return }
         do {
-            let value = try await rpc("session/modelCatalog", args: [:])
+            let value = try await rpcClient.rpcAdapted("session/modelCatalog", args: [:])
             let groups = value["groups"] as? [[String: Any]] ?? []
             modelGroups = groups.compactMap { group in
                 guard let id = group["id"] as? String,
@@ -262,7 +262,7 @@ extension ConnectionModel {
         guard let session = selectedSession else { return }
         if isDemoMode { selectedModelLabel = option.name; return }
         do {
-            _ = try await rpc("session/selectModel", args: ["request": [
+            _ = try await rpcClient.rpcAdapted("session/selectModel", args: ["request": [
                 "sessionId": session.sessionId,
                 "provider": option.provider,
                 "model": option.model
@@ -289,7 +289,7 @@ extension ConnectionModel {
             return
         }
         do {
-            _ = try await rpc("workspace/unarchiveSession", args: ["request": ["sessionId": session.sessionId]])
+            _ = try await rpcClient.rpcAdapted("workspace/unarchiveSession", args: ["request": ["sessionId": session.sessionId]])
             archivedSessionIds.remove(session.sessionId)
             await loadSessions(silently: true)
         } catch {
@@ -308,7 +308,7 @@ extension ConnectionModel {
         }
         do {
             let endpoint = pinned ? "workspace/unpinSession" : "workspace/pinSession"
-            let value = try await rpc(endpoint, args: ["request": ["sessionId": session.sessionId]])
+            let value = try await rpcClient.rpcAdapted(endpoint, args: ["request": ["sessionId": session.sessionId]])
             if let list = value["pinnedSessionIds"] as? [String] {
                 pinnedSessionIds = list
             } else if pinned {
@@ -331,7 +331,7 @@ extension ConnectionModel {
             return
         }
         do {
-            let value = try await rpc("workspace/archiveSession", args: ["request": [
+            let value = try await rpcClient.rpcAdapted("workspace/archiveSession", args: ["request": [
                 "sessionId": session.sessionId,
                 "stopActivity": false
             ]])
@@ -353,12 +353,12 @@ extension ConnectionModel {
     func createSession() async {
         do {
             var request: [String: Any] = [:]
-            if let initialized = try? await rpc("workspace/initializeDefault", args: [:]),
+            if let initialized = try? await rpcClient.rpcAdapted("workspace/initializeDefault", args: [:]),
                let workspace = initialized["workspace"] as? [String: Any],
                let workspaceId = workspace["workspaceId"] as? String {
                 request["workspaceId"] = workspaceId
             }
-            let value = try await rpc("session/create", args: ["request": request])
+            let value = try await rpcClient.rpcAdapted("session/create", args: ["request": request])
             guard let id = value["sessionId"] as? String else { throw ConnectionError.invalidPayload }
             let session = PocketSession(sessionId: id, updatedAt: Date().timeIntervalSince1970, running: false, blank: true)
             await loadSessions()
@@ -540,7 +540,7 @@ extension ConnectionModel {
     func loadHistory(_ session: PocketSession, token: UUID? = nil) async {
         do {
             let address: [String: Any] = ["kind": "session", "sessionId": session.sessionId]
-            let page = try await rpc("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
+            let page = try await rpcClient.rpcAdapted("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
             if let token, token != conversationToken { return }
             guard activeConversation?.sessionId == session.sessionId,
                   selectedSession?.sessionId == session.sessionId else { return }

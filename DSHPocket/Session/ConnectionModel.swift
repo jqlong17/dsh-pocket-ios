@@ -679,6 +679,15 @@ final class ConnectionModel {
         return DSHClient(baseURL: url)
     }
 
+    /// 唯一 RPC 取用口：协议实现在 DSHKit，这里只按当前地址构造客户端。
+    /// 地址无效时抛 `ConnectionError.invalidURL`，与旧实现一致。
+    var rpcClient: DSHClient {
+        get throws {
+            guard let client = syncClient else { throw ConnectionError.invalidURL(serverAddress) }
+            return client
+        }
+    }
+
     enum SendVerification {
         case landed
         case absent        // 请求成功但历史里确实没有这条消息

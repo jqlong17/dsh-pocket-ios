@@ -274,7 +274,7 @@ extension ConnectionModel {
             ])
         }
         do {
-            _ = try await rpcWithRetry("session/prompt", args: ["request": [
+            _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": entry.id,
                 "sessionId": entry.sessionId,
                 "mode": OfflineDeliveryPolicy.deliveryMode,
