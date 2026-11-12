@@ -48,5 +48,8 @@ struct JobsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        // 打开才订阅、关闭就取消：不可见的内容不占连接。
+        .task { model.ensureJobRoster() }
+        .onDisappear { model.stopJobRoster() }
     }
 }

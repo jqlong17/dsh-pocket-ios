@@ -459,6 +459,7 @@ extension ConnectionModel {
         }
         trimRetainedConversations(keeping: session.sessionId)
         requestScrollToBottom()
+        // 任务名单不再随进入订阅：打不开任务面板就不建这条连接（按需，见 ensureJobRoster）。
         if let client = syncClient {
             startCoordinator(for: conversation, session: session, client: client,
                              showsLoading: !openPlan.skipLoadingState)

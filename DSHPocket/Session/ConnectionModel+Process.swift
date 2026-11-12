@@ -137,6 +137,25 @@ extension ConnectionModel {
         }
     }
 
+    /// 打开任务面板时才订阅。重复调用无副作用。
+    @MainActor
+    func ensureJobRoster() {
+        guard !isDemoMode, let session = selectedSession,
+              let conversation = conversations[session.sessionId] else { return }
+        guard conversation.jobsTask == nil, !conversation.jobsStarted else { return }
+        startJobRoster(for: conversation, session: session)
+    }
+
+    /// 关掉任务面板就取消订阅，别让不可见的界面一直占着连接。
+    @MainActor
+    func stopJobRoster() {
+        guard let conversation = activeConversation else { return }
+        conversation.jobsTask?.cancel()
+        conversation.jobsTask = nil
+        conversation.jobsStarted = false
+        conversation.jobs = []
+    }
+
     /// 订阅这条会话的后台任务名单。`job/list` 是整份替换的流，断线重连后第一帧就是真相。
     @MainActor
     func startJobRoster(for conversation: ConversationState, session: PocketSession) {
