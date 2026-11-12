@@ -159,7 +159,7 @@ struct MessageRow: View {
                         }
                     } label: {
                         Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(copied ? Color(red: 0.08, green: 0.48, blue: 0.37) : .secondary)
                             .frame(width: 14, height: 14)
                             .scaleEffect(copied ? 1.15 : 1)
@@ -171,7 +171,7 @@ struct MessageRow: View {
                     Button {
                         model.beginQuote(message)
                     } label: {
-                        Image(systemName: "quote.bubble").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).frame(width: 14, height: 14)
+                        Image(systemName: "quote.bubble").font(.caption2.weight(.medium)).foregroundStyle(.secondary).frame(width: 14, height: 14)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("引用这条消息")

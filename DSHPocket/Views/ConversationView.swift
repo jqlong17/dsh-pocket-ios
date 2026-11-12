@@ -567,7 +567,7 @@ struct ConversationView: View {
                     }
                     Spacer(minLength: 0)
                     Button { model.cancelQuote() } label: {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                        Image(systemName: "xmark.circle.fill").font(.callout)
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -592,7 +592,7 @@ struct ConversationView: View {
                                 Button {
                                     model.draftImages.removeAll { $0.id == image.id }
                                 } label: {
-                                    Image(systemName: "xmark.circle.fill").font(.system(size: 16))
+                                    Image(systemName: "xmark.circle.fill").font(.callout)
                                         .foregroundStyle(.white, .black.opacity(0.55))
                                 }
                                 .offset(x: 5, y: -5)
@@ -611,7 +611,7 @@ struct ConversationView: View {
                     }
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .pocketSystemGlassCircle(size: Self.composerControlHeight)
                 }
                 .accessibilityLabel("添加图片或拍照")
@@ -627,7 +627,7 @@ struct ConversationView: View {
                     model.sendMessage(in: session)
                 } label: {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .pocketSystemGlassCircle(size: Self.composerControlHeight)
                 }
                 .disabled(!canSend)

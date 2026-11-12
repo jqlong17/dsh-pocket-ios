@@ -117,7 +117,7 @@ struct ConnectedView: View {
                 searchFocused = false
             } label: {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .pocketSystemGlassCircle(size: 36)
             }
             .accessibilityLabel(L10n.t("搜索会话"))
@@ -309,7 +309,7 @@ struct ConnectedView: View {
                 .accessibilityLabel(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒")
                 Button { Task { await model.createSession() } } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.headline.weight(.semibold))
                 }
                 .pocketSystemGlassButton()
                 .accessibilityLabel("新建会话")

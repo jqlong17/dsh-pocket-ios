@@ -130,7 +130,7 @@ struct ConnectView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.system(size: 20, weight: .medium))
+                .font(.title3.weight(.medium))
                 .foregroundStyle(brand)
                 .frame(width: 38, height: 38)
                 .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
@@ -179,7 +179,7 @@ struct ConnectView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(brand)
                             .frame(width: 26, height: 26)
                             .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
@@ -254,7 +254,7 @@ struct ConnectView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "qrcode.viewfinder")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(brand)
                 Text(L10n.t("扫码连接电脑"))
                     .font(.headline)
@@ -310,7 +310,7 @@ struct ConnectView: View {
     private func prereqRow(icon: String, title: String, detail: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(brand)
                 .frame(width: 22, height: 22)
                 .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
@@ -344,7 +344,9 @@ struct ConnectView: View {
             Text(L10n.t("或手动连接（输入地址与密码）"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .fixedSize()
+                // 大字号时要能换行，不能横向 fixedSize 把它截断。
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.center)
             Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
         }
         .padding(.top, 4)
@@ -361,7 +363,7 @@ struct ConnectView: View {
                     .font(.subheadline)
                 Button { showingScanner = true } label: {
                     Image(systemName: "qrcode.viewfinder")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.headline.weight(.medium))
                         .foregroundStyle(brand)
                         .frame(width: 34, height: 34)
                         .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
@@ -393,7 +395,7 @@ struct ConnectView: View {
                     }
                 } label: {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(brand)
                         .frame(width: 32, height: 32)
                         .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
@@ -404,7 +406,7 @@ struct ConnectView: View {
                     showingPin.toggle()
                 } label: {
                     Image(systemName: showingPin ? "eye.slash" : "eye")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
                 }

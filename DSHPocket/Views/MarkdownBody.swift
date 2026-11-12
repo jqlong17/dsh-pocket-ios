@@ -42,14 +42,13 @@ struct MarkdownBody: View {
 struct PhoneTableStyle: StructuredText.TableStyle {
     private static let hairline: CGFloat = 1
     private static let maxWidthRatio: CGFloat = 2.2
-    private static let fontSize: CGFloat = 15
     private static let line = Color.primary.opacity(0.16)
 
     func makeBody(configuration: StructuredText.TableStyleConfiguration) -> some View {
         Overflow { state in
             let maxWidth = state.containerWidth.map { $0 * Self.maxWidthRatio }
             configuration.label
-                .font(.system(size: Self.fontSize))
+                .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: maxWidth, alignment: .leading)
                 .textual.tableCellSpacing(horizontal: 0, vertical: 0)

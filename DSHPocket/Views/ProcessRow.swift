@@ -48,7 +48,7 @@ struct ProcessRow: View {
             Button(action: toggle) {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 16, height: 16)
                     Text(summary).font(.footnote).lineLimit(1)
