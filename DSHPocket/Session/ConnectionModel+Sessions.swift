@@ -94,30 +94,40 @@ extension ConnectionModel {
             // 能拉到列表说明网络通了：把各会话的断网暂存按写入顺序一并补发。
             flushQueuedSends()
         } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            if let authError = error as? ConnectionError,
-               case .server(let status) = authError,
-               TimelineOrdering.isUnauthorized(statusCode: status) {
+            // 处置规则在 DSHKit（可测）：取消→忽略、401→回连接页、地址失效→报错、
+            // 抖动且已有列表→静默重试、其余→提示。
+            let isCancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
+            let unauthorized: Bool = {
+                if case .server(let status)? = (error as? ConnectionError),
+                   TimelineOrdering.isUnauthorized(statusCode: status) { return true }
+                return false
+            }()
+            let transient = Self.isTransientNetworkError(error)
+            let action = SessionListFailurePolicy.action(
+                isCancelled: isCancelled,
+                isUnauthorized: unauthorized,
+                isStaleTunnel: isStaleTunnelError(error),
+                isTransient: transient,
+                isSilent: silently,
+                hasExistingSessions: !sessions.isEmpty,
+                message: transient ? "连接电脑超时，正在重试…" : "无法读取会话：\(error.localizedDescription)"
+            )
+            switch action {
+            case .ignore:
+                return
+            case .reauthenticate:
                 recordDiagnostic("会话列表 401：登录已失效")
                 handleAuthExpired()
-                return
-            }
-            recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
-            if isStaleTunnelError(error) {
+            case .showAddressError:
+                recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
                 applyConnectError(error)
-                return
-            }
-            // 后台轮询、下拉刷新之外的自动刷新失败不该顶一条红字：网络抖一下就挂在那里，
-            // 用户没做任何操作却被吓一跳。只有列表本来就是空的、或用户主动刷新时才提示。
-            let transient = Self.isTransientNetworkError(error)
-            if transient, silently || !sessions.isEmpty {
+            case .retryQuietly:
                 recordDiagnostic("会话列表刷新遇到网络抖动，保留当前列表")
-                return
+            case .showMessage(let message):
+                recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
+                errorMessage = message
+                scheduleSessionListRetry()
             }
-            errorMessage = transient
-                ? "连接电脑超时，正在重试…"
-                : "无法读取会话：\(error.localizedDescription)"
-            scheduleSessionListRetry()
         }
     }
 
