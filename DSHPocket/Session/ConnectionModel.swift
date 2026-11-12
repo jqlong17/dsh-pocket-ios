@@ -163,8 +163,6 @@ final class ConnectionModel {
     /// 会话列表的只读网络访问（spec/12）。
     let sessionAPI = SessionAPI()
     /// 单条会话操作（spec/12）。
-    /// 通知域（注册/回复/打开会话）。
-    let notificationBridge = NotificationBridge()
     /// 实时帧处理（快照/消息/过程事件）。
     let liveFrameApplier = LiveFrameApplier()
     /// 实时流建连与重连循环。

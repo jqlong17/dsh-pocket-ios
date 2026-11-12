@@ -418,59 +418,6 @@ extension ConnectionModel {
     /// 协议错误（`DSHError`）适配成 `ConnectionError`，保持 UI 文案与分类不变。
  }
 
-// MARK: 通知域（实现在 NotificationBridge）
-
-extension ConnectionModel {
-    @MainActor func syncPushRegistration() async { await notificationBridge.syncPushRegistration() }
-
-    @MainActor
-    func sendNotificationReply(sessionId: String, text: String) async {
-        await notificationBridge.sendReply(sessionId: sessionId, text: text)
-    }
-
-    @MainActor
-    func openSessionFromNotification(sessionId: String) async {
-        await notificationBridge.openSessionFromNotification(sessionId: sessionId)
-    }
-
-    /// 装配通知域依赖（幂等）。
-    @MainActor
-    func installNotificationProviders() {
-        guard notificationBridge.providers == nil else { return }
-        notificationBridge.providers = NotificationBridge.Providers(
-            client: { [weak self] in
-                guard let self else { throw ConnectionError.invalidURL("") }
-                return try self.rpcClient
-            },
-            isConnected: { [weak self] in self?.connection.isConnected ?? false },
-            pin: { [weak self] in self?.connection.pin ?? "" },
-            setPin: { @MainActor [weak self] value in self?.connection.pin = value },
-            savedPin: { PinKeychain.load() },
-            savedAddress: { UserDefaults.standard.string(forKey: ConnectionModel.savedServerAddressKey) },
-            serverAddress: { [weak self] in self?.connection.serverAddress ?? "" },
-            setServerAddress: { @MainActor [weak self] value in self?.connection.serverAddress = value },
-            connect: { @MainActor [weak self] in await self?.connect() },
-            sessions: { [weak self] in self?.sessionStore.sessions ?? [] },
-            openSession: { @MainActor [weak self] sessionId in
-                guard let self, let session = self.sessionStore.sessions.first(where: { $0.sessionId == sessionId }) else { return }
-                self.sessionStore.navigationPath = [session]
-            },
-            insertAckedRpcId: { @MainActor [weak self] rpcId in self?.ackedSendRpcIds.insert(rpcId) },
-            addOutbox: { @MainActor [weak self] sessionId, rpcId, text in
-                self?.addOutbox(sessionId: sessionId, rpcId: rpcId, text: text)
-            },
-            clearFinishedAwaiting: { @MainActor [weak self] sessionId in
-                guard let self else { return }
-                if self.finishedAwaitingSessionIds.remove(sessionId) != nil {
-                    self.persistFinishedAwaiting()
-                }
-            },
-            completionAlertsEnabled: { [weak self] in self?.completionAlertsEnabled ?? false },
-            pushToken: { [weak self] in self?.pushToken },
-            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) }
-        )
-    }
-}
 
 // MARK: 实时流建连（实现在 LiveStreamRunner）
 

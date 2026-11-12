@@ -43,7 +43,6 @@ struct RootView: View {
                 model.installQuestionProviders()
                 model.installSessionAPIProviders()
                 model.installNetworkWatcher()
-                model.installNotificationProviders()
                 model.installLiveFrameProviders()
                 model.installLiveStreamProviders()
             }
