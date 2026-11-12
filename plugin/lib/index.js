@@ -408,7 +408,15 @@ export function apply(ctx) {
           send(res, 404, { ok: false })
           return
         }
-        const body = await readBody(req)
+        // body 解析容错：refresh 这类端点不需要 JSON body，
+        // 之前直接 readBody 会在进入分支前抛「Unexpected end of JSON input」，
+        // App 只看到 HTTP 200 + ok:false，却因为没有新 cookie 而误判「换票成功」。
+        let body = {}
+        try {
+          body = await readBody(req)
+        } catch {
+          body = {}
+        }
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
         // 用长期设备凭证换新的 dsh-auth cookie。
         // DSH 重启后原 cookie 失效，App 调这里拿新的，不必重新扫码。

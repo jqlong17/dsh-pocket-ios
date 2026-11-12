@@ -301,20 +301,43 @@ extension ConnectionModel {
     func tryRefreshAuth() async -> Bool {
         guard let token = ConnectionVault.loadDeviceToken(),
               let base = try? Self.serverURL(from: serverAddress) else { return false }
+        // 先删掉已失效的 dsh-auth cookie：带着旧凭证去换票，DSH 会当成「续期一个失效会话」，
+        // 结果立刻又 401（实测：换票后 2 秒再次失效）。
+        purgeAuthCookies(for: base)
         var request = URLRequest(url: base.appending(path: "dsh-pocket-ios/refresh"))
         request.httpMethod = "POST"
+        // 插件会解析 body：不带 body 会得到 bad-request（HTTP 200 + ok:false），
+        // 而旧 cookie 还在时又会被误判成换票成功。
+        request.httpBody = Data("{}".utf8)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "x-dsh-pocket-device")
         request.timeoutInterval = 10
         request.httpShouldHandleCookies = true
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
             recordDiagnostic("设备凭证换票失败：请求未成功")
             return false
         }
-        let hasAuth = HTTPCookieStorage.shared.cookies(for: base)?
+        // 必须是新换到的 cookie：请求前已清空旧 cookie，这里能查到就是新的。
+        let fresh = HTTPCookieStorage.shared.cookies(for: base)?
             .contains { $0.name.hasPrefix("dsh-auth") } ?? false
-        if hasAuth { ConnectionVault.saveAuthCookies(from: base) }
-        return hasAuth
+        if fresh {
+            ConnectionVault.saveAuthCookies(from: base)
+            return true
+        }
+        // 没拿到 cookie：把插件返回的 ok:false 说明记下来，便于排查。
+        let snippet = String(data: data.prefix(120), encoding: .utf8) ?? ""
+        recordDiagnostic("设备凭证换票失败：未拿到新 cookie（\(snippet)）")
+        return false
+    }
+
+    /// 删掉 HTTPCookieStorage 里的认证 cookie（只删 dsh-auth 开头，不动设备凭证与其它 cookie）。
+    @MainActor
+    func purgeAuthCookies(for url: URL) {
+        let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
+        for cookie in cookies where cookie.name.hasPrefix("dsh-auth") {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
+        }
     }
 
     /// 真正失效：清理并提示用户重新配对。
@@ -327,6 +350,7 @@ extension ConnectionModel {
         // cookie 已失效：清掉，避免下次启动拿着废凭证反复 401。
         // 地址保留，用户重新输入密码/扫码即可，不必重新找电脑。
         ConnectionVault.clearAuthCookies()
+        if let base = try? Self.serverURL(from: serverAddress) { purgeAuthCookies(for: base) }
         selectedSession = nil
         navigationPath = []
         activeConversation?.liveTask?.cancel()
