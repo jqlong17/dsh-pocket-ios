@@ -68,6 +68,7 @@
 		968FD4B86719F532D08EBEE9 /* TurnFailureRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E8F8DF3D62D60746D3DACE /* TurnFailureRow.swift */; };
 		BBEF506D7DA55C1D03AA7564 /* UserQuestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E003B5499B61166B328F688D /* UserQuestionCard.swift */; };
 		D1CFA11E0000000000000002 /* ConnectFailureMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000001 /* ConnectFailureMessage.swift */; };
+		D1CFA11E0000000000000004 /* PocketMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000003 /* PocketMotion.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -133,6 +134,7 @@
 		A1E8F8DF3D62D60746D3DACE /* TurnFailureRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFailureRow.swift; sourceTree = "<group>"; };
 		E003B5499B61166B328F688D /* UserQuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserQuestionCard.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000001 /* ConnectFailureMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectFailureMessage.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000003 /* PocketMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketMotion.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -201,6 +203,7 @@
 			children = (
 				99116BD77194DF3FA35B0EE8 /* AppSupport.swift */,
 				97313FE375E37A4D2B14B193 /* Localization.swift */,
+				D1CFA11E0000000000000003 /* PocketMotion.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -457,6 +460,7 @@
 				6C008D78DD977ECC7B3913E2 /* CompletionNotifier.swift in Sources */,
 				6A8DF3E8D7F2FBE2F9B171F0 /* ConnectionError.swift in Sources */,
 				D1CFA11E0000000000000002 /* ConnectFailureMessage.swift in Sources */,
+				D1CFA11E0000000000000004 /* PocketMotion.swift in Sources */,
 				AEB8B5356A2153C16FAB014E /* ConversationHeightKey.swift in Sources */,
 				07502C15EA9C7A72C5E80C5F /* DebugLaunch.swift in Sources */,
 				BCD36373A030A722743F6DBB /* DraftStore.swift in Sources */,
