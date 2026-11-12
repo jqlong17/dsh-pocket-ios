@@ -25,8 +25,6 @@ struct ConnectView: View {
     @State private var deletingEndpoint: SavedEndpoint?
     @State private var scanHint: String?
 
-    /// 产品使用说明（飞书文档，已设置"获得链接的人可阅读"）。
-    private static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
 
     private var card: Color { Color(uiColor: .secondarySystemGroupedBackground) }
     private var pageBackground: Color { Color(uiColor: .systemGroupedBackground) }
@@ -127,32 +125,8 @@ struct ConnectView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(brand)
-                .frame(width: 38, height: 38)
-                .background(brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.t("连接你的 DSH")).font(.headline)
-            }
-            Spacer(minLength: 8)
-            Link(destination: Self.usageDocURL) {
-                HStack(spacing: 4) {
-                    Image(systemName: "book").font(.caption)
-                    Text(L10n.t("使用说明")).font(.footnote.weight(.medium))
-                }
-                .foregroundStyle(brand)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 8)
-                .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            }
-            .accessibilityLabel(L10n.t("打开 DSH Pocket iOS 使用说明"))
-        }
-        .padding(14)
-        .background(card, in: RoundedRectangle(cornerRadius: 12))
-    }
+    /// 标题卡已拆到 ConnectHeaderCard.swift。
+    private var header: some View { ConnectHeaderCard() }
 
     private var savedEndpointsCard: some View {
         VStack(spacing: 0) {
@@ -250,92 +224,9 @@ struct ConnectView: View {
 
 
     /// 扫码连接（主入口）：三步引导 + 大按钮。
+    /// 扫码卡已拆到 ConnectScanCard.swift（纯展示，便于改文案时不必读整页）。
     private var scanConnectCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "qrcode.viewfinder")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(brand)
-                Text(L10n.t("扫码连接电脑"))
-                    .font(.headline)
-                Spacer()
-                Text(L10n.t("推荐"))
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(brand.opacity(0.12), in: Capsule())
-                    .foregroundStyle(brand)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.t("准备（二选一）"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                prereqRow(
-                    icon: "network",
-                    title: L10n.t("方式一（推荐）：Tailscale"),
-                    detail: L10n.t("电脑装 Tailscale + dsh-pocket-ios 连接器，手机装 Tailscale 和本 App；扫码即连，地址固定")
-                )
-                prereqRow(
-                    icon: "puzzlepiece.extension",
-                    title: L10n.t("方式二：dsh-pocket"),
-                    detail: L10n.t("电脑装 dsh-pocket 插件（可选再加 dsh-pocket-ios 连接器）；扫它的局域网/公网二维码后输入访问密码")
-                )
-                Divider().padding(.vertical, 2)
-                Text(L10n.t("然后"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                guideStep("1", L10n.t("按你选的路线装好对应插件（方式一：dsh-pocket-ios；方式二：dsh-pocket）"))
-                guideStep("2", L10n.t("打开电脑 DSH → 设置 → 手机访问"))
-                guideStep("3", L10n.t("扫码：方式一自动连接；方式二输入访问密码"))
-            }
-            Button {
-                showingScanner = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "qrcode.viewfinder")
-                    Text(L10n.t("扫一扫，连接电脑"))
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .foregroundStyle(.white)
-                .background(brand, in: RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("scan-connect-button")
-        }
-        .padding(14)
-        .background(card, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    private func prereqRow(icon: String, title: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(brand)
-                .frame(width: 22, height: 22)
-                .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.footnote.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-    }
-
-    private func guideStep(_ number: String, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(number)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 18, height: 18)
-                .background(brand, in: Circle())
-            Text(text)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
+        ConnectScanCard(showingScanner: $showingScanner)
     }
 
     private var manualSectionTitle: some View {

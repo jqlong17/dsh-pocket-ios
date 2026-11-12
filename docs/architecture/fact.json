@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:35:35+08:00",
-  "commit": "44e6f43",
+  "generated_at": "2026-11-12T11:36:42+08:00",
+  "commit": "7487f4d",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 66,
-      "lines": 9854
+      "files": 68,
+      "lines": 9891
     },
     {
       "layer": "ui-tests",
@@ -1587,9 +1587,31 @@
       ]
     },
     {
+      "file": "DSHPocket/Views/ConnectHeaderCard.swift",
+      "layer": "app",
+      "lines": 43,
+      "types": [
+        "ConnectHeaderCard"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/ConnectScanCard.swift",
+      "layer": "app",
+      "lines": 103,
+      "types": [
+        "ConnectScanCard"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
       "file": "DSHPocket/Views/ConnectView.swift",
       "layer": "app",
-      "lines": 505,
+      "lines": 396,
       "types": [
         "ConnectView"
       ],
@@ -2076,11 +2098,6 @@
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "detail": "653 行"
-    },
-    {
-      "rule": "file-max-400",
-      "file": "DSHPocket/Views/ConnectView.swift",
-      "detail": "505 行"
     },
     {
       "rule": "file-max-400",
