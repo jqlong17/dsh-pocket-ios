@@ -109,12 +109,13 @@ extension ConnectionModel {
             connection.errorMessage = nil
             connection.addressNeedsRescan = false
             PinKeychain.clear()
-            ConnectionVault.saveAuthCookies(from: url)
-            ConnectionVault.saveDeviceToken(from: url)
+            // 凭证落盘统一走 persistConnectedState：地址、cookie、设备凭证一个都不能漏。
+            // 之前配对分支只存了后两者，导致「扫码连上 → 重装 → 又要求扫码」。
+            persistConnectedState()
             if ConnectionVault.loadDeviceToken() != nil {
-            recordDiagnostic("已保存长期设备凭证（下次 DSH 重启免扫码）")
+                recordDiagnostic("已保存长期设备凭证（下次 DSH 重启免扫码）")
             } else {
-            recordDiagnostic("未收到长期设备凭证：插件可能还是旧版")
+                recordDiagnostic("未收到长期设备凭证：插件可能还是旧版")
             }
             recordDiagnostic("配对登录成功：会话 \(sessionStore.sessions.count) 个")
             return
@@ -219,13 +220,7 @@ extension ConnectionModel {
             sessionStore.sessions = try await fetchSessions()
             connection.isConnected = true
             connection.addressNeedsRescan = false
-            UserDefaults.standard.set(connection.serverAddress, forKey: Self.savedServerAddressKey)
-            // 同时写 Keychain：重装后沙盒被清，靠它自动恢复地址与登录态。
-            ConnectionVault.saveAddress(connection.serverAddress)
-            if let url = try? Self.serverURL(from: connection.serverAddress) {
-            ConnectionVault.saveAuthCookies(from: url)
-            }
-            recordEndpoint(connection.serverAddress)
+            persistConnectedState()
             connection.pin = ""
             recordDiagnostic("连接成功：会话 \(sessionStore.sessions.count) 个")
         } catch {
@@ -317,5 +312,19 @@ extension ConnectionModel {
             SavedEndpoint(address: "http://192.0.2.20:3091", kind: .lan,
             lastUsedAt: now - 3600, label: en ? "Office" : "公司")
         ]
+    }
+
+    /// 连接成功后统一落盘。地址、登录 cookie、设备凭证三者缺一都会导致「重装后又要求扫码」，
+    /// 所以只允许从这一处写——两条成功路径（扫码配对 / 密码登录）都调它。
+    @MainActor
+    func persistConnectedState() {
+        UserDefaults.standard.set(connection.serverAddress, forKey: Self.savedServerAddressKey)
+        // Keychain 供重装后恢复（沙盒会清，Keychain 不会）。
+        ConnectionVault.saveAddress(connection.serverAddress)
+        if let url = try? Self.serverURL(from: connection.serverAddress) {
+            ConnectionVault.saveAuthCookies(from: url)
+            ConnectionVault.saveDeviceToken(from: url)
+        }
+        recordEndpoint(connection.serverAddress)
     }
 }
