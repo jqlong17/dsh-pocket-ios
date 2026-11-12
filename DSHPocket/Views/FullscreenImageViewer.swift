@@ -37,7 +37,7 @@ struct FullscreenImageViewer: View {
                         .onEnded { _ in lastScale = scale }
                 )
                 .onTapGesture(count: 2) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(PocketMotion.animation(.easeInOut(duration: 0.2))) {
                         scale = scale > 1 ? 1 : 2.5
                         lastScale = scale
                     }
@@ -69,7 +69,7 @@ struct FullscreenImageViewer: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: toast)
+        .animation(PocketMotion.animation(.easeInOut(duration: 0.2)), value: toast)
         .statusBarHidden(true)
     }
 

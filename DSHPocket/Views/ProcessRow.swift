@@ -22,7 +22,6 @@ struct ProcessRow: View {
     var loading = false
     @Bindable var model: ConnectionModel
     let toggle: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// 最后一条未完成的步骤 = 当前正在执行的动作。
     private var runningStep: PocketStep? {
@@ -51,7 +50,7 @@ struct ProcessRow: View {
                         .font(.caption2.weight(.semibold))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 16, height: 16)
-                    Text(summary).font(.footnote).lineLimit(1)
+                    Text(summary).font(.footnote).lineLimit(2)
                         .foregroundStyle(runningStep == nil ? .secondary : Color(red: 0.08, green: 0.48, blue: 0.37))
                     if runningStep != nil {
                         ProgressView().scaleEffect(0.55).frame(width: 12, height: 12)
@@ -60,7 +59,15 @@ struct ProcessRow: View {
                 }
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
-            }.buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
+            // 整行朗读成一句，不要逐字读「过程 · 4 步 · …」里的分隔符。
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(AccessibilityLabels.processGroup(
+                stepLabels: group.steps.map(\.label),
+                runningLabel: runningStep?.runningLabel
+            ))
+            .accessibilityHint(expanded ? "双击收起过程" : "双击展开过程")
 
             if expanded {
                 if loading {
@@ -114,7 +121,7 @@ struct ProcessRow: View {
                 .clipped()
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expanded)
+        .animation(PocketMotion.animation(.easeInOut(duration: 0.22)), value: expanded)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))

@@ -23,6 +23,8 @@ struct ConversationView: View {
     @State private var isAtBottom = true
     /// 离开底部时的最后一条已确认序号。之后到达的助手回复才算未读。
     @State private var unreadSinceSequence: Int?
+    /// 上一次已经播报过的未读数，避免同一条回复反复念。
+    @State private var announcedUnread = 0
     /// 「回到底部」按钮的显示状态：延迟出现，避免发送后程序化滚动期间闪烁并盖住消息。
     @State private var scrollButtonVisible = false
     @State private var scrollButtonTask: Task<Void, Never>?
@@ -277,13 +279,25 @@ struct ConversationView: View {
                     guard newCount != oldCount else { return }
                     if userDragging {
                         // 手指在滑：不抢滚动，未读由 unreadReplies 现算。
+                        if unreadReplies > announcedUnread {
+                            AccessibilityAnnouncer.announce(AccessibilityLabels.newReplyAnnouncement(unreadReplies: unreadReplies))
+                            announcedUnread = unreadReplies
+                        }
                         return
                     }
                     if followsLatest {
+                        // 已在底部：跟着滚，不播报，交给 VoiceOver 正常读新内容。
                         scrollToBottom(proxy: proxy, force: true)
-                    } else if UnreadBadgePolicy.shouldShowBadge(assistantReplies: unreadReplies),
-                              !scrollButtonVisible {
-                        withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                    } else {
+                        if unreadReplies > announcedUnread {
+                            AccessibilityAnnouncer.announce(
+                                AccessibilityLabels.newReplyAnnouncement(unreadReplies: unreadReplies))
+                            announcedUnread = unreadReplies
+                        }
+                        if UnreadBadgePolicy.shouldShowBadge(assistantReplies: unreadReplies),
+                           !scrollButtonVisible {
+                            withAnimation(PocketMotion.animation(.easeOut(duration: 0.18))) { scrollButtonVisible = true }
+                        }
                     }
                 }
                 .onChange(of: model.steps.count) { oldCount, newCount in
@@ -327,6 +341,7 @@ struct ConversationView: View {
                     case .follow:
                         isAtBottom = true
                         unreadSinceSequence = nil
+                        announcedUnread = 0
                         followsLatest = true
                         scrollButtonTask?.cancel()
                         scrollButtonVisible = false
@@ -351,7 +366,7 @@ struct ConversationView: View {
                             // 只延迟一点点，避免还在拖动时闪出来。
                             try? await Task.sleep(for: .seconds(0.25))
                             guard !Task.isCancelled, !isAtBottom else { return }
-                            withAnimation(.easeOut(duration: 0.18)) { scrollButtonVisible = true }
+                            withAnimation(PocketMotion.animation(.easeOut(duration: 0.18))) { scrollButtonVisible = true }
                         }
                     }
                 }
@@ -389,7 +404,7 @@ struct ConversationView: View {
                         }
                         .buttonStyle(.plain)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                        .accessibilityLabel(L10n.t("滚到底部"))
+                        .accessibilityLabel(AccessibilityLabels.backToBottom(unreadReplies: unreadReplies))
                         .accessibilityIdentifier("back-to-bottom")
                         .padding(.trailing, 16)
                         .padding(.bottom, 12)

@@ -48,6 +48,9 @@ struct AttachmentThumbnail: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { if image != nil { showsPreview = true } }
+        .accessibilityElement()
+        .accessibilityLabel(AccessibilityLabels.attachment(index: nil, total: nil))
+        .accessibilityAddTraits(.isButton)
         .fullScreenCover(isPresented: $showsPreview) {
             if let image { FullscreenImageViewer(image: image) }
         }

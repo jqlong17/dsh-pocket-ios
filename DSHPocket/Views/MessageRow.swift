@@ -152,10 +152,10 @@ struct MessageRow: View {
                     Button {
                         UIPasteboard.general.string = message.text
                         copyHapticTick &+= 1
-                        withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+                        withAnimation(PocketMotion.animation(.easeInOut(duration: 0.15))) { copied = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.2))
-                            withAnimation(.easeInOut(duration: 0.15)) { copied = false }
+                            withAnimation(PocketMotion.animation(.easeInOut(duration: 0.15))) { copied = false }
                         }
                     } label: {
                         Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")

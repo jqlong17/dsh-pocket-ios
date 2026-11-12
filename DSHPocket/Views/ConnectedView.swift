@@ -75,7 +75,7 @@ struct ConnectedView: View {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled,
                   model.lastArchivedSession?.sessionId == id else { return }
-            withAnimation(.easeOut(duration: 0.2)) { model.dismissArchiveUndo() }
+            withAnimation(PocketMotion.animation(.easeOut(duration: 0.2))) { model.dismissArchiveUndo() }
         }
     }
 
@@ -206,7 +206,7 @@ struct ConnectedView: View {
                             .frame(width: 28)
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 5) {
-                                Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1)
+                                Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
                                 if isPinned {
                                     Image(systemName: "pin.fill")
                                         .font(.caption2)
@@ -229,6 +229,14 @@ struct ConnectedView: View {
                     }.padding(.vertical, 2)
                 }
                 .listRowBackground(isPinned ? Color(red: 0.08, green: 0.48, blue: 0.37).opacity(0.05) : Color.clear)
+                // 整行读成一句：标题 + 状态（+ 置顶）。红绿点只是视觉，状态必须有文字。
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(AccessibilityLabels.sessionRow(
+                    title: session.displayTitle,
+                    status: finishedAwaiting ? L10n.t("已完成，等待你的回复")
+                          : (session.running ? L10n.t("正在运行") : L10n.t("对话记录")),
+                    isPinned: isPinned
+                ))
                 .contextMenu {
                     Button {
                         renamingSession = session

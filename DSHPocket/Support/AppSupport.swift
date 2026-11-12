@@ -26,6 +26,15 @@ import UserNotifications
 extension Notification.Name { static let appLanguageChanged = Notification.Name("dsh-pocket.language-changed") }
 
 
+/// 读屏播报。VoiceOver 关着时不发，避免干扰。
+enum AccessibilityAnnouncer {
+    static func announce(_ text: String) {
+        guard UIAccessibility.isVoiceOverRunning else { return }
+        UIAccessibility.post(notification: .announcement, argument: text)
+    }
+}
+
+
 /// 还活着的会话页数量。退出后应该回到 0；如果一直涨，就是页面没释放。
 enum ConversationViewLifetime {
     static var liveCount = 0

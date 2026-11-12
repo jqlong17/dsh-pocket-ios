@@ -17,6 +17,7 @@ import UserNotifications
 
 
 struct RootView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: ConnectionModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var languageRevision = 0
@@ -32,6 +33,9 @@ struct RootView: View {
             }
             .navigationTitle("DSH Pocket")
             .navigationBarTitleDisplayMode(.inline)
+            // 系统「减少动态效果」写入统一门闸，模型层的 withAnimation 也跟着关。
+            .onAppear { PocketMotion.reduceMotion = reduceMotion }
+            .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAppSettings = true } label: {

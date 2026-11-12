@@ -76,5 +76,9 @@ struct JobRow: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AccessibilityLabels.job(name: job.displayName,
+                                                    statusLabel: job.statusLabel,
+                                                    elapsed: job.isRunning ? duration : nil))
     }
 }

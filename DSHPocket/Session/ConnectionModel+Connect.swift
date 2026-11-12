@@ -561,7 +561,7 @@ extension ConnectionModel {
     func beginQuote(_ message: PocketMessage) {
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
+        withAnimation(PocketMotion.animation(.easeInOut(duration: 0.18))) {
             pendingQuote = PendingQuote(
                 id: message.id,
             sequence: message.sequence,
@@ -574,7 +574,7 @@ extension ConnectionModel {
 
     @MainActor
     func cancelQuote() {
-        withAnimation(.easeInOut(duration: 0.18)) { pendingQuote = nil }
+        withAnimation(PocketMotion.animation(.easeInOut(duration: 0.18))) { pendingQuote = nil }
     }
 
     /// 把待引用内容转成 Markdown 引用块（DSH 协议只认文本，不携带消息 ID）。
