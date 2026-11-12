@@ -36,9 +36,9 @@ extension ConnectionModel {
     func pollForReply(_ session: PocketSession, after text: String, afterSequence: Int) async {
         let started = Date()
         timingLog("history_poll_start text=\(text.debugDescription)")
-        for _ in 0..<30 {
+        for _ in 0..<LiveStreamPolicy.historyPollAttempts {
             if Task.isCancelled { return }
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: LiveStreamPolicy.historyPollInterval)
             if Task.isCancelled { return }
             guard selectedSession?.sessionId == session.sessionId else { return }
             // 实时 follow 已经把回复送到时就不必再轮询分页了；轮询只作为断流兜底。
@@ -83,7 +83,7 @@ extension ConnectionModel {
             return
         }
         activeConversation?.isFollowing = true
-        var retryDelay: Duration = .seconds(1)
+        var retryDelay: Duration = LiveStreamPolicy.initialReconnectDelay
         var retryCount = 0
         var receivedSnapshot = false
         var usedHistoryFallback = false
@@ -104,7 +104,7 @@ extension ConnectionModel {
                 let heartbeat = Task {
                     while !Task.isCancelled {
                         do {
-                            try await Task.sleep(for: .seconds(25))
+                            try await Task.sleep(for: LiveStreamPolicy.heartbeatInterval)
                             try await sendPing(socket)
                         } catch {
                             if !Task.isCancelled { socket.cancel(with: .abnormalClosure, reason: nil) }
@@ -126,8 +126,8 @@ extension ConnectionModel {
                                 }
                             }
                             group.addTask {
-                                try await Task.sleep(for: .seconds(25))
-                                throw ConnectionError.remote("生成中 25 秒无实时数据，主动重连")
+                                try await Task.sleep(for: LiveStreamPolicy.runningIdleTimeout)
+                                throw ConnectionError.remote("生成中 \(LiveStreamPolicy.runningIdleTimeout) 无实时数据，主动重连")
                             }
                             guard let first = try await group.next() else {
                                 throw ConnectionError.remote("实时连接无数据")

@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-12T11:42:54+08:00",
-  "commit": "41eea9a",
+  "generated_at": "2026-11-12T11:43:48+08:00",
+  "commit": "f6f38f1",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 45,
-      "lines": 2742
+      "files": 46,
+      "lines": 2773
     },
     {
       "layer": "app",
@@ -485,6 +485,17 @@
       "layer": "pure-logic",
       "lines": 24,
       "types": [],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/LiveStreamPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 31,
+      "types": [
+        "LiveStreamPolicy"
+      ],
       "imports": [
         "Foundation"
       ]

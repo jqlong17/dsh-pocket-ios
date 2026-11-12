@@ -34,7 +34,7 @@ struct ConnectView: View {
         ScrollView {
             VStack(spacing: 12) {
                 header
-                if let error = model.errorMessage { errorBanner(error) }
+                if let error = model.connection.errorMessage { errorBanner(error) }
                 if let hint = scanHint {
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill").foregroundStyle(brand)
@@ -74,7 +74,7 @@ struct ConnectView: View {
                     if model.useScannedAddress(value) {
                         showingScanner = false
                         // 配对码/认证 URL/PIN 任一命中都直接连接。
-                        if !model.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
+                        if !model.connection.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
                             scanHint = nil
                             Task { await model.connect() }
                         } else {
@@ -200,7 +200,7 @@ struct ConnectView: View {
                         .accessibilityLabel(L10n.t("删除连接"))
                         .buttonStyle(.plain)
                         .accessibilityLabel("重命名\(endpoint.kind.label)地址")
-                        if model.serverAddress == endpoint.address {
+                        if model.connection.serverAddress == endpoint.address {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
                         }
                     }
@@ -321,7 +321,7 @@ struct ConnectView: View {
     private func errorBanner(_ error: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: model.addressNeedsRescan ? "qrcode.viewfinder" : "exclamationmark.circle.fill")
+                Image(systemName: model.connection.addressNeedsRescan ? "qrcode.viewfinder" : "exclamationmark.circle.fill")
                     .foregroundStyle(.red)
                 Text(error)
                     .font(.footnote)
@@ -346,7 +346,7 @@ struct ConnectView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(brand)
                 }
-                .disabled(model.isConnecting)
+                .disabled(model.connection.isConnecting)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -359,12 +359,12 @@ struct ConnectView: View {
             Task { await model.connect() }
         } label: {
             HStack(spacing: 6) {
-                if model.isConnecting {
+                if model.connection.isConnecting {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
                 }
-                Text(model.isConnecting ? L10n.t("正在连接") : L10n.t("连接"))
+                Text(model.connection.isConnecting ? L10n.t("正在连接") : L10n.t("连接"))
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
@@ -373,8 +373,8 @@ struct ConnectView: View {
             .background(brand, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(model.isConnecting)
-        .opacity(model.isConnecting ? 0.7 : 1)
+        .disabled(model.connection.isConnecting)
+        .opacity(model.connection.isConnecting ? 0.7 : 1)
     }
 
     private var demoButton: some View {
