@@ -716,8 +716,8 @@ extension ConnectionModel {
             }
         }
 
-        let running = sessions.first(where: { $0.sessionId == sessionId })?.running ?? false
-        let mode = running ? "steer" : "queue"
+        // 通知回复一律排队：列表里的 running 可能滞后，误打断比晚一轮更糟。
+        let mode = PromptPolicy.replyMode(isRunning: sessions.first { $0.sessionId == sessionId }?.running ?? false).rawValue
         let requestId = UUID().uuidString.lowercased()
         do {
             _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
@@ -786,7 +786,8 @@ extension ConnectionModel {
             }
             // 只有「确认过实时 turn 事件、且确实在跑」才用 steer 打断；
             // 没见到实时事件时按 queue 处理——queue 最多排到本轮之后，steer 会打断正在做的事。
-            let promptMode = (liveTurnEventsSeen && isTurnRunning) ? "steer" : "queue"
+            let promptMode = PromptPolicy.liveMode(turnEventsSeen: liveTurnEventsSeen,
+                                                   isRunning: isTurnRunning).rawValue
             recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
             _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": requestId,

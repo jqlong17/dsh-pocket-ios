@@ -277,7 +277,7 @@ extension ConnectionModel {
             _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": entry.id,
                 "sessionId": entry.sessionId,
-                "mode": OfflineDeliveryPolicy.deliveryMode,
+                "mode": PromptPolicy.backlogMode.rawValue,
                 "content": content,
                 "clientTimeZone": TimeZone.current.identifier,
                 "clientSentAt": entry.createdAt
