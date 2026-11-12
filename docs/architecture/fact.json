@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:45:04+08:00",
-  "commit": "00cfd57",
+  "generated_at": "2026-11-12T11:46:06+08:00",
+  "commit": "5d59c32",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 47,
-      "lines": 2801
+      "files": 48,
+      "lines": 2839
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 69,
-      "lines": 10056
+      "files": 70,
+      "lines": 10076
     },
     {
       "layer": "ui-tests",
@@ -508,6 +508,18 @@
         "SessionCompletionTracker"
       ],
       "imports": []
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/SessionListFailurePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 38,
+      "types": [
+        "SessionListFailureAction",
+        "SessionListFailurePolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
     },
     {
       "file": "DSHKit/Sources/DSHKit/Sync/SessionSyncCoordinator.swift",
@@ -1345,7 +1357,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 668,
+      "lines": 678,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1367,7 +1379,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 631,
+      "lines": 603,
       "types": [
         "ConnectionModel"
       ],
@@ -1398,6 +1410,18 @@
       "imports": [
         "Foundation",
         "Observation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionValueTypes.swift",
+      "layer": "app",
+      "lines": 38,
+      "types": [
+        "LiveConnectionState",
+        "SendVerification"
+      ],
+      "imports": [
+        "Foundation"
       ]
     },
     {
@@ -2175,12 +2199,12 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
-      "detail": "668 行"
+      "detail": "678 行"
     },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "631 行"
+      "detail": "603 行"
     },
     {
       "rule": "file-max-400",

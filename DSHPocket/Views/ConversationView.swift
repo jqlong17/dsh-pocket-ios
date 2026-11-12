@@ -705,7 +705,7 @@ struct ConversationView: View {
     /// 输入栏里加号、输入框、发送三者统一的高度。改一处，三者一起变。
     private static let composerControlHeight: CGFloat = 36
 
-    private static func liveStateColor(_ state: ConnectionModel.LiveConnectionState) -> Color {
+    private static func liveStateColor(_ state: LiveConnectionState) -> Color {
         switch state {
         case .connected: return .green
         case .connecting, .reconnecting: return .orange
