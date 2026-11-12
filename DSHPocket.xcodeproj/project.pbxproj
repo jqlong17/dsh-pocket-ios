@@ -34,6 +34,13 @@
 		1DA80F6492D5C10D6A8DFE6D /* StreamOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0F68355A45E21A7BD846A1 /* StreamOpen.swift */; };
 		6288280FC9388CFDB23E6396 /* TurnFailureNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03912C341CC7145AC58849A9 /* TurnFailureNotice.swift */; };
 		C09222E621DF54D8938C1DBB /* ConnectionModel+Connect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943528201F1F90E206912130 /* ConnectionModel+Connect.swift */; };
+		D1CFA11E000000000000000C /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000000B /* Diagnostics.swift */; };
+		D1CFA11E000000000000000E /* JobRoster.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000000D /* JobRoster.swift */; };
+		D1CFA11E0000000000000010 /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000000F /* ConnectionState.swift */; };
+		D1CFA11E0000000000000012 /* OutboxCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000011 /* OutboxCoordinator.swift */; };
+		D1CFA11E0000000000000014 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000013 /* SessionStore.swift */; };
+		D1CFA11E0000000000000016 /* DSHClient+AppRPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000015 /* DSHClient+AppRPC.swift */; };
+		D1CFA11E0000000000000018 /* DiagnosticSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000017 /* DiagnosticSamples.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -103,6 +110,13 @@
 		4E0F68355A45E21A7BD846A1 /* StreamOpen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamOpen.swift; sourceTree = "<group>"; };
 		03912C341CC7145AC58849A9 /* TurnFailureNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFailureNotice.swift; sourceTree = "<group>"; };
 		943528201F1F90E206912130 /* ConnectionModel+Connect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Connect.swift"; sourceTree = "<group>"; };
+		D1CFA11E000000000000000B /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Diagnostics.swift; sourceTree = "<group>"; };
+		D1CFA11E000000000000000D /* JobRoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobRoster.swift; sourceTree = "<group>"; };
+		D1CFA11E000000000000000F /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000011 /* OutboxCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutboxCoordinator.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000013 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000015 /* DSHClient+AppRPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DSHClient+AppRPC.swift"; sourceTree = "<group>"; };
+		D1CFA11E0000000000000017 /* DiagnosticSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticSamples.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -218,6 +232,13 @@
 			isa = PBXGroup;
 			children = (
 				943528201F1F90E206912130 /* ConnectionModel+Connect.swift */,
+				D1CFA11E000000000000000B /* Diagnostics.swift */,
+				D1CFA11E000000000000000D /* JobRoster.swift */,
+				D1CFA11E000000000000000F /* ConnectionState.swift */,
+				D1CFA11E0000000000000011 /* OutboxCoordinator.swift */,
+				D1CFA11E0000000000000013 /* SessionStore.swift */,
+				D1CFA11E0000000000000015 /* DSHClient+AppRPC.swift */,
+				D1CFA11E0000000000000017 /* DiagnosticSamples.swift */,
 				DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */,
 				242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */,
 				DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */,
@@ -458,6 +479,13 @@
 				3C22BCF78D87D36182DEB380 /* AppSupport.swift in Sources */,
 				E1BFD38C37A933750C39EC92 /* Localization.swift in Sources */,
 				C09222E621DF54D8938C1DBB /* ConnectionModel+Connect.swift in Sources */,
+				D1CFA11E000000000000000C /* Diagnostics.swift in Sources */,
+				D1CFA11E000000000000000E /* JobRoster.swift in Sources */,
+				D1CFA11E0000000000000010 /* ConnectionState.swift in Sources */,
+				D1CFA11E0000000000000012 /* OutboxCoordinator.swift in Sources */,
+				D1CFA11E0000000000000014 /* SessionStore.swift in Sources */,
+				D1CFA11E0000000000000016 /* DSHClient+AppRPC.swift in Sources */,
+				D1CFA11E0000000000000018 /* DiagnosticSamples.swift in Sources */,
 				22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */,
 				CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */,
 				9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */,

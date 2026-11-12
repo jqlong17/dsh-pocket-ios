@@ -46,6 +46,21 @@
 
 当前存量 8 处违规（6 个超 400 行、ConnectionModel 7 个 extension、MotionPolicy 在纯逻辑层 import SwiftUI）。
 
+## 3.5 提交时必须包含工程文件
+
+`DSHPocket.xcodeproj` 在仓库根目录，**不在** `DSHPocket/` 里。新增 Swift 文件后：
+- 必须在 `project.pbxproj` 注册（fileRef + group + Sources phase），否则 CI/他人拉下来编译失败；
+- `git add` 要显式带上 `DSHPocket.xcodeproj`，只写 `git add DSHPocket` 会漏掉它（已踩两次）。
+
+自检：
+
+```bash
+# 工作区每个新增 .swift 都应在 pbxproj 里出现
+for f in $(git status --porcelain | awk '$1=="??"{print $2}' | grep '\.swift$'); do
+  grep -q "$(basename "$f")" DSHPocket.xcodeproj/project.pbxproj || echo "未注册: $f"
+done
+```
+
 ## 4. 硬性禁止
 
 - 不要把公网地址、token、凭证写进代码或日志（历史已因此重写过一次）。
