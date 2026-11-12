@@ -15,7 +15,9 @@
 | `ios交互设计规范.md` | 界面哲学 / 场景细则 / 可执行数值 |
 | `开源项目参考规范.md` | 动手前怎么参考高 star 项目，抄思路不抄代码 |
 
-**最短版**：非豁免改动先写 `spec/NN-*.md` → 先写失败测试 → 实现 → 全量测试 → 回看 spec。
+**最短版**：非豁免改动先写 `spec/NN-*.md`（含预估工时）→ 先写失败测试 → 实现 → 全量测试 → 回看 spec。
+
+**接手旧 spec 先校验格式**：按七段对照，缺段先补（历史 spec 多缺「参考实现」与「预估工时」），测试计划要标 target。
 
 ## 2. 本仓库的约定
 
@@ -24,10 +26,11 @@
 - **检查点**：大改动前后各打一次，记录只追加。
 
   ```bash
-  ./scripts/record-checkpoint.sh baseline --note "开始做 <主题>"
+  ./scripts/record-checkpoint.sh baseline --spec spec/NN-xxx.md --estimate 90   # 预估分钟
   # ...改代码、跑测试、提交主改动...
   ./scripts/record-checkpoint.sh result --spec spec/NN-xxx.md --tests "swift test NNN 绿"
   ./scripts/verify-checkpoints.sh
+  ./scripts/estimate-accuracy.sh   # 预估 vs 实际，输出倍率中位数用于下次校准
   ```
 
   记录文件 `git-checkpoints.jsonl`，每行的 `commit` 就是那次提交的完整 sha。

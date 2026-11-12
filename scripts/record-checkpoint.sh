@@ -3,6 +3,9 @@
 #
 # 用法（在项目仓库根目录执行，先提交主改动再记录）：
 #   scripts/record-checkpoint.sh result --spec spec/10-image-pipeline.md --note "上限 9 张/50MB"
+#   scripts/record-checkpoint.sh baseline --spec spec/11-x.md --estimate 90   # 预估 90 分钟
+#   scripts/record-checkpoint.sh result --spec spec/11-x.md --actual-minutes 35  # 实际 35 分钟
+#   不传 --actual-minutes 时，自动按「最近一条 baseline 的时间 → 本次提交时间」计算实际耗时。
 #   scripts/record-checkpoint.sh baseline --note "开始做会话进入收口"
 #   scripts/record-checkpoint.sh result --commit <sha>   # 指定提交（默认 HEAD）
 #
@@ -13,9 +16,10 @@ set -euo pipefail
 JSONL="git-checkpoints.jsonl"
 KIND="${1:-}"; shift || true
 SHA=""; SPEC=""; NOTE=""; TESTS=""; VERIFY=""; RISK=""
+ESTIMATE=""; ACTUAL_START=""; ACTUAL_MINUTES=""
 
 if [[ "$KIND" != "baseline" && "$KIND" != "result" && "$KIND" != "correction" && "$KIND" != "rewrite" ]]; then
-  echo "用法: $0 <baseline|result|correction|rewrite> [--commit sha] [--spec path] [--tests 文本] [--verify 文本] [--risk 文本] [--note 文本]" >&2
+  echo "用法: $0 <baseline|result|correction|rewrite> [--commit sha] [--spec path] [--estimate 分钟] [--actual-start ISO8601] [--actual-minutes 分钟] [--tests 文本] [--verify 文本] [--risk 文本] [--note 文本]" >&2
   exit 2
 fi
 
@@ -27,6 +31,9 @@ while [[ $# -gt 0 ]]; do
     --verify) VERIFY="${2:-}"; shift 2 ;;
     --risk)   RISK="${2:-}"; shift 2 ;;
     --note)   NOTE="${2:-}"; shift 2 ;;
+    --estimate) ESTIMATE="${2:-}"; shift 2 ;;
+    --actual-start) ACTUAL_START="${2:-}"; shift 2 ;;
+    --actual-minutes) ACTUAL_MINUTES="${2:-}"; shift 2 ;;
     *) echo "未知参数: $1" >&2; exit 2 ;;
   esac
 done
@@ -57,9 +64,61 @@ INS="$(sed -E -n 's/.* ([0-9]+) insertions?.*/\1/p' <<<"$STAT" | head -1)"; INS=
 DEL="$(sed -E -n 's/.* ([0-9]+) deletions?.*/\1/p' <<<"$STAT" | head -1)"; DEL="${DEL:-0}"
 
 # 用 python 生成合法 JSON（避免手拼引号）
-python3 - "$JSONL" "$FULL" "$SHORT" "$KIND" "$AT" "$SUMMARY" "$SPEC" "$TESTS" "$VERIFY" "$RISK" "$NOTE" "$FILES" "$INS" "$DEL" << 'PY'
-import json, sys, os
-path, full, short, kind, at, summary, spec, tests, verify, risk, note, files, ins, dele = sys.argv[1:15]
+python3 - "$JSONL" "$FULL" "$SHORT" "$KIND" "$AT" "$SUMMARY" "$SPEC" "$TESTS" "$VERIFY" "$RISK" "$NOTE" "$FILES" "$INS" "$DEL" "$ESTIMATE" "$ACTUAL_START" "$ACTUAL_MINUTES" << 'PY'
+import json, sys, os, datetime
+(path, full, short, kind, at, summary, spec, tests, verify, risk, note,
+ files, ins, dele, estimate_raw, actual_start, actual_min_raw) = sys.argv[1:18]
+def parse_minutes(raw):
+    if raw in ("", None):
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+def last_baseline(path):
+    """最近一条 baseline 的 (时间, 预估分钟)：分别作「开始执行」锚点与预估继承。"""
+    at = None
+    est = None
+    if not os.path.exists(path):
+        return at, est
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("kind") == "baseline":
+                at = r.get("at")
+                est = r.get("estimate_minutes")
+    return at, est
+
+base_at, base_estimate = last_baseline(path)
+
+estimate = parse_minutes(estimate_raw)
+# result 行继承 baseline 的预估，保证每行自包含（查询/统计不必跨行配对）。
+if estimate is None and kind == "result":
+    estimate = base_estimate
+actual = parse_minutes(actual_min_raw)
+# 没显式给实际耗时就自动算：从最近 baseline（或指定起点）到本次提交。
+if actual is None and kind == "result":
+    anchor = actual_start or base_at
+    if anchor:
+        try:
+            start_dt = datetime.datetime.fromisoformat(anchor.replace("Z", "+00:00"))
+            end_dt = datetime.datetime.fromisoformat(at.replace("Z", "+00:00"))
+            delta = (end_dt - start_dt).total_seconds() / 60
+            if delta >= 0:
+                actual = round(delta, 1)
+        except ValueError:
+            pass
+
+# 偏差倍率：实际 / 预估。小于 1 表示预估偏大（AI 常见）。
+deviation = round(actual / estimate, 2) if (actual and estimate and estimate > 0) else None
+
 row = {
     "commit": full,
     "short": short,
@@ -74,10 +133,19 @@ row = {
     "verify": verify or None,
     "risk": risk or None,
     "note": note or None,
+    "estimate_minutes": estimate,
+    "actual_minutes": actual,
+    "deviation": deviation,
 }
 with open(path, "a", encoding="utf-8") as f:
     f.write(json.dumps(row, ensure_ascii=False) + "\n")
 print(f"已追加 {kind} 检查点: {short} — {summary}")
+if estimate is not None:
+    print(f"  预估 {estimate:g} 分钟", end="")
+    if actual is not None:
+        print(f"，实际 {actual:g} 分钟，偏差 {deviation}×" if deviation else f"，实际 {actual:g} 分钟")
+    else:
+        print()
 PY
 
 cat <<EOF
