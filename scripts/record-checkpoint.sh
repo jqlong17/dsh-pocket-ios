@@ -48,6 +48,14 @@ FULL="$(git rev-parse "$SHA")"
 # 固定 7 位短 sha（macOS 的 BSD sed/git 行为不同，统一用 --short=7 避免歧义）
 SHORT="$(git rev-parse --short=7 "$SHA")"
 AT="$(git show -s --format=%cI "$SHA")"
+# 提交时间是「代码状态时刻」，但记录时刻可能更晚（先提交、后补记）。
+# 若比上一条记录还早，就把 at 改成当前时间，避免 verify 报「时间倒退」。
+LAST_AT="$(tail -1 git-checkpoints.jsonl 2>/dev/null | python3 -c "import json,sys
+try: print(json.load(sys.stdin).get('at') or '')
+except Exception: print('')" 2>/dev/null)"
+if [ -n "$LAST_AT" ] && [[ "$AT" < "$LAST_AT" ]]; then
+  AT="$(python3 -c "import datetime; print(datetime.datetime.now().astimezone().isoformat(timespec='seconds'))")"
+fi
 SUMMARY="$(git show -s --format=%s "$SHA")"
 
 # 改动规模：与父提交比较；根提交与「空树」比较，两条路径都能统计。
