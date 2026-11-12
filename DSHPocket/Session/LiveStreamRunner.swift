@@ -10,8 +10,8 @@ import DSHKit
 /// - 不碰消息列表、发件箱、过程步骤；
 /// - 所有时序参数来自 `LiveStreamPolicy`（心跳、假死阈值、退避），不要在别处写魔法数字。
 ///
-/// 依赖全部注入：它需要知道「当前是不是这条会话」「是否在生成中」「断线该不该重新登录」，
-/// 但这些判断属于模型，不该被搬到流循环里。
+/// 用 extension 而非独立类型（spec/2026-11-12-2257）：自有状态为 0，
+/// 原 17 个闭包注入没有换来可测性（App 层无测试 target），只增加间接层。
 extension ConnectionModel {
     @MainActor
     func runLiveStream(sessionId: String) async {

@@ -32,46 +32,6 @@ extension ConnectionModel {
                                 name: "photo-\(Int(Date().timeIntervalSince1970)).jpg", uiImage: resized)
     }
 
-    @MainActor
-     /// 帧处理实现在 LiveFrameApplier（依赖闭包注入）；这里只转发。
-    func acceptLive(_ value: [String: Any], sessionId: String) {
-        liveFrameApplier.accept(value, sessionId: sessionId)
-    }
-
-    /// 装配实时帧处理的依赖（幂等）。
-    @MainActor
-    func installLiveFrameProviders() {
-        guard liveFrameApplier.providers == nil else { return }
-        liveFrameApplier.providers = LiveFrameApplier.Providers(
-            isCurrentSession: { [weak self] sessionId in
-                self?.activeConversation?.sessionId == sessionId
-                    && self?.sessionStore.selected?.sessionId == sessionId
-            },
-            markFrameArrived: { @MainActor [weak self] in self?.lastLiveFrameAt = Date() },
-            mergeMessages: { @MainActor [weak self] messages in self?.mergeMessages(messages) },
-            mergeSteps: { @MainActor [weak self] records in self?.mergeSteps(from: records) },
-            confirmInboxOutbox: { @MainActor [weak self] records in self?.confirmInboxOutbox(in: records) },
-            messages: { [weak self] in self?.messages ?? [] },
-            replaceMessages: { @MainActor [weak self] list in self?.messages = list },
-            confirmOutbox: { @MainActor [weak self] ids in self?.confirmOutbox(rpcIds: ids) },
-            markAccepted: { _ in },
-            removeAcked: { @MainActor [weak self] ids in self?.ackedSendRpcIds.subtract(ids) },
-            removeFailed: { @MainActor [weak self] ids in self?.failedSendRpcIds.subtract(ids) },
-            clearConversationError: { @MainActor [weak self] in self?.conversationError = nil },
-            applyStepEvent: { @MainActor [weak self] event in self?.applyStepEvent(event) },
-            finishLoading: { @MainActor [weak self] source in
-                guard let self, let conversation = self.activeConversation else { return }
-                self.noteLoadFinished(source: source, conversation: conversation)
-            },
-            setLoadingConversation: { @MainActor [weak self] value in self?.isLoadingConversation = value },
-            requestScrollToBottom: { @MainActor [weak self] in self?.requestScrollToBottom() },
-            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
-            log: { message in pocketLogger.info("\(message, privacy: .public)") },
-            timing: { message in timingLog(message) }
-        )
-    }
-
-
      /// 登录失效（DSH 重启导致 cookie 失效 / 密码被改）：回到连接页并要求重新输入密码。
     @MainActor
     func handleAuthExpired() {
@@ -417,5 +377,3 @@ extension ConnectionModel {
     /// 分界线：传输层错误（`URLError`）原样向上抛，交给 `isTransientNetworkError` 判断可否重试；
     /// 协议错误（`DSHError`）适配成 `ConnectionError`，保持 UI 文案与分类不变。
  }
-
-

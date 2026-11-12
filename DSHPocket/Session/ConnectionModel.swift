@@ -163,8 +163,6 @@ final class ConnectionModel {
     /// 会话列表的只读网络访问（spec/12）。
     let sessionAPI = SessionAPI()
     /// 单条会话操作（spec/12）。
-    /// 实时帧处理（快照/消息/过程事件）。
-    let liveFrameApplier = LiveFrameApplier()
     /// 网络恢复监听：从断网恢复时立刻补发，不等列表轮询或 WS 重连。
     let networkWatcher = NetworkWatcher()
     /// 监听只启动一次。

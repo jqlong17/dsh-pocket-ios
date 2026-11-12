@@ -10,8 +10,9 @@ import DSHKit
 /// - 不碰会话内容（messages/steps），也不管实时流；
 /// - 错误统一交给 `reportError`，这里的职责是「发出去、把结果落到状态里」。
 ///
-/// 为什么从 ConnectionModel 搬出来：这六件事各自独立，混在 650 行的 extension 里
-/// 改一个要读一整段；抽出来之后每个操作自成一体，失败也只影响自己那条路径。
+/// 为什么用 extension 而不是独立类型：见 spec/2026-11-12-2257 自审结论——
+/// 这些方法读写的全是 ConnectionModel 的状态，自有状态为 0，独立类型只会带来 13 个闭包注入。
+/// 文件拆开是为了控制行数；类型不拆，因为它本来就属于模型。
 extension ConnectionModel {
     /// 会话操作的失败提示统一落到连接错误条（与原 Providers.reportError 行为一致）。
     @MainActor
