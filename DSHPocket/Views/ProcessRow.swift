@@ -51,7 +51,7 @@ struct ProcessRow: View {
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 16, height: 16)
                     Text(summary).font(.footnote).lineLimit(2)
-                        .foregroundStyle(runningStep == nil ? .secondary : Color(red: 0.08, green: 0.48, blue: 0.37))
+                        .foregroundStyle(runningStep == nil ? .secondary : PocketChrome.brandText)
                     if runningStep != nil {
                         ProgressView().scaleEffect(0.55).frame(width: 12, height: 12)
                     }
@@ -90,7 +90,7 @@ struct ProcessRow: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(step.finished ? step.label : step.runningLabel)
                                         .font(.footnote)
-                                        .foregroundStyle(step.finished ? .primary : Color(red: 0.08, green: 0.48, blue: 0.37))
+                                        .foregroundStyle(step.finished ? .primary : PocketChrome.brandText)
                                     if !step.detail.isEmpty {
                                         Text(ProcessResultSummary.shortPath(step.detail))
                                             .font(.caption2).foregroundStyle(.secondary).lineLimit(1)

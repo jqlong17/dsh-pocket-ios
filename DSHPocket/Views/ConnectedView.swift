@@ -51,7 +51,7 @@ struct ConnectedView: View {
         HStack(spacing: 12) {
             Image(systemName: "archivebox.fill")
                 .font(.subheadline)
-                .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                .foregroundStyle(PocketChrome.brandText)
             Text(L10n.t("会话已归档"))
                 .font(.subheadline)
                 .foregroundStyle(.primary)
@@ -60,7 +60,7 @@ struct ConnectedView: View {
                 Task { await model.undoArchive() }
             }
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+            .foregroundStyle(PocketChrome.brandText)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -210,7 +210,7 @@ struct ConnectedView: View {
                                 if isPinned {
                                     Image(systemName: "pin.fill")
                                         .font(.caption2)
-                                        .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                                        .foregroundStyle(PocketChrome.brandText)
                                         .accessibilityLabel(L10n.t("已置顶"))
                                 }
                             }

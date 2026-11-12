@@ -425,7 +425,7 @@ struct ConversationView: View {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         Text("\(L10n.t("深度求索中")) · \(elapsed(since: model.turnStartedAt, now: context.date))")
                             .font(.caption)
-                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                            .foregroundStyle(PocketChrome.brandText)
                             .monospacedDigit()
                     }
                     Spacer()
@@ -570,7 +570,7 @@ struct ConversationView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(L10n.t("引用")) \(quote.sender) · #\(quote.sequence)")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                            .foregroundStyle(PocketChrome.brandText)
                         Text(quote.text)
                             .font(.caption)
                             .foregroundStyle(.secondary)

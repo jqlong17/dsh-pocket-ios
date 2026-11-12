@@ -145,13 +145,14 @@ struct MessageRow: View {
         VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
             HStack(spacing: 8) {
                 if !message.isUser {
-                    Image(systemName: "sparkle").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                    Image(systemName: "sparkle").foregroundStyle(PocketChrome.brandText)
                 }
                 Text(message.isUser ? L10n.t("你") : "DSH").foregroundStyle(.secondary)
                 if !message.text.isEmpty {
                     Button {
                         UIPasteboard.general.string = message.text
                         copyHapticTick &+= 1
+                        AccessibilityAnnouncer.announce("已复制整条消息")
                         withAnimation(PocketMotion.animation(.easeInOut(duration: 0.15))) { copied = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.2))
@@ -160,10 +161,13 @@ struct MessageRow: View {
                     } label: {
                         Image(systemName: copied ? "checkmark.circle.fill" : "doc.on.doc")
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(copied ? Color(red: 0.08, green: 0.48, blue: 0.37) : .secondary)
+                            .foregroundStyle(copied ? PocketChrome.brandText : .secondary)
                             .frame(width: 14, height: 14)
                             .scaleEffect(copied ? 1.15 : 1)
-                            .animation(.spring(response: 0.22, dampingFraction: 0.6), value: copied)
+                            .animation(PocketMotion.animation(.spring(response: 0.22, dampingFraction: 0.6)), value: copied)
+                            // 图标本身 14pt，补到 44pt 的可点区域，手抖也能点中。
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(copied ? "已复制" : "复制整条消息")
@@ -171,7 +175,11 @@ struct MessageRow: View {
                     Button {
                         model.beginQuote(message)
                     } label: {
-                        Image(systemName: "quote.bubble").font(.caption2.weight(.medium)).foregroundStyle(.secondary).frame(width: 14, height: 14)
+                        Image(systemName: "quote.bubble")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("引用这条消息")

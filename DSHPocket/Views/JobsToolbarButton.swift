@@ -32,7 +32,10 @@ struct JobsToolbarButton: View {
 }
 
 enum PocketChrome {
+    /// 品牌绿：用于填充、徽标等大面积。
     static let brand = Color(red: 0.08, green: 0.48, blue: 0.37)
+    /// 品牌绿的文字版：压深一档，保证在浅色底上小字也够 4.5:1。
+    static let brandText = Color(red: 0.05, green: 0.36, blue: 0.28)
 }
 
 extension View {
