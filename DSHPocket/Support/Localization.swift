@@ -247,7 +247,6 @@ enum L10n {
         "更多": "More",
         "来自电脑端 DSH": "From DSH on your computer",
         "正在加载模型…": "Loading models…",
-        "正在运行": "Running",
         "清除": "Clear",
         "滚到底部": "Scroll to bottom",
         "给这个地址起一个有辨识度的名字，例如「公司」或「家」。": "Give this address a recognizable name, e.g. Office or Home.",

@@ -116,6 +116,32 @@ for mod in modules:
         else:
             window = []
 
+# 字典字面量重复 key（Swift 是 fatalError，不是可选失败）：
+# 本项目已踩过三次同类崩溃——服务端重复 sessionId、Dictionary(uniqueKeysWithValues:)、
+# L10n 英文字典重复 key（用户切英文即 SIGTRAP）。测试抓不到，只能静态扫。
+#
+# 只检查 `[String: String] = [...]` 这种扁平文案表：
+# - 不用正则跨层扫所有 [...]：那会把数组里嵌套的字典算成同一层，误报一片
+#   （实测 PromptPayload 的 "content": [["type": ...]] 就被误判过）；
+# - 不用逐行块扫描：单行字典 `["type": "text", ...]` 与后面另一个字典的 key 会串成一块。
+duplicate_dict_keys = []
+for mod in modules:
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for match in re.finditer(r"\[String: String\]\s*=\s*\[(.*?)\n\s*\]", body, re.S):
+        keys = re.findall(r'"((?:[^"\\]|\\.)*)"\s*:', match.group(1))
+        seen, dups = set(), set()
+        for k in keys:
+            if k in seen:
+                dups.add(k)
+            seen.add(k)
+        for d in sorted(dups):
+            duplicate_dict_keys.append({
+                "rule": "duplicate-dict-key", "file": mod["file"],
+                "detail": '字典字面量重复 key：' + d + '（运行时 fatalError）'})
+
 # 无状态类型（spec/2026-11-12-2257 自审结论）：
 # 一个类型如果「自有状态字段 = 0」却要注入十几个闭包才能工作，
 # 它其实是被拆出来的流程，不是独立单元——用注入模拟「我是那个类的一部分」。
@@ -192,7 +218,11 @@ for mod in modules:
     if mod["layer"] == "pure-logic":
         for fw in ui_frameworks & set(mod["imports"]):
             violations.append({"rule": "pure-logic-no-ui", "file": mod["file"], "detail": f"导入了 {fw}"})
-    # 无状态类型（spec/2026-11-12-2257 自审结论）：
+    # 字典字面量重复 key（Swift 是 fatalError，不是可选失败）：
+# 本项目已经踩过三次同类崩溃——服务端重复 sessionId、Dictionary(uniqueKeysWithValues:)、
+# L10n 英文字典重复 key（Release 下首次访问即 SIGTRAP）。测试抓不到这类问题，
+# 只能靠静态扫描。
+# 无状态类型（spec/2026-11-12-2257 自审结论）：
 # 一个类型如果「自有状态字段 = 0」却要注入十几个闭包才能工作，
 # 它其实是被拆出来的流程，不是独立单元——用注入模拟「我是那个类的一部分」。
 # 判据：自有状态为 0 且注入依赖 > 8。
@@ -300,10 +330,11 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell + stateless_smell,
+    "violations": (violations + banned_hits + duplicate_attr + view_leaks
+                   + forwarding_smell + stateless_smell + duplicate_dict_keys),
 }
 all_violations = (violations + banned_hits + duplicate_attr + view_leaks
-                  + forwarding_smell + stateless_smell)
+                  + forwarding_smell + stateless_smell + duplicate_dict_keys)
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 

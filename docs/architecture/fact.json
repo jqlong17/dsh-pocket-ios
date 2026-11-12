@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T23:32:36+08:00",
-  "commit": "8821d35",
+  "generated_at": "2026-11-12T23:48:09+08:00",
+  "commit": "24c110c",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 83,
-      "lines": 10820
+      "lines": 10819
     },
     {
       "layer": "ui-tests",
@@ -1784,7 +1784,7 @@
     {
       "file": "DSHPocket/Support/Localization.swift",
       "layer": "app",
-      "lines": 263,
+      "lines": 262,
       "types": [
         "AppLanguage",
         "LanguageStore",
