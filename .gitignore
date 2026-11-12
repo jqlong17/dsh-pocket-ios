@@ -8,3 +8,9 @@ xcuserdata/
 
 # SwiftPM
 .build/
+
+# 设计素材候选（体积大，成品在 docs/screenshots-new/）
+store/icon-candidates/
+store/header-candidates/
+store/screenshot-candidates/
+_promo-shots/
