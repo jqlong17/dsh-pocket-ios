@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T22:26:48+08:00",
-  "commit": "b269c0d",
+  "generated_at": "2026-11-12T22:28:19+08:00",
+  "commit": "66c00e1",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 53,
-      "lines": 3069
+      "files": 54,
+      "lines": 3120
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 76,
-      "lines": 10696
+      "files": 77,
+      "lines": 10799
     },
     {
       "layer": "ui-tests",
@@ -534,6 +534,18 @@
       "layer": "pure-logic",
       "lines": 24,
       "types": [],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Sync/LiveFrameRouter.swift",
+      "layer": "pure-logic",
+      "lines": 51,
+      "types": [
+        "LiveFrameKind",
+        "LiveFrameRouter"
+      ],
       "imports": [
         "Foundation"
       ]
@@ -1349,7 +1361,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 972,
+      "lines": 938,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1439,7 +1451,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 570,
+      "lines": 572,
       "types": [
         "ConnectionModel"
       ],
@@ -1569,6 +1581,19 @@
       "imports": [
         "Foundation",
         "Network"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/NotificationBridge.swift",
+      "layer": "app",
+      "lines": 134,
+      "types": [
+        "NotificationBridge"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation",
+        "UIKit"
       ]
     },
     {
@@ -2216,7 +2241,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 85,
+      "lines": 86,
       "types": [
         "RootView"
       ],
@@ -2330,7 +2355,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "972 行"
+      "detail": "938 行"
     },
     {
       "rule": "file-max-400",
@@ -2340,7 +2365,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "570 行"
+      "detail": "572 行"
     },
     {
       "rule": "file-max-400",

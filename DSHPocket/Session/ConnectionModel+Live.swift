@@ -206,7 +206,9 @@ extension ConnectionModel {
         guard activeConversation?.sessionId == sessionId,
               selectedSession?.sessionId == sessionId else { return }
         lastLiveFrameAt = Date()
-        if value["type"] as? String == "snapshot" {
+        // 帧类型判定在 DSHKit（可测）：快照 / 消息 / steer 收件箱 / 过程事件 / 认不出。
+        switch LiveFrameRouter.kind(of: value) {
+        case .snapshot:
             let records = value["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
             mergeMessages(history)
@@ -218,50 +220,50 @@ extension ConnectionModel {
                 noteLoadFinished(source: "follow", conversation: conversation)
             }
             if messages.isEmpty { requestScrollToBottom() }
-        } else if let event = value["event"] as? [String: Any] {
-            if let message = PocketMessage(event: event) {
-                pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
-                if let pendingIndex = messages.firstIndex(where: { pending in
-                    pending.isPending && pending.isUser && (pending.text == message.text
-                        || (pending.rpcId != nil && pending.rpcId == message.rpcId))
-                }) {
-                    messages.remove(at: pendingIndex)
-                }
-                if message.isUser, let rpcId = message.rpcId {
-                    confirmOutbox(rpcIds: [rpcId])
-                }
-                if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
-                    messages.append(message)
-                    messages.sort { $0.sequence < $1.sequence }
-                }
-                timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
-                recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字")
-            } else {
-                // steer 消息先进 agent inbox（spliced），这里也视为已送达，避免误报失败。
-                if event["type"] as? String == "agent/inbox/spliced",
-                   let data = event["data"] as? [String: Any],
-                   let inserted = data["inserted"] as? [[String: Any]] {
-                    let ids = Set(inserted.compactMap {
-                        ($0["source"] as? [String: Any])?["rpcId"] as? String
-                    }.map { $0.lowercased() })
-                    if !ids.isEmpty {
-                        confirmOutbox(rpcIds: ids)
-                        ackedSendRpcIds.subtract(ids)
-                        failedSendRpcIds.subtract(ids)
-                        conversationError = nil
-                        recordDiagnostic("steer 已进入收件箱（\(ids.count) 条），等待注入")
-                    }
-                }
-                // 工具步骤、turn 起止等过程事件
-                applyStepEvent(event)
-                let eventType = event["type"] as? String
-                let eventData = event["data"] as? [String: Any]
-                let sourceKind = (eventData?["source"] as? [String: Any])?["kind"] as? String
-                if eventType == "assistant/message" || (eventType == "user/message" && sourceKind == "user") {
-                    recordDiagnostic("消息事件未解析：\(eventType ?? "未知")，source=\(sourceKind ?? "-")")
-                }
+
+        case .message:
+            guard let event = value["event"] as? [String: Any],
+                  let message = PocketMessage(event: event) else { return }
+            pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
+            if let pendingIndex = messages.firstIndex(where: { pending in
+                pending.isPending && pending.isUser && (pending.text == message.text
+                    || (pending.rpcId != nil && pending.rpcId == message.rpcId))
+            }) {
+                messages.remove(at: pendingIndex)
             }
-        } else {
+            if message.isUser, let rpcId = message.rpcId {
+                confirmOutbox(rpcIds: [rpcId])
+            }
+            if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
+                messages.append(message)
+                messages.sort { $0.sequence < $1.sequence }
+            }
+            timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
+            recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字")
+
+        case .steerInbox:
+            guard let event = value["event"] as? [String: Any] else { return }
+            // steer 消息先进 agent inbox（spliced），这里也视为已送达，避免误报失败。
+            let ids = LiveFrameRouter.steerInboxRpcIds(from: event)
+            if !ids.isEmpty {
+                confirmOutbox(rpcIds: ids)
+                ackedSendRpcIds.subtract(ids)
+                failedSendRpcIds.subtract(ids)
+                conversationError = nil
+                recordDiagnostic("steer 已进入收件箱（\(ids.count) 条），等待注入")
+            }
+            applyStepEvent(event)
+
+        case .event:
+            guard let event = value["event"] as? [String: Any] else { return }
+            applyStepEvent(event)
+            let described = LiveFrameRouter.describe(value)
+            if described.type == "assistant/message"
+                || (described.type == "user/message" && described.sourceKind == "user") {
+                recordDiagnostic("消息事件未解析：\(described.type)，source=\(described.sourceKind ?? "-")")
+            }
+
+        case .unknown:
             recordDiagnostic("未识别 follow 数据：\(value.keys.sorted().joined(separator: ","))")
         }
     }
@@ -694,96 +696,6 @@ extension ConnectionModel {
         }
     }
 
-    /// 点击完成通知：连接后打开对应会话（找不到则落到会话列表）。
-    @MainActor
-    func openSessionFromNotification(sessionId: String) async {
-        if !isConnected {
-            if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
-            if pin.isEmpty, let saved = UserDefaults.standard.string(forKey: Self.savedServerAddressKey), !saved.isEmpty {
-                serverAddress = saved
-            }
-            await connect()
-        }
-        guard let session = sessions.first(where: { $0.sessionId == sessionId }) else {
-            recordDiagnostic("通知打开会话失败：找不到 \(sessionId)")
-            return
-        }
-        finishedAwaitingSessionIds.remove(sessionId)
-        persistFinishedAwaiting()
-        navigationPath = [session]
-    }
-
-    /// 登录成功后把 APNs token 注册到插件；通知权限未开启时先请求权限。
-    @MainActor
-    func syncPushRegistration() async {
-        guard completionAlertsEnabled else {
-            if let token = pushToken {
-                _ = try? await rpcClient.rpcAdapted("push.unregister", args: ["token": token])
-            }
-            return
-        }
-        UIApplication.shared.registerForRemoteNotifications()
-        guard let token = pushToken, isConnected else { return }
-        do {
-            _ = try await rpcClient.rpcAdapted("push.register", args: [
-                "token": token,
-                "environment": "sandbox",
-                "bundleId": Bundle.main.bundleIdentifier ?? "",
-                "deviceName": UIDevice.current.name
-            ])
-            recordDiagnostic("APNs token 已注册（\(token.suffix(6))）")
-        } catch {
-            recordDiagnostic("APNs token 注册失败：\(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    /// 通知 / Apple Watch 直接回复：把文本作为 prompt 发回指定会话。
-    /// 冷启动时用 Keychain 里的密码自动重连；失败只记录诊断，不打断前台。
-    func sendNotificationReply(sessionId: String, text: String) async {
-        guard !text.isEmpty else { return }
-        recordDiagnostic("通知回复：会话 \(sessionId)，\(text.count) 字")
-        let background = UIApplication.shared.beginBackgroundTask(withName: "dsh-notification-reply")
-        defer {
-            if background != .invalid { UIApplication.shared.endBackgroundTask(background) }
-        }
-
-        if !isConnected {
-            if let saved = UserDefaults.standard.string(forKey: Self.savedServerAddressKey), !saved.isEmpty {
-                serverAddress = saved
-            }
-            if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
-            if pin.isEmpty {
-                recordDiagnostic("通知回复失败：未连接且没有可用密码")
-                return
-            }
-            await connect()
-            guard isConnected else {
-                recordDiagnostic("通知回复失败：自动重连未成功")
-                return
-            }
-        }
-
-        // 通知回复一律排队：列表里的 running 可能滞后，误打断比晚一轮更糟。
-        let mode = PromptPolicy.replyMode(isRunning: sessions.first { $0.sessionId == sessionId }?.running ?? false).rawValue
-        let requestId = UUID().uuidString.lowercased()
-        do {
-            _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
-                "requestId": requestId,
-                "sessionId": sessionId,
-                "mode": mode,
-                "content": [["type": "text", "text": text]],
-                "clientTimeZone": TimeZone.current.identifier
-            ]])
-            ackedSendRpcIds.insert(requestId)
-            addOutbox(sessionId: sessionId, rpcId: requestId, text: text)
-            if finishedAwaitingSessionIds.remove(sessionId) != nil { persistFinishedAwaiting() }
-            recordDiagnostic("通知回复已发送（模式 \(mode)）")
-        } catch {
-            recordDiagnostic("通知回复发送失败：\(error.localizedDescription)")
-        }
-    }
-
     @MainActor
     func performSend(text: String, attachments: [PocketDraftImage]) async {
         guard let session = selectedSession, !isSending else { return }
@@ -969,3 +881,57 @@ extension ConnectionModel {
     /// 分界线：传输层错误（`URLError`）原样向上抛，交给 `isTransientNetworkError` 判断可否重试；
     /// 协议错误（`DSHError`）适配成 `ConnectionError`，保持 UI 文案与分类不变。
  }
+
+// MARK: 通知域（实现在 NotificationBridge）
+
+extension ConnectionModel {
+    @MainActor func syncPushRegistration() async { await notificationBridge.syncPushRegistration() }
+
+    @MainActor
+    func sendNotificationReply(sessionId: String, text: String) async {
+        await notificationBridge.sendReply(sessionId: sessionId, text: text)
+    }
+
+    @MainActor
+    func openSessionFromNotification(sessionId: String) async {
+        await notificationBridge.openSessionFromNotification(sessionId: sessionId)
+    }
+
+    /// 装配通知域依赖（幂等）。
+    @MainActor
+    func installNotificationProviders() {
+        guard notificationBridge.providers == nil else { return }
+        notificationBridge.providers = NotificationBridge.Providers(
+            client: { [weak self] in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try self.rpcClient
+            },
+            isConnected: { [weak self] in self?.isConnected ?? false },
+            pin: { [weak self] in self?.pin ?? "" },
+            setPin: { @MainActor [weak self] value in self?.pin = value },
+            savedPin: { PinKeychain.load() },
+            savedAddress: { UserDefaults.standard.string(forKey: ConnectionModel.savedServerAddressKey) },
+            serverAddress: { [weak self] in self?.serverAddress ?? "" },
+            setServerAddress: { @MainActor [weak self] value in self?.serverAddress = value },
+            connect: { @MainActor [weak self] in await self?.connect() },
+            sessions: { [weak self] in self?.sessions ?? [] },
+            openSession: { @MainActor [weak self] sessionId in
+                guard let self, let session = self.sessions.first(where: { $0.sessionId == sessionId }) else { return }
+                self.navigationPath = [session]
+            },
+            insertAckedRpcId: { @MainActor [weak self] rpcId in self?.ackedSendRpcIds.insert(rpcId) },
+            addOutbox: { @MainActor [weak self] sessionId, rpcId, text in
+                self?.addOutbox(sessionId: sessionId, rpcId: rpcId, text: text)
+            },
+            clearFinishedAwaiting: { @MainActor [weak self] sessionId in
+                guard let self else { return }
+                if self.finishedAwaitingSessionIds.remove(sessionId) != nil {
+                    self.persistFinishedAwaiting()
+                }
+            },
+            completionAlertsEnabled: { [weak self] in self?.completionAlertsEnabled ?? false },
+            pushToken: { [weak self] in self?.pushToken },
+            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) }
+        )
+    }
+}
