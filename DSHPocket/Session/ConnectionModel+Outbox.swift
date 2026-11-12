@@ -24,26 +24,9 @@ enum HeldOfflineDelivery {
 
 extension ConnectionModel {
 
-    func loadOutboxIfNeeded() {
-        guard !outboxLoaded else { return }
-        outboxLoaded = true
-        guard let data = UserDefaults.standard.data(forKey: Self.outboxDefaultsKey),
-              let entries = try? JSONDecoder().decode([OutboxEntry].self, from: data) else { return }
-        // 不按时间删除。断网暂存和未确认正文一直留到服务端历史确认。
-        outboxEntries = entries.map {
-            OutboxEntry(id: $0.id.lowercased(), sessionId: $0.sessionId,
-                        text: $0.text, createdAt: $0.createdAt,
-                        heldOffline: $0.heldOffline, sendFailed: $0.sendFailed,
-                        accepted: $0.accepted)
-        }
-        persistOutbox()
-    }
+    func loadOutboxIfNeeded() { outbox.loadIfNeeded() }
 
-    func persistOutbox() {
-        if let data = try? JSONEncoder().encode(outboxEntries) {
-            UserDefaults.standard.set(data, forKey: Self.outboxDefaultsKey)
-        }
-    }
+    func persistOutbox() { outbox.persist() }
 
     @MainActor
     func addOutbox(sessionId: String, rpcId: String, text: String,
@@ -62,11 +45,9 @@ extension ConnectionModel {
                 recordDiagnostic("图片未排队：超出暂存上限（\(images.count) 张 / \(bytes) 字节）")
             }
         }
-        loadOutboxIfNeeded()
-        outboxEntries.append(OutboxEntry(id: rpcId.lowercased(), sessionId: sessionId, text: text,
-                                         createdAt: Date().timeIntervalSince1970,
-                                         attachments: stored))
-        persistOutbox()
+        outbox.append(OutboxEntry(id: rpcId.lowercased(), sessionId: sessionId, text: text,
+                                  createdAt: Date().timeIntervalSince1970,
+                                  attachments: stored))
     }
 
     /// 断网暂存写盘。正文在 `addOutbox` 时已经落盘，这里只补上「等联网一并发送」标记。
@@ -115,13 +96,7 @@ extension ConnectionModel {
 
     @MainActor
     private func updateOutbox(rpcId: String, _ change: (inout OutboxEntry) -> OutboxEntry?) {
-        loadOutboxIfNeeded()
-        let id = rpcId.lowercased()
-        guard let index = outboxEntries.firstIndex(where: { $0.id.lowercased() == id }) else { return }
-        var entry = outboxEntries[index]
-        guard let updated = change(&entry) else { return }
-        outboxEntries[index] = updated
-        persistOutbox()
+        outbox.update(rpcId: rpcId, change)
     }
 
     /// 打开会话或补回气泡时，把磁盘上的断网/失败标记灌进该会话的内存状态。
@@ -138,15 +113,7 @@ extension ConnectionModel {
 
     @MainActor
     func confirmOutbox(rpcIds: Set<String>) {
-        guard !rpcIds.isEmpty else { return }
-        let ids = Set(rpcIds.map { $0.lowercased() })
-        loadOutboxIfNeeded()
-        let before = outboxEntries.count
-        outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
-        if outboxEntries.count != before {
-            persistOutbox()
-            ids.forEach(OutboxImageStore.delete(rpcId:))
-        }
+        outbox.remove(rpcIds: rpcIds)
     }
 
     /// 发件箱里已发出、但列表里没有对应消息的条目：补成 pending 气泡，避免"发了但看不见"。
@@ -173,11 +140,7 @@ extension ConnectionModel {
     @MainActor
     func removeOutbox(rpcIds: Set<String>) {
         guard !rpcIds.isEmpty else { return }
-        loadOutboxIfNeeded()
-        let ids = Set(rpcIds.map { $0.lowercased() })
-        outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
-        persistOutbox()
-        ids.forEach(OutboxImageStore.delete(rpcId:))
+        outbox.remove(rpcIds: rpcIds)
     }
 
     func restoreOutboxPending(for session: PocketSession) -> [PocketMessage] {

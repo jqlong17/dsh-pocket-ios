@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:21:57+08:00",
-  "commit": "2589f48",
+  "generated_at": "2026-11-12T11:25:19+08:00",
+  "commit": "e925f09",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 62,
-      "lines": 9726
+      "files": 63,
+      "lines": 9791
     },
     {
       "layer": "ui-tests",
@@ -1195,7 +1195,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Outbox.swift",
       "layer": "app",
-      "lines": 379,
+      "lines": 342,
       "types": [
         "HeldOfflineDelivery"
       ],
@@ -1263,7 +1263,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 656,
+      "lines": 662,
       "types": [
         "DiagnosticVisit",
         "DiagnosticSample",
@@ -1344,6 +1344,18 @@
       "imports": [
         "DSHKit",
         "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/OutboxCoordinator.swift",
+      "layer": "app",
+      "lines": 96,
+      "types": [
+        "OutboxCoordinator"
+      ],
+      "imports": [
+        "Foundation",
+        "Observation"
       ]
     },
     {
@@ -1996,7 +2008,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "656 行"
+      "detail": "662 行"
     },
     {
       "rule": "file-max-400",

@@ -284,13 +284,19 @@ final class ConnectionModel {
         get { activeConversation?.acknowledgedRpcIds ?? [] }
         set { activeConversation?.acknowledgedRpcIds = newValue }
     }
-    static let outboxDefaultsKey = "dsh-pocket.send-outbox"
-    var outboxEntries: [OutboxEntry] = []
-    /// 补发进度提示（显示在输入栏上方）；全部补完会自动清空。
-    var offlineFlushNote: String?
-    var outboxLoaded = false
-    /// 避免会话列表刷新和实时流恢复同时补发同一批断网暂存。
-    var offlineFlushInFlight = false
+    /// 发件箱唯一真相（spec/12 第四个对象）。调用点仍走下面的转发。
+    let outbox = OutboxCoordinator()
+    static let outboxDefaultsKey = OutboxCoordinator.defaultsKey
+    var outboxEntries: [OutboxEntry] { outbox.entries }
+    var offlineFlushNote: String? {
+        get { outbox.flushNote }
+        set { outbox.flushNote = newValue }
+    }
+    var outboxLoaded: Bool { outbox.loaded }
+    var offlineFlushInFlight: Bool {
+        get { outbox.flushInFlight }
+        set { outbox.flushInFlight = newValue }
+    }
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     var conversationToken: UUID {
         get { activeConversation?.conversationToken ?? UUID() }
