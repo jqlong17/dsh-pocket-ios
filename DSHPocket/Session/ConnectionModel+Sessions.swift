@@ -187,17 +187,15 @@ extension ConnectionModel {
             case .string(let text): data = Data(text.utf8)
             @unknown default: continue
             }
-            guard let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  envelope["streamId"] as? String == streamId,
-                  envelope["type"] as? String == "item",
-                  let value = envelope["value"] as? [String: Any] else { continue }
-            guard value["type"] as? String == "baseline",
-                  let baseline = value["value"] as? [String: Any],
-                  let archived = baseline["archivedSessionIds"] as? [String] else {
+            // 帧结构判断在 DSHKit（可测）；这里只处理结果。
+            switch WorkspaceBaseline.decode(frame: data, streamId: streamId) {
+            case .skip:
+                continue
+            case .malformed:
                 throw ConnectionError.invalidPayload
+            case .baseline(let decoded):
+                return (decoded.archived, decoded.pinned)
             }
-            let pinned = baseline["pinnedSessionIds"] as? [String] ?? []
-            return (Set(archived), pinned)
         }
     }
 

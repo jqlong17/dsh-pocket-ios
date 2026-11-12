@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:36:42+08:00",
-  "commit": "7487f4d",
+  "generated_at": "2026-11-12T11:37:17+08:00",
+  "commit": "421df3f",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 41,
-      "lines": 2605
+      "files": 42,
+      "lines": 2643
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 68,
-      "lines": 9891
+      "lines": 9889
     },
     {
       "layer": "ui-tests",
@@ -309,6 +309,17 @@
       "lines": 67,
       "types": [
         "DSHURL"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/WorkspaceBaseline.swift",
+      "layer": "pure-logic",
+      "lines": 38,
+      "types": [
+        "WorkspaceBaseline"
       ],
       "imports": [
         "Foundation"
@@ -1276,7 +1287,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 694,
+      "lines": 692,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2092,7 +2103,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
-      "detail": "694 行"
+      "detail": "692 行"
     },
     {
       "rule": "file-max-400",
