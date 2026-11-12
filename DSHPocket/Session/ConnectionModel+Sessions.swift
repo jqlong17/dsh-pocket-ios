@@ -388,7 +388,7 @@ extension ConnectionModel {
             conversation.liveTask?.cancel()
             conversation.fallbackTask?.cancel()
             conversation.coordinatorTask?.cancel()
-            conversation.jobsTask?.cancel()
+            jobRoster.stop()
             conversations.removeValue(forKey: id)
         }
         recordDiagnostic("会话缓存回收 \(doomed.count) 条，剩 \(conversations.count) 条")

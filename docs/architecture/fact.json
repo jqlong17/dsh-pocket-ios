@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:18:06+08:00",
-  "commit": "613928b",
+  "generated_at": "2026-11-12T11:20:54+08:00",
+  "commit": "8b2881c",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 60,
-      "lines": 9640
+      "files": 61,
+      "lines": 9670
     },
     {
       "layer": "ui-tests",
@@ -1219,7 +1219,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Process.swift",
       "layer": "app",
-      "lines": 340,
+      "lines": 291,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1263,7 +1263,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 631,
+      "lines": 633,
       "types": [
         "DiagnosticVisit",
         "DiagnosticSample",
@@ -1289,7 +1289,7 @@
     {
       "file": "DSHPocket/Session/ConversationState.swift",
       "layer": "app",
-      "lines": 86,
+      "lines": 84,
       "types": [
         "ConversationState"
       ],
@@ -1320,6 +1320,18 @@
       "imports": [
         "Foundation",
         "Observation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/JobRoster.swift",
+      "layer": "app",
+      "lines": 79,
+      "types": [
+        "JobRoster"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation"
       ]
     },
     {
@@ -1972,7 +1984,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "631 行"
+      "detail": "633 行"
     },
     {
       "rule": "file-max-400",

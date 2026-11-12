@@ -36,8 +36,6 @@ final class ConversationState {
     var fallbackTask: Task<Void, Never>?
     /// 后台任务名单（`job/list` 流）。整份替换，不是增量。
     var jobs: [PocketJob] = []
-    var jobsTask: Task<Void, Never>?
-    var jobsStarted = false
     /// 实时流是否在运行：避免"返回会话时 liveTask 已结束但仍非 nil"导致不再重连。
     var isFollowing = false
     var coordinator: SessionSyncCoordinator?

@@ -159,67 +159,20 @@ extension ConnectionModel {
     func ensureJobRoster() {
         guard !isDemoMode, let session = selectedSession,
               let conversation = conversations[session.sessionId] else { return }
-        guard conversation.jobsTask == nil, !conversation.jobsStarted else { return }
-        startJobRoster(for: conversation, session: session)
+        guard !jobRoster.isRunning else { return }
+        guard let base = URL(string: serverAddress),
+              let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else { return }
+        jobRoster.start(sessionId: session.sessionId, socketURL: socketURL) { [weak conversation] rows in
+            // 名单写回会话状态；订阅器本身不持有业务数据（见 JobRoster 注释）。
+            conversation?.jobs = rows
+        }
     }
 
     /// 关掉任务面板就取消订阅，别让不可见的界面一直占着连接。
     @MainActor
     func stopJobRoster() {
-        guard let conversation = activeConversation else { return }
-        conversation.jobsTask?.cancel()
-        conversation.jobsTask = nil
-        conversation.jobsStarted = false
-        conversation.jobs = []
-    }
-
-    /// 订阅这条会话的后台任务名单。`job/list` 是整份替换的流，断线重连后第一帧就是真相。
-    @MainActor
-    func startJobRoster(for conversation: ConversationState, session: PocketSession) {
-        conversation.jobsTask?.cancel()
-        conversation.jobsStarted = true
-        conversation.jobsTask = Task { [weak self] in
-            await self?.runJobRoster(conversation: conversation, session: session)
-        }
-    }
-
-    func runJobRoster(conversation: ConversationState, session: PocketSession) async {
-        var retryDelay: Duration = .seconds(2)
-        while !Task.isCancelled {
-            guard let base = URL(string: serverAddress),
-                  let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else { return }
-            let socket = URLSession.shared.webSocketTask(with: socketURL)
-            socket.resume()
-            let streamId = UUID().uuidString
-            let open = StreamOpen(type: "open", streamId: streamId, endpoint: "job/list",
-                                  payload: ["args": ["request": ["sessionId": session.sessionId]]])
-            do {
-                let data = try JSONEncoder().encode(open)
-                guard let text = String(data: data, encoding: .utf8) else { throw ConnectionError.invalidPayload }
-                try await socket.send(.string(text))
-                while !Task.isCancelled {
-                    let message = try await socket.receive()
-                    guard let frameData: Data = {
-                        if case .string(let s) = message { return s.data(using: .utf8) }
-                        if case .data(let d) = message { return d }
-                        return nil
-                    }() else { continue }
-                    guard let object = try JSONSerialization.jsonObject(with: frameData) as? [String: Any],
-                          let value = StreamFrames.itemValue(object, streamId: streamId),
-                          let rows = DSHJobRoster.rows(fromValue: value) else { continue }
-                    let next = rows.map(PocketJob.init(row:))
-                    await MainActor.run {
-                        guard self.activeConversation === conversation else { return }
-                        conversation.jobs = next
-                    }
-                }
-            } catch {
-                if Task.isCancelled { break }
-                socket.cancel(with: .goingAway, reason: nil)
-                do { try await Task.sleep(for: retryDelay) } catch { break }
-                retryDelay = min(retryDelay * 2, .seconds(20))
-            }
-        }
+        jobRoster.stop()
+        activeConversation?.jobs = []
     }
 
     /// 退出会话页：停掉这条会话的实时流，避免反复进出时订阅和缓冲一直叠着。
@@ -230,12 +183,10 @@ extension ConnectionModel {
         conversation.liveTask?.cancel()
         conversation.fallbackTask?.cancel()
         conversation.coordinatorTask?.cancel()
-        conversation.jobsTask?.cancel()
+        jobRoster.stop()
         conversation.liveTask = nil
         conversation.fallbackTask = nil
         conversation.coordinatorTask = nil
-        conversation.jobsTask = nil
-        conversation.jobsStarted = false
         conversation.jobs = []
         stopDiagnosticSampler()
         finishDiagnosticVisit(leaveMs: Int(Date().timeIntervalSince(leaveStarted) * 1000))

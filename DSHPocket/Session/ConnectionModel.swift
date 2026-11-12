@@ -225,6 +225,8 @@ final class ConnectionModel {
     var networkDownSince: Date?
     /// 诊断数据由 Diagnostics 持有（见 spec/12 第一批）。这里保留只读转发，避免一次性改所有调用点。
     let diagnostics = Diagnostics()
+    /// 任务名单订阅器（服务，不持有业务数据；名单在 ConversationState.jobs）。
+    let jobRoster = JobRoster()
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }
