@@ -203,7 +203,11 @@ extension ConnectionModel {
             // 必须显式把新会话压栈，否则用户会停在列表页等一个不存在的点击。
             sessionStore.navigationPath = [session]
         } catch {
-            reportActionError("无法创建会话：\(error.localizedDescription)")
+            // 断网与真失败要分开说：把 URLError 的英文原文丢给用户（"The Internet connection
+            // appears to be offline."）既打断操作又没告诉他该做什么。
+            reportActionError(Self.isTransientNetworkError(error)
+                              ? L10n.t("现在没网，连上之后再试")
+                              : "\(L10n.t("无法创建会话"))：\(error.localizedDescription)")
         }
     }
 }

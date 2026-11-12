@@ -170,6 +170,7 @@ enum L10n {
         "过程": "Steps",
         "步": "steps",
         "待发送": "Pending",
+        "现在没网，连上之后再试": "No network — try again once you are connected.",
         "已复制": "Copied",
         "访问密码": "Access PIN",
         "删除连接": "Delete connection",
