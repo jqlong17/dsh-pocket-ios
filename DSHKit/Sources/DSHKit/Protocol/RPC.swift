@@ -25,6 +25,11 @@ public struct RPCRequest {
     }
 
     /// 从响应体提取 `result.value`。
+    ///
+    /// 失败有两种形状，都要认：
+    /// 1. 顶层 `error`（传输/鉴权层失败）；
+    /// 2. `result.ok == false` + `result.error.message`（业务失败）。
+    /// 只认第一种会把业务失败当成成功——这是收口两套 RPC 时最容易漏的一条。
     public static func value(from data: Data) throws -> [String: Any] {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw DSHError.invalidPayload
@@ -33,8 +38,14 @@ public struct RPCRequest {
             let message = error["message"] as? String
             throw DSHError.server(status: (error["status"] as? NSNumber)?.intValue ?? 0, message: message)
         }
-        guard let result = object["result"] as? [String: Any],
-              let value = result["value"] as? [String: Any] else { throw DSHError.invalidPayload }
+        guard let result = object["result"] as? [String: Any] else { throw DSHError.invalidPayload }
+        if (result["ok"] as? Bool) == false {
+            let detail = result["error"] as? [String: Any]
+            let message = detail?["message"] as? String
+            let status = (detail?["status"] as? NSNumber)?.intValue ?? 0
+            throw DSHError.server(status: status, message: message)
+        }
+        guard let value = result["value"] as? [String: Any] else { throw DSHError.invalidPayload }
         return value
     }
 }

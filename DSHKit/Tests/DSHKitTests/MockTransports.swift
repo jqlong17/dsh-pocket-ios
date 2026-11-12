@@ -74,3 +74,47 @@ func fixtureJSON(_ name: String) throws -> [String: Any] {
     }
     return object
 }
+
+/// 可抛错、可计数的 HTTP 传输：验证超时、重试、rpcId 稳定性用。
+///
+/// 为什么单独一个类而不是改 `MockHTTPTransport`：那个类被现有测试广泛使用，
+/// 改成 throws 会波及无关用例；新增一个只服务重试相关测试。
+final class FlakyHTTPTransport: DSHHTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var attemptCount = 0
+    private var recorded: [URLRequest] = []
+    private let behavior: @Sendable (Int) -> Result<(status: Int, body: Data), Error>
+
+    init(behavior: @escaping @Sendable (Int) -> Result<(status: Int, body: Data), Error>) {
+        self.behavior = behavior
+    }
+
+    var attempts: Int {
+        lock.lock(); defer { lock.unlock() }
+        return attemptCount
+    }
+
+    var requests: [URLRequest] {
+        lock.lock(); defer { lock.unlock() }
+        return recorded
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.lock()
+        attemptCount += 1
+        let current = attemptCount
+        recorded.append(request)
+        lock.unlock()
+
+        switch behavior(current) {
+        case .failure(let error):
+            throw error
+        case .success(let response):
+            let http = HTTPURLResponse(url: request.url ?? URL(string: "http://localhost")!,
+                                       statusCode: response.status,
+                                       httpVersion: "HTTP/1.1",
+                                       headerFields: nil)!
+            return (response.body, http)
+        }
+    }
+}

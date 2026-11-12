@@ -6,12 +6,19 @@ public final class DSHClient: @unchecked Sendable {
     private let http: DSHHTTPTransport
     private let webSocket: DSHWebSocketTransport
 
+    /// 重试之间的等待。测试注入空实现即可秒过；生产用 `RPCRetryPolicy.backoff`。
+    private let retrySleep: @Sendable (Int) async -> Void
+
     public init(baseURL: URL,
                 http: DSHHTTPTransport = DSHURLSessionHTTPTransport(),
-                webSocket: DSHWebSocketTransport = DSHURLSessionWebSocketTransport()) {
+                webSocket: DSHWebSocketTransport = DSHURLSessionWebSocketTransport(),
+                retrySleep: (@Sendable (Int) async -> Void)? = nil) {
         self.baseURL = baseURL
         self.http = http
         self.webSocket = webSocket
+        self.retrySleep = retrySleep ?? { attempt in
+            try? await Task.sleep(for: RPCRetryPolicy.backoff(attempt: attempt))
+        }
     }
 
     public func webSocketURL(path: String = StreamFrames.remoteMuxPath) -> URL? {
@@ -46,11 +53,40 @@ public final class DSHClient: @unchecked Sendable {
     }
 
     /// 发送一个 RPC 并返回 `result.value`。
-    public func rpc(method: String, args: [String: Any]) async throws -> [String: Any] {
-        let rpcId = UUID()
-        let request = RPCRequest(method: method, rpcId: rpcId, args: args)
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("api/\(method)"))
+    ///
+    /// - Parameter timeout: 单次请求超时，默认 20 秒（沿用 App 层旧值，避免行为漂移）。
+    public func rpc(method: String, args: [String: Any],
+                    timeout: TimeInterval = 20) async throws -> [String: Any] {
+        try await rpc(RPCRequest(method: method, args: args), timeout: timeout)
+    }
+
+    /// 带重试的 RPC：**同一个 rpcId 贯穿所有尝试**，服务端按 rpcId 去重，不会重复执行。
+    ///
+    /// 只对瞬时错误重试（见 `RPCRetryPolicy`）；401/400 这类业务错误第一次就抛。
+    public func rpcWithRetry(method: String, args: [String: Any],
+                             attempts: Int = 3,
+                             timeout: TimeInterval = 20) async throws -> [String: Any] {
+        let request = RPCRequest(method: method, args: args)
+        var lastError: Error = DSHError.invalidPayload
+        for attempt in 0..<max(attempts, 1) {
+            do {
+                return try await rpc(request, timeout: timeout)
+            } catch {
+                lastError = error
+                guard RPCRetryPolicy.shouldRetry(error, attempt: attempt, maxAttempts: attempts) else {
+                    throw error
+                }
+                await retrySleep(attempt)
+            }
+        }
+        throw lastError
+    }
+
+    /// 单次发送。抽出私有入口是为了让重试能复用同一个 `RPCRequest`（即同一个 rpcId）。
+    private func rpc(_ request: RPCRequest, timeout: TimeInterval) async throws -> [String: Any] {
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("api/\(request.method)"))
         urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = timeout
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try request.encoded()
 
