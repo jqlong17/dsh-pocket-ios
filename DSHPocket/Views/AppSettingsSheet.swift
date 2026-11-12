@@ -18,7 +18,7 @@ import UserNotifications
 
 struct AppSettingsSheet: View {
     @Bindable var model: ConnectionModel
-    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
+    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.timeline.rawValue
     @Environment(\.dismiss) private var dismiss
     @State private var languageRevision = 0
 

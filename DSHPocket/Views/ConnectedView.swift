@@ -18,7 +18,7 @@ import UserNotifications
 
 struct ConnectedView: View {
     @Bindable var model: ConnectionModel
-    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.grouped.rawValue
+    @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.timeline.rawValue
     @State private var showingDisconnectConfirm = false
     @AppStorage("dsh-pocket.collapsed-groups") private var collapsedGroupsRaw = ""
     @State private var renamingSession: PocketSession?
