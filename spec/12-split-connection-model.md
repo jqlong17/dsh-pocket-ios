@@ -148,3 +148,48 @@ DSHKit 测试 260 → **268**。
 - 模拟器安装启动成功，无崩溃日志；
 - 连接页 → 演示模式 → 会话列表 → 对话视图（气泡/表格/过程行/输入栏）全部正常；
 - `swift test` 268 绿。
+
+## 第二阶段记录（第 1–6 轮）
+
+### 抽出对象与服务
+
+| 对象 | 类型 | 提交 |
+| --- | --- | --- |
+| Diagnostics | 状态对象 + Providers 注入 | `0723ea7` / `52b8ef9` |
+| JobRoster | 订阅服务 | `5ff6897` |
+| ConnectionState | 状态对象 | `fe96eb2` |
+| OutboxCoordinator | 状态对象 | `d75ed17` |
+| SessionStore | 状态对象 + activate | `c589acd` / `dd12131` |
+| QuestionInbox | 状态机 | `b716eee` |
+
+### 下沉到 DSHKit 的纯逻辑（共 +42 测试）
+
+`PendingQuestionPayload`、`MarkdownSegments`、`TimelineAssembly`、`WorkspaceBaseline`、
+`PromptPolicy`、`SendLandedScan`、`SendFailurePolicy`、`LiveStreamPolicy`、
+`TimelineSpacing` + `UnreadCounter`、`DSHErrorKind`、`ArchitectureBoundaryTests`。
+
+DSHKit 测试 260 → **302**。
+
+### 行数实况（诚实版）
+
+| 文件 | 起点 | 现在 | 说明 |
+| --- | --- | --- | --- |
+| `ConnectView` | 505 | **397** | 达标（拆扫码卡/标题卡） |
+| `+Connect` | 549 | 498 | 诊断整段搬走后仍超 |
+| `ConnectionModel.swift` | 630 | 630 | 转发属性占位，对象迁完才能删 |
+| `+Sessions` | 694 | 667 | `open()` 纯状态切换搬走 |
+| `+Live` | 981 | 908 | 问答卡搬走；性能修复 |
+| `ConversationView` | 731 | 741 | 下沉后因映射变长 |
+
+### 结论：两项目标需要决策
+
+1. **`file-max-400` 对编排层不可达**：剩下的是 `connect()`、`performSend`、`follow`
+   三段流程代码，搬走需注入 12–25 个闭包，装配代码会吃掉大部分收益；
+   且 `performSend` **没有自动化验证手段**（演示模式走的是 demo 分支，真机常不可达），
+   在无验证的情况下大改发送管线，风险高于收益。
+2. **`extension-split-smell` 靠搬方法无法消除**：7 个 `+Feature` 文件要降到 2 个，
+   等于把 ConnectionModel 彻底解散、改全部调用约定。
+
+建议二选一（见 journey `arch-005` / `arch-007`）：
+- A. 接受当前状态：`ConnectView` 达标，其余按「状态对象已抽出、逻辑已下沉」认账，调整阈值口径；
+- B. 立项做真正的解散（新 spec，改调用约定，预计 1–2 天）。
