@@ -48,7 +48,7 @@ extension ConnectionModel {
             ("Server", URL(string: connection.serverAddress)?.host?.isEmpty == false
                 ? DSHURL.redactedAddress(connection.serverAddress)
                 : DiagnosticsReport.missing),
-            ("Live", liveConnection.label),
+            ("Live", liveConnection.reportLabel),
             ("Demo mode", isDemoMode ? "yes" : "no")
         ]))
         sections.append(.init("Session", hasSession ? [
@@ -76,12 +76,11 @@ extension ConnectionModel {
             ("Flushing", outbox.flushInFlight ? "yes" : "no")
         ]))
 
-        // 事件行固定英文：样本里存的是本地化网络文案（「通」「演示」），
-        // 报告是给跨语言排查用的，所以在这里映射回英文，不改样本本身的存储。
+        // 事件行固定英文：样本里的网络文案已经是英文标识（见 diagnosticNetworkLabel）。
         let events = diagnostics.samples.map { sample in
             DiagnosticsReport.eventLine(
                 at: sample.at,
-                text: "mem \(sample.memoryMB)MB · pending \(sample.pending) · queued \(sample.queued) · failed \(sample.failed) · net \(Self.englishNetworkLabel(sample.network))"
+                text: "mem \(sample.memoryMB)MB · pending \(sample.pending) · queued \(sample.queued) · failed \(sample.failed) · net \(sample.network)"
             )
         }
         let notes = [
@@ -214,21 +213,13 @@ extension ConnectionModel {
 
 
    func diagnosticNetworkLabel() -> String {
+        // 采样只喂给诊断报告（英文），所以这里直接用英文标识，避免报告里再翻译一次。
         switch liveConnection {
-        case .connected:
-            return "通"
-        case .demo:
-            return "演示"
-        case .connecting:
-            return "连接中"
-        case .reconnecting:
-            let seconds = Int(Date().timeIntervalSince(networkDownSince ?? Date()))
-            return "重连 \(max(seconds, 0)) 秒"
-        case .disconnected:
-            let seconds = Int(Date().timeIntervalSince(networkDownSince ?? Date()))
-            return "断 \(max(seconds, 0)) 秒"
-        case .idle:
-            return "未连接"
+        case .reconnecting, .disconnected:
+            let seconds = max(Int(Date().timeIntervalSince(networkDownSince ?? Date())), 0)
+            return "\(liveConnection.reportLabel) \(seconds)s"
+        default:
+            return liveConnection.reportLabel
         }
     }
 
@@ -265,14 +256,4 @@ extension ConnectionModel {
     }
 
 
-    /// 把样本里存的中文网络文案映射成英文（只用于诊断报告输出）。
-    static func englishNetworkLabel(_ raw: String) -> String {
-        if raw.hasPrefix("通") { return "connected" }
-        if raw.hasPrefix("演示") { return "demo" }
-        if raw.hasPrefix("连接中") { return "connecting" }
-        if raw.hasPrefix("重连") { return "reconnecting" }
-        if raw.hasPrefix("断") { return "disconnected" }
-        if raw.hasPrefix("未连接") { return "idle" }
-        return raw.allSatisfy(\.isASCII) ? raw : "unknown"
-    }
 }

@@ -26,6 +26,21 @@ enum LiveConnectionState: Equatable {
         }
     }
 
+    /// 诊断报告用的稳定英文标识：报告固定英文，且要与 `State connected` 的小写风格一致。
+    /// 不要用 `label`——它是本地化的，中文环境下会输出「已连接」。
+    var reportLabel: String {
+        switch self {
+        case .idle: return "idle"
+        case .demo: return "demo"
+        case .connecting: return "connecting"
+        case .connected: return "connected"
+        case .reconnecting(let attempt):
+            return attempt > 1 ? "reconnecting (attempt \(attempt))" : "reconnecting"
+        case .disconnected(let reason):
+            return reason.map { "disconnected (\($0))" } ?? "disconnected"
+        }
+    }
+
     var isConnected: Bool { self == .connected }
     var isDisconnected: Bool { if case .disconnected = self { return true }; return false }
 }
