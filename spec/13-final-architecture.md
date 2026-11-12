@@ -27,9 +27,9 @@
 
 | 批次 | 内容 | 交付后判据 |
 | --- | --- | --- |
-| 1 | **RPC 终态**：`ConnectionModel.rpc` 内部委托 `DSHClient`；`DSHError` 适配回 `ConnectionError`；删除 App 手拼 envelope | App 无 envelope 字面量；21 调用点行为不变；传输错误仍是 `URLError` |
-| 2 | **模型拆分**：Diagnostics → JobRoster → ConnectionState → OutboxCoordinator → SessionStore | `ConnectionModel` 降为转发或消亡；每步全绿 |
-| 3 | **视图收敛**：视图只依赖所属场景对象 | 跨场景访问为 0 |
+| 1 | **RPC 终态** ✅ 已完成（`b0e8d9a`） | App 删掉 `rpc`/`rpcWithRetry`，22 处调用点直调 `DSHClient`；只剩错误适配扩展 |
+| 2 | **模型拆分** ✅ 5/5 完成（`0723ea7`…`c589acd`） | 5 个对象各自独立；`ConnectionModel` 保留转发 |
+| 3 | **视图收敛** ⏳ 未开始 | 跨场景访问仍存在（视图读 `model.xxx` 转发） |
 
 ## 非目标
 

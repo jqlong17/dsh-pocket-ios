@@ -104,3 +104,47 @@ App 层没有单测 target，所以用**两种可执行的验证**替代：
 - [ ] spec/08 的 T1–T5 完成（`grep -rn "func rpc"` 只剩 DSHKit 一处）
 - [ ] `swift test` 全绿
 - [ ] `check-architecture.sh` 基线已记录（当前 7 处）
+
+## 执行记录
+
+### 已完成：5 个对象全部抽出
+
+| 对象 | 提交 | 说明 |
+| --- | --- | --- |
+| Diagnostics | `0723ea7` | 采样/进出/日志；采集值由调用方传入，无反向依赖 |
+| JobRoster | `5ff6897` | 做成**服务**而非状态对象（名单属于会话）；`+Process` 345→290 |
+| ConnectionState | `fe96eb2` | 6 字段 + 计算转发（约 140 处调用点未改） |
+| OutboxCoordinator | `d75ed17` | 条目与磁盘；顺手修「重启丢附件元数据」 |
+| SessionStore | `c589acd` | 列表/当前会话/缓存字典 + 转发 |
+
+### 顺带完成的逻辑下沉（可测性收益）
+
+| 内容 | 提交 | 测试 |
+| --- | --- | --- |
+| 问答卡 JSON 解析 → `PendingQuestionPayload.decode` | `d7aced0` | +3 |
+| Markdown 分段 → `MarkdownSegments.split` | `4562d35` | +5 |
+| 诊断值类型外移 | `ed944cb` | — |
+
+DSHKit 测试 260 → **268**。
+
+### 未完成（明确交接）
+
+剩余 7 处存量违规**全部集中在 ConnectionModel 编排层与两个大视图**，都属于「需要改结构才能降行数」的部分：
+
+| 文件 | 行数 | 下降路径 |
+| --- | --- | --- |
+| `ConnectionModel+Live.swift` | 940 | 抽 SendPipeline（发送/核验）、LiveStreamCoordinator（follow/coordinator） |
+| `ConversationView.swift` | 731 | 拆子视图：气泡列表、输入栏、工具条、未读按钮 |
+| `ConnectionModel+Sessions.swift` | 693 | 抽 SessionListLoader（列表拉取/分页/搜索） |
+| `ConnectionModel.swift` | 652 | 转发属性已占大半；对象迁完后可删转发 |
+| `ConnectionModel+Connect.swift` | 548 | 抽 ConnectFlow（握手/扫码/诊断出口） |
+| `ConnectView.swift` | 504 | 拆扫码卡、手动连接卡、端点卡片 |
+
+`extension-split-smell` 仍在（7 个 `+Feature` 文件）：要把 ConnectionModel 从编排层彻底拆散才能真正归零，
+那是下一阶段（需要新的 spec，因为要改调用约定）。
+
+### 行为验证
+
+- 模拟器安装启动成功，无崩溃日志；
+- 连接页 → 演示模式 → 会话列表 → 对话视图（气泡/表格/过程行/输入栏）全部正常；
+- `swift test` 268 绿。

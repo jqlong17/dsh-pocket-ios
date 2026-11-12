@@ -22,7 +22,9 @@
 ## 2. 本仓库的约定
 
 - **spec 目录**：`spec/NN-主题.md`（已有 01–10，编号递增）。
-- **测试**：`cd DSHKit && swift test`；App 编译 `xcodebuild build -scheme DSHPocket`。
+- **测试**：`cd DSHKit && swift test`；App 编译走模拟器（真机锁屏常不可达）：
+  `xcodebuild build -scheme DSHPocket -destination 'platform=iOS Simulator,id=2BD221E6-CFAA-4E90-8BEB-E7392ACCCB19'`
+- **功能验证**：`ios_sim_boot` → `simctl install/launch` → 演示模式走会话列表与对话视图。
 - **检查点**：大改动前后各打一次，记录只追加。
 
   ```bash
