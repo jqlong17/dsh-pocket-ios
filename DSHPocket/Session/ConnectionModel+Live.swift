@@ -754,15 +754,11 @@ extension ConnectionModel {
         }
         do {
             timingLog("prompt_start chars=\(text.count) images=\(attachments.count)")
-            var content: [[String: Any]] = []
-            if !text.isEmpty { content.append(["type": "text", "text": text]) }
-            for image in attachments {
-                content.append([
-                    "type": "image",
-                    "mediaType": image.mediaType,
-                    "data": image.data.base64EncodedString(),
-                    "name": image.name
-                ])
+            // 请求体结构在 DSHKit（可测）：空文本不产生 text block、图片字段名固定。
+            let payloadImages = attachments.map {
+                PromptPayload.Image(mediaType: $0.mediaType,
+                                    base64: $0.data.base64EncodedString(),
+                                    name: $0.name)
             }
             // 只有「确认过实时 turn 事件、且确实在跑」才用 steer 打断；
             // 没见到实时事件时按 queue 处理——queue 最多排到本轮之后，steer 会打断正在做的事。
@@ -773,7 +769,7 @@ extension ConnectionModel {
                 "requestId": requestId,
                 "sessionId": session.sessionId,
                 "mode": promptMode,
-                "content": content,
+                "content": PromptPayload.content(text: text, images: payloadImages),
                 "clientTimeZone": TimeZone.current.identifier
             ]])
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:52:44+08:00",
-  "commit": "8a208e7",
+  "generated_at": "2026-11-12T11:53:31+08:00",
+  "commit": "b88d2b6",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 50,
-      "lines": 2959
+      "files": 51,
+      "lines": 3013
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 70,
-      "lines": 10052
+      "lines": 10048
     },
     {
       "layer": "ui-tests",
@@ -259,6 +259,17 @@
       "layer": "pure-logic",
       "lines": 97,
       "types": [],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/PromptPayload.swift",
+      "layer": "pure-logic",
+      "lines": 54,
+      "types": [
+        "PromptPayload"
+      ],
       "imports": [
         "Foundation"
       ]
@@ -1311,7 +1322,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 909,
+      "lines": 905,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2218,7 +2229,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "909 行"
+      "detail": "905 行"
     },
     {
       "rule": "file-max-400",
