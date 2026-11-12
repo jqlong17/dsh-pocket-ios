@@ -93,6 +93,21 @@ extension ConnectionModel {
         }
     }
 
+    /// 一轮结束时，把这一轮里还没等到结果的步骤收尾。
+    /// 典型场景：ask_user_question 被中断、没有 tool/result 回来，
+    /// 界面会一直停在「正在等待你的选择…」。
+    @MainActor
+    func markUnfinishedStepsEnded(turn: Int) {
+        var changed = false
+        for index in steps.indices where !steps[index].finished {
+            // turn 为 0 表示事件没带轮次，按「全部收尾」处理。
+            guard turn == 0 || steps[index].turn == turn else { continue }
+            steps[index].finished = true
+            changed = true
+        }
+        if changed { recordDiagnostic("过程收尾：第 \(turn) 轮未完成的步骤已标记结束") }
+    }
+
     /// 事件里带 callId 的只有 toolCall，单独取出来避免在模式匹配里塞参数。
     static func callId(of event: DSHStepEvent) -> String {
         switch event {

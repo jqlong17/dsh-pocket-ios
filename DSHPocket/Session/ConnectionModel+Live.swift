@@ -494,6 +494,8 @@ extension ConnectionModel {
             }
             Task { await activeConversation?.coordinator?.setExpectingActivity(true) }
         case .turnEnd(let sequence, let turn, let failure):
+            // 这一轮结束了：同轮里还没收到结果的步骤（例如被中断的提问）不能再显示进行时。
+            markUnfinishedStepsEnded(turn: turn)
             recordTurnFailure(sequence: sequence, failure: failure)
             activeConversation?.endedTurnNumbers.insert(turn)
             if activeConversation?.pendingQuestionTurn == turn {

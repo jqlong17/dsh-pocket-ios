@@ -25,6 +25,9 @@ struct PocketMessage: Identifiable {
     let isPending: Bool
     /// 待发消息在会话里的显示排序位置（发送时刻最后一条已确认消息的 sequence）。
     var localSortKey: Int? = nil
+    /// 本地发送顺序（毫秒时间戳）。同一位置有多条待发时靠它保持先发先显，
+    /// 不能用随机 id 兜底，否则两条同时发的消息顺序会翻转。
+    var localOrder: Int = 0
     let images: [PocketImageRef]
     let localImages: [UIImage]
     /// 发送时客户端生成的 requestId，服务端会回填到 user/message 的 source.rpcId，用来精确对账。
@@ -47,6 +50,7 @@ struct PocketMessage: Identifiable {
         self.id = "pending-\(UUID().uuidString)"
         self.sequence = Int.max
         self.localSortKey = sortSequence
+        self.localOrder = Int(Date().timeIntervalSince1970 * 1000)
         self.kind = "user/message"
         self.text = pendingText
         self.isUser = true
