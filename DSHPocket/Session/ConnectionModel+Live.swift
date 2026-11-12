@@ -827,7 +827,18 @@ extension ConnectionModel {
                 }
             }
         } catch {
-            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+            // 处置优先级在 DSHKit（可测）：取消 > 登录失效 > 网络不通 > 其它失败。
+            let isCancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
+            let unauthorized: Bool = {
+                if case .server(401)? = (error as? ConnectionError) { return true }
+                return false
+            }()
+            let action = SendFailurePolicy.action(isCancelled: isCancelled,
+                                                  isUnauthorized: unauthorized,
+                                                  isTransient: isTransientNetworkError(error),
+                                                  isStaleTunnel: isStaleTunnelError(error))
+            switch action {
+            case .returnToComposer:
                 // 用户取消：正文退回输入框，再删本机副本；否则留着等重发。
                 if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     draft = pending.text
@@ -839,9 +850,7 @@ extension ConnectionModel {
                     failedSendRpcIds.insert(requestId)
                     markOutboxSendFailed(rpcId: requestId)
                 }
-                return
-            }
-            if let authError = error as? ConnectionError, case .server(401) = authError {
+            case .reauthenticate:
                 // 登录失效不等于这条消息该丢：正文留在发件箱并标失败，重新登录后可重发。
                 if OutboxRetentionPolicy.canRemove(cause: .authExpired) {
                     removeOutbox(rpcIds: [requestId])
@@ -852,21 +861,18 @@ extension ConnectionModel {
                     recordDiagnostic("登录失效，正文保留在发件箱：\(requestId)")
                 }
                 handleAuthExpired()
-                return
-            }
-            // 网络不通：正文已在发件箱，再写上断网标记。不判失败，联网后一并发出。
-            if isTransientNetworkError(error), !isStaleTunnelError(error) {
+            case .holdOffline:
                 queuedSendRpcIds.insert(requestId)
                 failedSendRpcIds.remove(requestId)
                 markOutboxHeldOffline(rpcId: requestId)
                 conversationError = nil
                 recordDiagnostic("网络不可达，已写入断网暂存，联网后一并发送：\(requestId)")
-                return
+            case .markFailed:
+                // 其它错误：正文留在发件箱，标记失败，用户可直接重发。
+                failedSendRpcIds.insert(requestId)
+                markOutboxSendFailed(rpcId: requestId)
+                conversationError = "发送失败：\(error.localizedDescription)（点消息气泡下方「重新发送」可重试）"
             }
-            // 其它错误：正文留在发件箱，标记失败，用户可直接重发。
-            failedSendRpcIds.insert(requestId)
-            markOutboxSendFailed(rpcId: requestId)
-            conversationError = "发送失败：\(error.localizedDescription)（点消息气泡下方「重新发送」可重试）"
         }
     }
 

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:41:33+08:00",
-  "commit": "39119a8",
+  "generated_at": "2026-11-12T11:42:12+08:00",
+  "commit": "7ea0735",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 44,
-      "lines": 2707
+      "files": 45,
+      "lines": 2742
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 69,
-      "lines": 10027
+      "lines": 10033
     },
     {
       "layer": "ui-tests",
@@ -281,6 +281,18 @@
       "lines": 25,
       "types": [
         "RPCRetryPolicy"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Protocol/SendFailurePolicy.swift",
+      "layer": "pure-logic",
+      "lines": 35,
+      "types": [
+        "SendFailureAction",
+        "SendFailurePolicy"
       ],
       "imports": [
         "Foundation"
@@ -1242,7 +1254,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 902,
+      "lines": 908,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2135,7 +2147,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "902 行"
+      "detail": "908 行"
     },
     {
       "rule": "file-max-400",
