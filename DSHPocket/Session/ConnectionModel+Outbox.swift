@@ -212,7 +212,10 @@ extension ConnectionModel {
         let pending = outboxEntries.filter(\.heldOffline).sorted { $0.createdAt < $1.createdAt }
         guard !pending.isEmpty else { return }
         offlineFlushInFlight = true
-        recordDiagnostic("网络恢复，准备一并补发 \(pending.count) 条断网暂存")
+        let total = pending.count
+        var sent = 0
+        offlineFlushNote = "正在补发 0/\(total)"
+        recordDiagnostic("网络恢复，准备一并补发 \(total) 条断网暂存")
         Task { [weak self] in
             guard let self else { return }
             defer { Task { @MainActor [weak self] in self?.offlineFlushInFlight = false } }
@@ -222,15 +225,21 @@ extension ConnectionModel {
                 }
                 guard stillHeld else { continue }
                 let outcome = await self.deliverHeldOffline(entry)
+                // 条与条之间留一点间隔，避开服务端限流。
+                try? await Task.sleep(for: OfflineDeliveryPolicy.interMessageDelay)
                 let stop = await MainActor.run { () -> Bool in
                     switch outcome {
                     case .acked:
                         self.noteHeldOfflineAccepted(entry)
+                        sent += 1
+                        self.offlineFlushNote = "正在补发 \(sent)/\(total)"
                         return false
                     case .stillOffline:
+                        self.offlineFlushNote = "已补发 \(sent)/\(total)，网络又断了，剩余 \(total - sent) 条仍在手机上"
                         self.recordDiagnostic("补发仍无网络，剩余断网暂存留在本机：\(entry.id)")
                         return true
                     case .auth:
+                        self.offlineFlushNote = "已补发 \(sent)/\(total)，登录失效，剩余 \(total - sent) 条仍在手机上"
                         self.handleAuthExpired()
                         return true
                     case .failed:
@@ -243,25 +252,34 @@ extension ConnectionModel {
             if let session = await MainActor.run(body: { self.selectedSession }) {
                 await self.loadHistory(session)
             }
-            await MainActor.run { self.offlineFlushInFlight = false }
+            await MainActor.run {
+                self.offlineFlushInFlight = false
+                if sent == total {
+                    self.offlineFlushNote = nil
+                } else if self.offlineFlushNote == nil {
+                    self.offlineFlushNote = "已补发 \(sent)/\(total)，剩余留在手机上"
+                }
+            }
         }
     }
 
     /// 用原 rpcId 补发。服务端按 requestId 去重，重复补发不会变成两条。
+    ///
+    /// 两条接收侧规则：
+    /// - 一律 queue，不打断正在跑的轮次（积压是「排着说」，不是「打断」）；
+    /// - 延迟超过 5 分钟的，正文前标出原发送时间，避免 AI 把旧话当成刚说的。
     func deliverHeldOffline(_ entry: OutboxEntry) async -> HeldOfflineDelivery {
-        let mode = await MainActor.run { () -> String in
-            let running = self.selectedSession?.sessionId == entry.sessionId
-                ? self.isTurnRunning
-                : (self.sessions.first { $0.sessionId == entry.sessionId }?.running ?? false)
-            return running ? "steer" : "queue"
-        }
+        let now = Date()
+        let createdAt = Date(timeIntervalSince1970: entry.createdAt)
+        let text = OfflineDeliveryPolicy.annotatedText(entry.text, createdAt: createdAt, now: now)
         do {
             _ = try await rpcWithRetry("session/prompt", args: ["request": [
                 "requestId": entry.id,
                 "sessionId": entry.sessionId,
-                "mode": mode,
-                "content": [["type": "text", "text": entry.text]],
-                "clientTimeZone": TimeZone.current.identifier
+                "mode": OfflineDeliveryPolicy.deliveryMode,
+                "content": [["type": "text", "text": text]],
+                "clientTimeZone": TimeZone.current.identifier,
+                "clientSentAt": entry.createdAt
             ]])
             return .acked
         } catch {

@@ -466,6 +466,18 @@ struct ConversationView: View {
                 .frame(maxWidth: .infinity)
                 .background(.background)
             }
+            if let note = model.offlineFlushNote {
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.6)
+                    Text(note).font(.caption2).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+            }
             Divider()
             inputBar
             }

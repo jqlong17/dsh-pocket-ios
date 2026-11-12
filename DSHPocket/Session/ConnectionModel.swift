@@ -260,6 +260,8 @@ final class ConnectionModel {
     }
     static let outboxDefaultsKey = "dsh-pocket.send-outbox"
     var outboxEntries: [OutboxEntry] = []
+    /// 补发进度提示（显示在输入栏上方）；全部补完会自动清空。
+    var offlineFlushNote: String?
     var outboxLoaded = false
     /// 避免会话列表刷新和实时流恢复同时补发同一批断网暂存。
     var offlineFlushInFlight = false

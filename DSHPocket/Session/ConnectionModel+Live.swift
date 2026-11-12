@@ -798,9 +798,9 @@ extension ConnectionModel {
                     "name": image.name
                 ])
             }
-            // 生成中发送用 steer：打断当前轮并把新消息作为引导立即处理；
-            // 不再用 queue（queue 会把消息排到本轮之后，形成 inbox 排队）。
-            let promptMode = isTurnRunning ? "steer" : "queue"
+            // 只有「确认过实时 turn 事件、且确实在跑」才用 steer 打断；
+            // 没见到实时事件时按 queue 处理——queue 最多排到本轮之后，steer 会打断正在做的事。
+            let promptMode = (liveTurnEventsSeen && isTurnRunning) ? "steer" : "queue"
             recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
             _ = try await rpcWithRetry("session/prompt", args: ["request": [
                 "requestId": requestId,
