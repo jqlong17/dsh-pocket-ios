@@ -28,6 +28,11 @@ public struct DSHURLSessionHTTPTransport: DSHHTTPTransport {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw DSHError.invalidPayload }
             return (data, http)
+        } catch let error as URLError {
+            // 不要包装：`URLError` 的错误码是「要不要重试 / 算不算断网」的唯一依据。
+            // 曾经在这里包成 DSHError.transport，导致飞行模式下发消息被判定为
+            // 「发送失败」而不是「断网暂存」，联网后也不会自动补发。
+            throw error
         } catch let error as DSHError {
             throw error
         } catch {

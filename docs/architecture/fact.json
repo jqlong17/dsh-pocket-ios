@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-12T21:52:07+08:00",
-  "commit": "faf5234",
+  "generated_at": "2026-11-12T21:58:53+08:00",
+  "commit": "94ffe54",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
       "files": 53,
-      "lines": 3061
+      "lines": 3069
     },
     {
       "layer": "app",
@@ -240,7 +240,7 @@
     {
       "file": "DSHKit/Sources/DSHKit/Protocol/NetworkErrorPolicy.swift",
       "layer": "pure-logic",
-      "lines": 22,
+      "lines": 25,
       "types": [
         "DSHNetworkErrorPolicy"
       ],
@@ -601,7 +601,7 @@
     {
       "file": "DSHKit/Sources/DSHKit/Transport/Transport.swift",
       "layer": "pure-logic",
-      "lines": 70,
+      "lines": 75,
       "types": [
         "DSHHTTPTransport",
         "DSHWebSocketConnection",

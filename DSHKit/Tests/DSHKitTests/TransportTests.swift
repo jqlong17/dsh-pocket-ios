@@ -45,16 +45,20 @@ final class TransportTests: XCTestCase {
         XCTAssertEqual(String(data: data, encoding: .utf8), "ok")
     }
 
-    func testURLSessionHTTPTransportWrapsTransportError() async {
+    /// 传输层错误必须**保留 URLError**：错误码是「要不要重试 / 算不算断网」的唯一依据。
+    /// 曾经包成 DSHError.transport，导致飞行模式下发消息被判为「发送失败」而不是断网暂存，
+    /// 联网后也不会自动补发（2026-11-12 用户实测）。
+    func testURLSessionHTTPTransportPreservesURLError() async {
         MockURLProtocol.handler = { _ in throw URLError(.cannotConnectToHost) }
         let transport = DSHURLSessionHTTPTransport(session: makeSession())
         do {
             _ = try await transport.data(for: URLRequest(url: URL(string: "http://localhost/api/x")!))
             XCTFail("expected transport error")
-        } catch let error as DSHError {
-            if case .transport = error {} else { XCTFail("expected .transport, got \(error)") }
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .cannotConnectToHost)
+            XCTAssertTrue(DSHNetworkErrorPolicy.isTransient(error), "断网必须可被识别为瞬时故障")
         } catch {
-            XCTFail("unexpected error: \(error)")
+            XCTFail("应保留 URLError，实际: \(error)")
         }
     }
 }
