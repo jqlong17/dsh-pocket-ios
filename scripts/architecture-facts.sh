@@ -69,6 +69,28 @@ for layer, mods in sorted(imports.items()):
         kind = "internal" if m in ("DSHKit", "DSHPocket") else "external"
         deps.append({"from_layer": layer, "to": m, "kind": kind})
 
+# 禁用 API：会 fatalError 的写法（2026-11-12 真机闪退的根因）
+# uniqueKeysWithValues 遇到重复 key 是 fatalError，而服务端列表可能重复。
+BANNED_PATTERNS = [
+    ("duplicate-key-dictionary", "Dictionary(uniqueKeysWithValues:", "改用 Dictionary(_:uniquingKeysWith:)"),
+    ("force-unwrap-try", "try!", "改用 try? 或 do-catch"),
+    ("force-cast", "as! ", "改用 as? 加兜底"),
+]
+banned_hits = []
+for mod in modules:
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for line_no, line in enumerate(body.split("\n"), 1):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("///"):
+            continue
+        for rule, needle, advice in BANNED_PATTERNS:
+            if needle in line:
+                banned_hits.append({"rule": rule, "file": mod["file"],
+                                    "detail": f"第 {line_no} 行含 {needle.strip()}，{advice}"})
+
 # 违规检查：纯逻辑层不得依赖 UI 框架
 ui_frameworks = {"SwiftUI", "UIKit", "AppKit"}
 violations = []
@@ -106,17 +128,18 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations,
+    "violations": violations + banned_hits,
 }
+all_violations = violations + banned_hits
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 
 print(f"已生成 {out_path}")
-print(f"  提交 {commit}｜文件 {len(modules)}｜违规 {len(violations)}")
+print(f"  提交 {commit}｜文件 {len(modules)}｜违规 {len(all_violations)}")
 for l in facts["layers"]:
     print(f"    {l['layer']:12} {l['files']:3} 文件 {l['lines']:6} 行")
-if violations:
+if all_violations:
     print("  违规明细（前 10 条）:")
-    for v in violations[:10]:
+    for v in all_violations[:10]:
         print(f"    - {v['rule']}: {v['file']} — {v['detail']}")
 PY
