@@ -1,0 +1,1 @@
+{"commit": "4390010696217f308bf1d81ab5dc783c12516c86", "short": "4390010", "kind": "baseline", "at": "2026-11-12T11:00:48+08:00", "summary": "chore: 引入版本检查点机制", "spec": null, "files": 3, "insertions": 156, "deletions": 0, "tests": "swift test 242 绿（上次全量）", "verify": "脚本已在临时仓库实测：根提交统计、孤儿检测、BSD sed -E", "risk": null, "note": "启用版本检查点机制：脚本 + 记录文件；此前的历史以 abba287 为最近功能提交"}
