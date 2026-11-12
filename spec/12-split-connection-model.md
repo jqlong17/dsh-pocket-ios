@@ -1,5 +1,7 @@
 # 12 · 拆 ConnectionModel：从上帝对象到状态对象
 
+
+> **Status**: Accepted · 5 个状态对象已抽出
 ## 背景 / 问题
 
 `scripts/architecture-facts.sh` 的存量违规里，有 7 处指向同一根因：

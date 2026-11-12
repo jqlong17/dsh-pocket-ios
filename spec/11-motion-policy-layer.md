@@ -1,5 +1,7 @@
 # 11 · 修掉纯逻辑层的 UI 依赖（MotionPolicy）
 
+
+> **Status**: Accepted · 动效策略层已落地并被后续 spec 依赖
 ## 背景 / 问题
 
 `scripts/check-architecture.sh` 扫出 8 处存量违规，其中一条：

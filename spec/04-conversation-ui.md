@@ -1,5 +1,7 @@
 # 04 · Conversation UI / ViewModel
 
+
+> **Status**: Superseded (historical) · 写在模板定稿前，多为 2–3 段；不补写，理由见 README
 ## 背景
 
 `ConversationView` body 300+ 行，滚动/键盘/发送/排序逻辑都在 View；`MessageRow` 直接读写 model。

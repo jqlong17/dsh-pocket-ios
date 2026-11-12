@@ -1,5 +1,7 @@
 # 08 · RPC 收成一套（TDD，待批准后执行）
 
+
+> **Status**: Superseded (historical) · 写在模板定稿前，多为 2–3 段；不补写，理由见 README
 ## 背景
 
 同一件事有两份实现：

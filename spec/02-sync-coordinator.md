@@ -1,5 +1,7 @@
 # 02 · Sync Coordinator（单一同步真相源）
 
+
+> **Status**: Superseded (historical) · 写在模板定稿前，多为 2–3 段；不补写，理由见 README
 ## 背景
 
 当前同步逻辑分散在 `ConnectionModel`：`follow`（WS snapshot+events）、`pollLiveFallback`（HTTP 轮询）、

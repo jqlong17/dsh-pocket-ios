@@ -1,5 +1,7 @@
 # 01 · DSHKit：Transport + Protocol
 
+
+> **Status**: Superseded (historical) · 写在模板定稿前，多为 2–3 段；不补写，理由见 README
 ## 背景
 
 当前 RPC/WebSocket/JSON 解码全部内联在 `DSHPocket/DSHPocketApp.swift` 的 `ConnectionModel`

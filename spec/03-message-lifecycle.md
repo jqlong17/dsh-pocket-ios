@@ -1,5 +1,7 @@
 # 03 · 消息生命周期（状态机 / 对账 / 排序 / steer）
 
+
+> **Status**: Superseded (historical) · 写在模板定稿前，多为 2–3 段；不补写，理由见 README
 ## 背景
 
 我们已修过：pending 按文本去重误删（消息不显示）、requestId 不一致（永远"发送中"）、

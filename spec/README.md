@@ -1,4 +1,37 @@
-# DSH Pocket iOS 重构 Spec（TDD 版）
+# DSH Pocket iOS 重构 Spec
+
+> **新写 spec 先看 [`00-TEMPLATE.md`](00-TEMPLATE.md)**——模板骨架取自
+> [rust-lang/rfcs 的 0000-template.md](https://github.com/rust-lang/rfcs/blob/master/0000-template.md)（约 6 万 star），
+> 并补了三段外部模板没有的：测试计划（标 target）、预估工时（+校准）、验收记录。
+>
+> **定位**：我们的 spec 是**执行契约（pitch）**，不是 20 页的设计讨论文档。
+> 判据是有时间预算、有方案、有验收标准，接受即执行；不要求「评审意见征集」。
+
+## 每份 spec 的开头必须有 Status
+
+```
+> Status: Draft | In Review | Accepted | Superseded
+```
+
+没有它，18 份 spec 里哪些还活着只能靠记忆。四态含义：
+
+| Status | 含义 |
+| --- | --- |
+| Draft | 还在写，可能有 Open Questions |
+| In Review | 写完待确认，动代码前必须是这个或 Accepted |
+| Accepted | 已确认、正在或已经实现 |
+| Superseded | 被新 spec 取代，保留不动（历史记录，不回改） |
+
+## 07 之前的历史 spec
+
+`01`–`10` 写在模板定稿之前，多数只有 2–3 段（缺目标/测试计划/预估工时）。
+**处理方式**：标记为 `Superseded (historical)`，不补写。
+理由：spec 的价值在执行期，事后补写等于编造决策过程；它们对应的代码已迭代数轮，
+补写出来的「当初为什么这样做」是假的。
+
+---
+
+# 原 TDD 版说明
 
 本目录是架构重构的规格文档，按**可独立优化的模块**顺序编号。开发规则：**先测试、后实现**；
 每个模块独立验收；最终跑端到端测试并统计覆盖率（**≥85%** 才允许验收）。

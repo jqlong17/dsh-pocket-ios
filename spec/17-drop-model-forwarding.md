@@ -1,5 +1,7 @@
 # 17 · 消除 ConnectionModel 的转发层
 
+
+> **Status**: Accepted · 真机三条主链路通过
 ## 背景 / 问题
 
 spec/13 批次 2 的设计决定是「5 个状态对象各自独立，`ConnectionModel` 保留转发」。
