@@ -1,5 +1,4 @@
 import SwiftUI
-import DSHKit
 
 /// 动画的统一出口。
 ///
@@ -10,8 +9,11 @@ public enum PocketMotion {
     public static var reduceMotion = false
 
     /// 需要动画时返回传入的动画，减少动态时返回 nil。
+    ///
+    /// 这段门闸原先放在 DSHKit 的 `MotionPolicy` 里，导致纯逻辑层 import SwiftUI；
+    /// 它没有任何判断逻辑、只是 UI 类型透传，属于 UI 层，故内联到这里（spec/11）。
     public static func animation(_ animation: Animation?) -> Animation? {
-        MotionPolicy.animation(animation, reduceMotion: reduceMotion)
+        reduceMotion ? nil : animation
     }
 
     /// 常用时长，短、不拖沓。

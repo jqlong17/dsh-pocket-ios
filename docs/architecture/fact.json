@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:08:34+08:00",
-  "commit": "4bbb8fc",
+  "generated_at": "2026-11-12T11:12:10+08:00",
+  "commit": "662907d",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 39,
-      "lines": 2413
+      "files": 38,
+      "lines": 2404
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 59,
-      "lines": 9539
+      "lines": 9541
     },
     {
       "layer": "ui-tests",
@@ -105,11 +105,6 @@
     {
       "from_layer": "pure-logic",
       "to": "Foundation",
-      "kind": "external"
-    },
-    {
-      "from_layer": "pure-logic",
-      "to": "SwiftUI",
       "kind": "external"
     },
     {
@@ -517,17 +512,6 @@
       ],
       "imports": [
         "Foundation"
-      ]
-    },
-    {
-      "file": "DSHKit/Sources/DSHKit/UI/MotionPolicy.swift",
-      "layer": "pure-logic",
-      "lines": 9,
-      "types": [
-        "MotionPolicy"
-      ],
-      "imports": [
-        "SwiftUI"
       ]
     },
     {
@@ -1382,12 +1366,11 @@
     {
       "file": "DSHPocket/Support/PocketMotion.swift",
       "layer": "app",
-      "lines": 21,
+      "lines": 23,
       "types": [
         "PocketMotion"
       ],
       "imports": [
-        "DSHKit",
         "SwiftUI"
       ]
     },
@@ -1958,11 +1941,6 @@
     }
   ],
   "violations": [
-    {
-      "rule": "pure-logic-no-ui",
-      "file": "DSHKit/Sources/DSHKit/UI/MotionPolicy.swift",
-      "detail": "导入了 SwiftUI"
-    },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
