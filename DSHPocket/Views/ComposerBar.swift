@@ -59,7 +59,7 @@ struct ComposerBar: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("取消引用")
+            .accessibilityLabel(L10n.t("取消引用"))
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color(uiColor: .secondarySystemBackground),
@@ -96,17 +96,17 @@ struct ComposerBar: View {
         HStack(alignment: .bottom, spacing: 8) {
             Menu {
                 Button { showingPhotoPicker = true } label: {
-                    Label("相册", systemImage: "photo")
+                    Label(L10n.t("相册"), systemImage: "photo")
                 }
                 Button { showingCamera = true } label: {
-                    Label("拍照", systemImage: "camera")
+                    Label(L10n.t("拍照"), systemImage: "camera")
                 }
             } label: {
                 Image(systemName: "plus")
                     .font(.body.weight(.semibold))
                     .pocketSystemGlassCircle(size: Self.controlHeight)
             }
-            .accessibilityLabel("添加图片或拍照")
+            .accessibilityLabel(L10n.t("添加图片或拍照"))
             TextField(L10n.t("发送消息"), text: $model.draft, axis: .vertical).lineLimit(1...5)
                 .focused(focused)
                 .padding(.horizontal, 12)
@@ -123,7 +123,7 @@ struct ComposerBar: View {
                     .pocketSystemGlassCircle(size: Self.controlHeight)
             }
             .disabled(!canSend)
-            .accessibilityLabel("发送消息")
+            .accessibilityLabel(L10n.t("发送消息"))
             .accessibilityIdentifier("send-button")
         }
         .padding(.horizontal)

@@ -152,7 +152,7 @@ struct MessageRow: View {
                     Button {
                         UIPasteboard.general.string = message.text
                         copyHapticTick &+= 1
-                        AccessibilityAnnouncer.announce("已复制整条消息")
+                        AccessibilityAnnouncer.announce(L10n.t("已复制整条消息"))
                         withAnimation(PocketMotion.animation(.easeInOut(duration: 0.15))) { copied = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.2))
@@ -170,7 +170,7 @@ struct MessageRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(copied ? "已复制" : "复制整条消息")
+                    .accessibilityLabel(L10n.t(copied ? "已复制" : "复制整条消息"))
                     .sensoryFeedback(.success, trigger: copyHapticTick)
                     Button {
                         model.beginQuote(message)
@@ -182,7 +182,7 @@ struct MessageRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("引用这条消息")
+                    .accessibilityLabel(L10n.t("引用这条消息"))
                 }
             }.font(.caption2.weight(.semibold))
             HStack {

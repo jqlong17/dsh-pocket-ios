@@ -68,7 +68,7 @@ struct UserQuestionCard: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    TextField("其他答案（可选）", text: Binding(
+                    TextField(L10n.t("其他答案（可选）"), text: Binding(
                         get: { custom[question.id] ?? "" },
                         set: { custom[question.id] = $0 }
                     ))

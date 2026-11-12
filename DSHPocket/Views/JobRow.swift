@@ -24,9 +24,9 @@ struct JobRow: View {
         let start = Date(timeIntervalSince1970: job.startedAt / 1000)
         let end = job.finishedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? now
         let seconds = max(0, Int(end.timeIntervalSince(start)))
-        if seconds < 60 { return "\(seconds) 秒" }
-        if seconds < 3600 { return "\(seconds / 60) 分 \(seconds % 60) 秒" }
-        return "\(seconds / 3600) 时 \(seconds % 3600 / 60) 分"
+        if seconds < 60 { return "\(seconds) \(L10n.t("秒"))" }
+        if seconds < 3600 { return "\(seconds / 60) \(L10n.t("分")) \(seconds % 60) \(L10n.t("秒"))" }
+        return "\(seconds / 3600) \(L10n.t("时")) \(seconds % 3600 / 60) \(L10n.t("分"))"
     }
 
     var body: some View {

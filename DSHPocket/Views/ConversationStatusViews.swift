@@ -87,7 +87,7 @@ struct ConversationActivityBar: View {
                         .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("停止生成")
+                    .accessibilityLabel(L10n.t("停止生成"))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -114,8 +114,8 @@ struct ConversationActivityBar: View {
 private extension ConversationActivityBar {
     /// 「深度求索中 · 1 分 56 秒」里的时长。
     func elapsed(since start: Date?, now: Date) -> String {
-        guard let start else { return "计算中" }
+        guard let start else { return L10n.t("计算中") }
         let seconds = max(0, Int(now.timeIntervalSince(start)))
-        return seconds < 60 ? "\(seconds) 秒" : "\(seconds / 60) 分 \(seconds % 60) 秒"
+        return seconds < 60 ? "\(seconds) \(L10n.t("秒"))" : "\(seconds / 60) \(L10n.t("分")) \(seconds % 60) \(L10n.t("秒"))"
     }
 }

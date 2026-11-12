@@ -67,7 +67,7 @@ struct FullscreenImageViewer: View {
                     .accessibilityLabel(L10n.t("关闭"))
                 Spacer()
                 ShareLink(item: Image(uiImage: image),
-                          preview: SharePreview("图片", image: Image(uiImage: image))) {
+                          preview: SharePreview(L10n.t("图片"), image: Image(uiImage: image))) {
                     circleIcon("square.and.arrow.up")
                 }
                 Button { saveToAlbum() } label: { circleIcon("square.and.arrow.down") }
@@ -97,7 +97,7 @@ struct FullscreenImageViewer: View {
                 image = full
             } else {
                 fullFailed = true
-                toast = "高清图没拉到，当前是预览图"
+                toast = L10n.t("高清图没拉到，当前是预览图")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { toast = nil }
             }
             loadingFull = false
@@ -118,7 +118,7 @@ struct FullscreenImageViewer: View {
             PHAssetChangeRequest.creationRequestForAsset(from: image)
         } completionHandler: { success, error in
             DispatchQueue.main.async {
-                toast = success ? "已保存到相册" : "保存失败：\(error?.localizedDescription ?? "未知错误")"
+                toast = success ? L10n.t("已保存到相册") : "\(L10n.t("保存失败"))：\(error?.localizedDescription ?? L10n.t("未知错误"))"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
             }
         }

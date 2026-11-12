@@ -156,7 +156,7 @@ struct ConnectedView: View {
                         .foregroundStyle(.tint)
                     }
                     if model.connection.addressNeedsRescan {
-                        Button("重新选择连接地址") { model.disconnect() }
+                        Button(L10n.t("重新选择连接地址")) { model.disconnect() }
                     }
                 }
             }
@@ -306,7 +306,7 @@ struct ConnectedView: View {
                     Button { model.exitDemoMode() } label: {
                         Image(systemName: "xmark")
                     }
-                    .accessibilityLabel("退出演示模式")
+                    .accessibilityLabel(L10n.t("退出演示模式"))
                 } else {
                     Button { showingDisconnectConfirm = true } label: {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -318,13 +318,13 @@ struct ConnectedView: View {
                 Button { model.toggleCompletionAlerts() } label: {
                     Image(systemName: model.completionAlertsEnabled ? "bell" : "bell.slash")
                 }
-                .accessibilityLabel(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒")
+                .accessibilityLabel(L10n.t(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒"))
                 Button { Task { await model.createSession() } } label: {
                     Image(systemName: "plus")
                         .font(.headline.weight(.semibold))
                 }
                 .pocketSystemGlassButton()
-                .accessibilityLabel("新建会话")
+                .accessibilityLabel(L10n.t("新建会话"))
             }
         }
         .navigationTitle(L10n.t("会话"))

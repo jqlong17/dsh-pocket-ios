@@ -36,13 +36,13 @@ struct ProcessRow: View {
 
     private var summary: String {
         if let runningStep {
-            return "\(runningStep.runningLabel) · \(group.steps.count) 步"
+            return "\(runningStep.runningLabel) · \(L10n.tf("%d 步", group.steps.count))"
         }
         // 工具都已经返回、但整轮还在跑：AI 正在生成回复。这时仍算「进行中」，
         // 与电脑端一致（电脑端在跑的时候不会切成完成时）。
         // 不写「正在运行命令…」——那会误导成命令还没结束。
         if isCurrentGroupRunning {
-            return "正在处理… · \(group.steps.count) 步"
+            return "\(L10n.t("正在处理…")) · \(L10n.tf("%d 步", group.steps.count))"
         }
         var seen = Set<String>()
         var labels: [String] = []
@@ -51,7 +51,7 @@ struct ProcessRow: View {
             labels.append(step.label)
         }
         let joined = labels.prefix(3).joined(separator: "、")
-        return "过程 · \(group.steps.count) 步 · \(joined)"
+        return "\(L10n.t("过程")) · \(L10n.tf("%d 步", group.steps.count)) · \(joined)"
     }
 
     var body: some View {
@@ -80,13 +80,13 @@ struct ProcessRow: View {
                 stepLabels: group.steps.map(\.label),
                 runningLabel: runningStep?.runningLabel
             ))
-            .accessibilityHint(expanded ? "双击收起过程" : "双击展开过程")
+            .accessibilityHint(L10n.t(expanded ? "双击收起过程" : "双击展开过程"))
 
             if expanded {
                 if loading {
                     HStack(spacing: 6) {
                         ProgressView().scaleEffect(0.7)
-                        Text("正在读取过程…").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.t("正在读取过程…")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 VStack(alignment: .leading, spacing: 10) {

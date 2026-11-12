@@ -97,7 +97,7 @@ struct ConnectView: View {
             get: { renamingEndpoint != nil },
             set: { if !$0 { renamingEndpoint = nil } }
         )) {
-            TextField("例如：公司 / 家", text: $renameText)
+            TextField(L10n.t("例如：公司 / 家"), text: $renameText)
             Button(L10n.t("保存")) {
                 if let endpoint = renamingEndpoint {
                     model.renameEndpoint(endpoint.address, label: renameText)
@@ -202,7 +202,7 @@ struct ConnectView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(L10n.t("删除连接"))
                         .buttonStyle(.plain)
-                        .accessibilityLabel("重命名\(endpoint.kind.label)地址")
+                        .accessibilityLabel(L10n.t("重命名\(endpoint.kind.label)地址"))
                         if connection.serverAddress == endpoint.address {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
                         }
@@ -265,7 +265,7 @@ struct ConnectView: View {
                         .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("扫描 Pocket 二维码")
+                .accessibilityLabel(L10n.t("扫描 Pocket 二维码"))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -393,6 +393,6 @@ struct ConnectView: View {
             .background(card, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .accessibilityHint("没有电脑时查看内置示例会话与对话")
+        .accessibilityHint(L10n.t("没有电脑时查看内置示例会话与对话"))
     }
 }

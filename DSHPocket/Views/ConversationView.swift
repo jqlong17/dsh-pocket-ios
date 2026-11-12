@@ -438,7 +438,7 @@ struct ConversationView: View {
             get: { copiedLogPath != nil },
             set: { if !$0 { copiedLogPath = nil } }
         )) {
-            Button("好", role: .cancel) {}
+            Button(L10n.t("好"), role: .cancel) {}
         } message: {
             Text(copiedLogPath ?? "")
         }

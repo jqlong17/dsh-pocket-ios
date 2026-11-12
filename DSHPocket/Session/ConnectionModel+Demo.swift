@@ -281,9 +281,9 @@ extension ConnectionModel {
 
                 | Layer | Plugin | Role |
                 | --- | --- | --- |
-                | Connection | dsh-pocket-ios | Puts your phone on the Mac's DSH |
-                | Usage | dsh-usage | Balance and token stats |
-                | Transcribe | parse-convert | Audio and links to text |
+                | Connection | dsh-pocket-ios | Phone → Mac |
+                | Usage | dsh-usage | Balance, tokens |
+                | Transcribe | parse-convert | Audio → text |
 
                 ### What shipped
 
@@ -303,10 +303,10 @@ extension ConnectionModel {
 
                 | Category | Example | What it does |
                 | --- | --- | --- |
-                | Connection | dsh-pocket-ios | Use your Mac's DSH from the phone |
-                | Usage | dsh-usage | Balance, tokens, spend trend |
-                | Transcribe | parse-convert | Video and audio to text, subtitles |
-                | Design | huashu-design | Hi-fi prototypes, slides, motion |
+                | Connection | dsh-pocket-ios | Phone → Mac DSH |
+                | Usage | dsh-usage | Balance, tokens |
+                | Transcribe | parse-convert | Audio → text |
+                | Design | huashu-design | Prototypes, slides |
 
                 Installing one needs no launcher change — restart and the new capability shows up in settings.
                 """, isUser: false, sequence: 2)
@@ -320,9 +320,9 @@ extension ConnectionModel {
 
                 | Day | Morning | Afternoon | Evening |
                 | --- | --- | --- | --- |
-                | D1 | Arrive / Shinjuku | Metropolitan Gov. observatory | Omoide Yokocho |
-                | D2 | Senso-ji | Sumida riverside walk | Jimbocho bookshops |
-                | D3 | Omotesando architecture | Aoyama coffee | Roppongi night view |
+                | D1 | Shinjuku | Gov. observatory | Omoide Yokocho |
+                | D2 | Senso-ji | Sumida walk | Jimbocho books |
+                | D3 | Omotesando | Aoyama coffee | Roppongi view |
                 | D4 | Daikanyama | Nakameguro | Meguro river |
                 | D5 | Tsukiji | Ginza | Departure |
 
@@ -338,9 +338,9 @@ extension ConnectionModel {
 
                 | Marker | Result | Reading |
                 | --- | --- | --- |
-                | Total cholesterol | Slightly high | Adjust diet, retest in 3 months |
-                | Uric acid | High | Cut sugary drinks, drink more water |
-                | Vitamin D | Low | More daylight, supplement if needed |
+                | Cholesterol | Slightly high | Diet, retest 3 mo |
+                | Uric acid | High | Less sugar, more water |
+                | Vitamin D | Low | More daylight |
 
                 Everything else is in range. Take the report to a clinic so a doctor can weigh it against your symptoms.
                 """, isUser: false, sequence: 2)
