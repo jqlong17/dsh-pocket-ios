@@ -464,42 +464,34 @@ final class ConnectionModel {
     /// 分组规则：置顶单独成组（最上方），其余按工作区（cwd 目录名）分组；
     /// 组顺序按最近活跃出现顺序。
     var sessionGroups: [SessionGroup] {
-        let pinned = pinnedSessionIds.compactMap { id in sessions.first { $0.sessionId == id } }
-        var groups: [SessionGroup] = []
-        if !pinned.isEmpty {
-            groups.append(SessionGroup(id: "__pinned__", title: L10n.t("置顶"), sessions: pinned, isPinned: true))
-        }
-        let rest = sessions.filter { !pinnedSessionIds.contains($0.sessionId) }
-        var order: [String] = []
-        var buckets: [String: [PocketSession]] = [:]
-        for session in rest {
-            let path = session.cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let key = path.isEmpty ? "__other__" : path
-            if buckets[key] == nil {
-                order.append(key)
-                buckets[key] = []
-            }
-            buckets[key]?.append(session)
-        }
-        for key in order {
+        // 分组规则在 DSHKit（可测）；这里只做类型映射与文案。
+        let items = sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) }
+        let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0) })
+        return SessionGrouping.groups(items: items, pinnedIds: pinnedSessionIds).compactMap { group in
+            let members = group.sessionIds.compactMap { byId[$0] }
+            guard !members.isEmpty else { return nil }
             let title: String
-            if key == "__other__" {
+            if group.isPinned {
+                title = L10n.t("置顶")
+            } else if group.folder == nil {
                 title = L10n.t("其他会话")
+            } else if group.folder == SessionGrouping.defaultWorkspaceFolder {
+                title = L10n.t("默认工作区")
             } else {
-                let folder = URL(fileURLWithPath: key).lastPathComponent
-                title = (folder == "default-workspace") ? L10n.t("默认工作区") : folder
+                title = group.folder ?? L10n.t("其他会话")
             }
-            groups.append(SessionGroup(id: key, title: title, sessions: buckets[key] ?? [], isPinned: false))
+            return SessionGroup(id: group.id, title: title, sessions: members, isPinned: group.isPinned)
         }
-        return groups
     }
 
     /// 列表展示顺序：置顶在前（最近置顶优先），其余保持服务端顺序。
     var displaySessions: [PocketSession] {
         guard !pinnedSessionIds.isEmpty else { return sessions }
-        let pinned = pinnedSessionIds.compactMap { id in sessions.first { $0.sessionId == id } }
-        let rest = sessions.filter { !pinnedSessionIds.contains($0.sessionId) }
-        return pinned + rest
+        let byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.sessionId, $0) })
+        return SessionGrouping.displayOrder(
+            items: sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) },
+            pinnedIds: pinnedSessionIds
+        ).compactMap { byId[$0] }
     }
 
     /// 最近一次被归档的会话（用于列表底部「撤销」）。

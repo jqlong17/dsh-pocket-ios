@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:47:25+08:00",
-  "commit": "be63d47",
+  "generated_at": "2026-11-12T11:48:12+08:00",
+  "commit": "70f3db8",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 49,
-      "lines": 2891
+      "files": 50,
+      "lines": 2959
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 70,
-      "lines": 10060
+      "lines": 10052
     },
     {
       "layer": "ui-tests",
@@ -674,6 +674,17 @@
       ],
       "imports": [
         "CoreGraphics",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/SessionGrouping.swift",
+      "layer": "pure-logic",
+      "lines": 68,
+      "types": [
+        "SessionGrouping"
+      ],
+      "imports": [
         "Foundation"
       ]
     },
@@ -1390,7 +1401,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 578,
+      "lines": 570,
       "types": [
         "ConnectionModel"
       ],
@@ -2217,7 +2228,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "578 行"
+      "detail": "570 行"
     },
     {
       "rule": "file-max-400",
