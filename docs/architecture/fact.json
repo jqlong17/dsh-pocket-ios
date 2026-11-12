@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:48:50+08:00",
-  "commit": "e942d87",
+  "generated_at": "2026-11-12T22:58:11+08:00",
+  "commit": "2462f1f",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 82,
-      "lines": 11026
+      "lines": 11035
     },
     {
       "layer": "ui-tests",
@@ -1307,7 +1307,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 322,
+      "lines": 331,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2448,5 +2448,26 @@
       ]
     }
   ],
-  "violations": []
+  "violations": [
+    {
+      "rule": "stateless-type-smell",
+      "file": "DSHPocket/Session/LiveFrameApplier.swift",
+      "detail": "自有状态 0 个但要注入 19 个依赖，应改为 extension"
+    },
+    {
+      "rule": "stateless-type-smell",
+      "file": "DSHPocket/Session/LiveStreamRunner.swift",
+      "detail": "自有状态 0 个但要注入 17 个依赖，应改为 extension"
+    },
+    {
+      "rule": "stateless-type-smell",
+      "file": "DSHPocket/Session/NotificationBridge.swift",
+      "detail": "自有状态 0 个但要注入 17 个依赖，应改为 extension"
+    },
+    {
+      "rule": "stateless-type-smell",
+      "file": "DSHPocket/Session/SessionActions.swift",
+      "detail": "自有状态 0 个但要注入 13 个依赖，应改为 extension"
+    }
+  ]
 }

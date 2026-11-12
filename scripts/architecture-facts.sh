@@ -116,6 +116,28 @@ for mod in modules:
         else:
             window = []
 
+# 无状态类型（spec/2026-11-12-2257 自审结论）：
+# 一个类型如果「自有状态字段 = 0」却要注入十几个闭包才能工作，
+# 它其实是被拆出来的流程，不是独立单元——用注入模拟「我是那个类的一部分」。
+# 判据：自有状态为 0 且注入依赖 > 8。
+stateless_smell = []
+for mod in modules:
+    if "/Session/" not in mod["file"] or "ConnectionModel" in mod["file"]:
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    providers = re.search(r"struct Providers \{(.+?)\n    \}", body, re.S)
+    if not providers:
+        continue
+    injected = len(re.findall(r"\n        var \w+:", providers.group(1)))
+    own_state = len(re.findall(r"\n    (?:private\(set\) |private )?var [a-z]\w* (?:=|:)", body))
+    # 排掉 Providers 里的字段被误计入
+    if injected > 8 and own_state == 0:
+        stateless_smell.append({"rule": "stateless-type-smell", "file": mod["file"],
+                                "detail": f"自有状态 0 个但要注入 {injected} 个依赖，应改为 extension"})
+
 # 纯转发属性（spec/17）：ConnectionModel 出现 `get { <对象>.<字段> }` 且 set 也只转一手，
 # 就是「字段所有权」被藏在了门面后面——调用点看不到自己在跟谁说话，
 # 而 SwiftUI 的 @Bindable 根本无法穿过这种转发取绑定（实测会报 let 常量不可赋值）。
@@ -170,7 +192,29 @@ for mod in modules:
     if mod["layer"] == "pure-logic":
         for fw in ui_frameworks & set(mod["imports"]):
             violations.append({"rule": "pure-logic-no-ui", "file": mod["file"], "detail": f"导入了 {fw}"})
-    # 纯转发属性（spec/17）：ConnectionModel 出现 `get { <对象>.<字段> }` 且 set 也只转一手，
+    # 无状态类型（spec/2026-11-12-2257 自审结论）：
+# 一个类型如果「自有状态字段 = 0」却要注入十几个闭包才能工作，
+# 它其实是被拆出来的流程，不是独立单元——用注入模拟「我是那个类的一部分」。
+# 判据：自有状态为 0 且注入依赖 > 8。
+stateless_smell = []
+for mod in modules:
+    if "/Session/" not in mod["file"] or "ConnectionModel" in mod["file"]:
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    providers = re.search(r"struct Providers \{(.+?)\n    \}", body, re.S)
+    if not providers:
+        continue
+    injected = len(re.findall(r"\n        var \w+:", providers.group(1)))
+    own_state = len(re.findall(r"\n    (?:private\(set\) |private )?var [a-z]\w* (?:=|:)", body))
+    # 排掉 Providers 里的字段被误计入
+    if injected > 8 and own_state == 0:
+        stateless_smell.append({"rule": "stateless-type-smell", "file": mod["file"],
+                                "detail": f"自有状态 0 个但要注入 {injected} 个依赖，应改为 extension"})
+
+# 纯转发属性（spec/17）：ConnectionModel 出现 `get { <对象>.<字段> }` 且 set 也只转一手，
 # 就是「字段所有权」被藏在了门面后面——调用点看不到自己在跟谁说话，
 # 而 SwiftUI 的 @Bindable 根本无法穿过这种转发取绑定（实测会报 let 常量不可赋值）。
 FORWARDING_WHITELIST = {
@@ -256,9 +300,10 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell,
+    "violations": violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell + stateless_smell,
 }
-all_violations = violations + banned_hits + duplicate_attr + view_leaks + forwarding_smell
+all_violations = (violations + banned_hits + duplicate_attr + view_leaks
+                  + forwarding_smell + stateless_smell)
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 
