@@ -259,8 +259,8 @@ struct ConversationView: View {
                 )
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
                 .onAppear {
-                    // 原生做法：进页面定位一次就停，不再开稳定期反复补滚。
-                    scrollToBottom(proxy: proxy, force: true)
+                    // 进页面不再手动滚：ScrollView 已用 .defaultScrollAnchor(.bottom) 定位。
+                    // 两者叠加会先手动滚一次、锚点再校正一次，肉眼就是「贴到超出底部」的过冲。
 #if DEBUG
                     if DebugLaunch.expandSteps {
                         expandedGroupIDs = Set(model.stepGroups.map(\.id))
@@ -288,6 +288,8 @@ struct ConversationView: View {
         }
 #endif
         .onChange(of: model.scrollToBottomTick) { _, _ in
+                    // 已经贴底就不用再滚：再滚一次会和 defaultScrollAnchor(.bottom) 叠加，出现过冲。
+                    guard !isAtBottom else { return }
                     scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: model.messages.count) { oldCount, newCount in
