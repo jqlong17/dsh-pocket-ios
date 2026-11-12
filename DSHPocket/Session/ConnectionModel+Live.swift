@@ -45,7 +45,7 @@ extension ConnectionModel {
         liveFrameApplier.providers = LiveFrameApplier.Providers(
             isCurrentSession: { [weak self] sessionId in
                 self?.activeConversation?.sessionId == sessionId
-                    && self?.selectedSession?.sessionId == sessionId
+                    && self?.sessionStore.selected?.sessionId == sessionId
             },
             markFrameArrived: { @MainActor [weak self] in self?.lastLiveFrameAt = Date() },
             mergeMessages: { @MainActor [weak self] messages in self?.mergeMessages(messages) },
@@ -97,7 +97,7 @@ extension ConnectionModel {
     @MainActor
     func tryRefreshAuth() async -> Bool {
         guard let token = ConnectionVault.loadDeviceToken(),
-              let base = try? Self.serverURL(from: serverAddress) else { return false }
+              let base = try? Self.serverURL(from: connection.serverAddress) else { return false }
         // 先删掉已失效的 dsh-auth cookie：带着旧凭证去换票，DSH 会当成「续期一个失效会话」，
         // 结果立刻又 401（实测：换票后 2 秒再次失效）。
         purgeAuthCookies(for: base)
@@ -141,18 +141,18 @@ extension ConnectionModel {
     @MainActor
     func finishAuthExpired() {
         recordDiagnostic("登录已过期且设备凭证不可用：返回连接页")
-        isConnected = false
-        pin = ""
+        connection.isConnected = false
+        connection.pin = ""
         PinKeychain.clear()
         // cookie 已失效：清掉，避免下次启动拿着废凭证反复 401。
         // 地址保留，用户重新输入密码/扫码即可，不必重新找电脑。
         ConnectionVault.clearAuthCookies()
-        if let base = try? Self.serverURL(from: serverAddress) { purgeAuthCookies(for: base) }
-        selectedSession = nil
-        navigationPath = []
+        if let base = try? Self.serverURL(from: connection.serverAddress) { purgeAuthCookies(for: base) }
+        sessionStore.selected = nil
+        sessionStore.navigationPath = []
         activeConversation?.liveTask?.cancel()
         liveConnection = .disconnected(reason: "auth")
-        errorMessage = L10n.t("登录已过期（DSH 可能重启过），请重新扫码配对或输入访问密码。")
+        connection.errorMessage = L10n.t("登录已过期（DSH 可能重启过），请重新扫码配对或输入访问密码。")
     }
 
     /// 发送按钮入口：先确认当前打开的就是这个会话，避免消息发到别的 session。
@@ -368,7 +368,7 @@ extension ConnectionModel {
     func installQuestionProviders() {
         guard questionInbox.providers == nil else { return }
         questionInbox.providers = QuestionInbox.Providers(
-            sessionId: { [weak self] in self?.selectedSession?.sessionId },
+            sessionId: { [weak self] in self?.sessionStore.selected?.sessionId },
             conversation: { [weak self] in self?.activeConversation },
             client: { [weak self] in
                 guard let self else { throw ConnectionError.invalidURL("") }
@@ -381,7 +381,7 @@ extension ConnectionModel {
 
     @MainActor
     func manualReconnect() {
-        guard let session = selectedSession, !isDemoMode else { return }
+        guard let session = sessionStore.selected, !isDemoMode else { return }
         liveConnection = .connecting
         recordDiagnostic("手动重连实时流")
         if let coordinator = activeConversation?.coordinator {
@@ -396,7 +396,7 @@ extension ConnectionModel {
     /// 停止当前这一轮生成（消息已发出、正在等回复时使用）。
     @MainActor
     func cancelTurn() async {
-        guard let session = selectedSession, !isDemoMode else { return }
+        guard let session = sessionStore.selected, !isDemoMode else { return }
         do {
             _ = try await rpcClient.rpcAdapted("session/cancel", args: ["request": ["sessionId": session.sessionId]])
             isTurnRunning = false
@@ -442,18 +442,18 @@ extension ConnectionModel {
                 guard let self else { throw ConnectionError.invalidURL("") }
                 return try self.rpcClient
             },
-            isConnected: { [weak self] in self?.isConnected ?? false },
-            pin: { [weak self] in self?.pin ?? "" },
-            setPin: { @MainActor [weak self] value in self?.pin = value },
+            isConnected: { [weak self] in self?.connection.isConnected ?? false },
+            pin: { [weak self] in self?.connection.pin ?? "" },
+            setPin: { @MainActor [weak self] value in self?.connection.pin = value },
             savedPin: { PinKeychain.load() },
             savedAddress: { UserDefaults.standard.string(forKey: ConnectionModel.savedServerAddressKey) },
-            serverAddress: { [weak self] in self?.serverAddress ?? "" },
-            setServerAddress: { @MainActor [weak self] value in self?.serverAddress = value },
+            serverAddress: { [weak self] in self?.connection.serverAddress ?? "" },
+            setServerAddress: { @MainActor [weak self] value in self?.connection.serverAddress = value },
             connect: { @MainActor [weak self] in await self?.connect() },
-            sessions: { [weak self] in self?.sessions ?? [] },
+            sessions: { [weak self] in self?.sessionStore.sessions ?? [] },
             openSession: { @MainActor [weak self] sessionId in
-                guard let self, let session = self.sessions.first(where: { $0.sessionId == sessionId }) else { return }
-                self.navigationPath = [session]
+                guard let self, let session = self.sessionStore.sessions.first(where: { $0.sessionId == sessionId }) else { return }
+                self.sessionStore.navigationPath = [session]
             },
             insertAckedRpcId: { @MainActor [weak self] rpcId in self?.ackedSendRpcIds.insert(rpcId) },
             addOutbox: { @MainActor [weak self] sessionId, rpcId, text in
@@ -487,7 +487,7 @@ extension ConnectionModel {
             isDemoMode: { [weak self] in self?.isDemoMode ?? false },
             socketURL: { [weak self] in
                 guard let self,
-                      let base = URL(string: self.serverAddress),
+                      let base = URL(string: self.connection.serverAddress),
                       let url = Self.webSocketURL(from: base, path: "api/remote.mux") else {
                     throw ConnectionError.invalidURL("")
                 }
@@ -495,7 +495,7 @@ extension ConnectionModel {
             },
             isCurrentSession: { [weak self] sessionId in
                 self?.activeConversation?.sessionId == sessionId
-                    && self?.selectedSession?.sessionId == sessionId
+                    && self?.sessionStore.selected?.sessionId == sessionId
             },
             setFollowing: { @MainActor [weak self] value in self?.activeConversation?.isFollowing = value },
             setConnection: { @MainActor [weak self] state in self?.liveConnection = state },

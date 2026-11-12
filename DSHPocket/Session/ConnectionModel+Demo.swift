@@ -20,24 +20,24 @@ extension ConnectionModel {
     @MainActor
     func startDemoMode() {
         isDemoMode = true
-        isConnected = true
-        isConnecting = false
-        errorMessage = nil
+        connection.isConnected = true
+        connection.isConnecting = false
+        connection.errorMessage = nil
 #if DEBUG
-        sessions = DebugLaunch.storeShots ? Self.storeShotSessions : Self.demoSessionList
+        sessionStore.sessions = DebugLaunch.storeShots ? Self.storeShotSessions : Self.demoSessionList
 #else
-        sessions = Self.demoSessionList
+        sessionStore.sessions = Self.demoSessionList
 #endif
-        archivedSessionIds = []
-        selectedSession = nil
-        navigationPath = []
+        sessionStore.archivedSessionIds = []
+        sessionStore.selected = nil
+        sessionStore.navigationPath = []
         messages = []
         steps = []
         liveConnection = .demo
 #if DEBUG
         let shotList = DebugLaunch.storeShots ? Self.storeShotSessions : Self.demoSessionList
         if let id = DebugLaunch.sessionId, let session = shotList.first(where: { $0.sessionId == id }) {
-            navigationPath = [session]
+            sessionStore.navigationPath = [session]
         }
 #endif
     }
@@ -45,12 +45,12 @@ extension ConnectionModel {
     @MainActor
     func exitDemoMode() {
         isDemoMode = false
-        isConnected = false
-        selectedSession = nil
-        navigationPath = []
-        conversations.removeAll()
+        connection.isConnected = false
+        sessionStore.selected = nil
+        sessionStore.navigationPath = []
+        sessionStore.conversations.removeAll()
         activeConversation = nil
-        sessions = []
+        sessionStore.sessions = []
         draftImages = []
         liveConnection = .idle
     }
@@ -59,9 +59,9 @@ extension ConnectionModel {
     func openDemo(_ session: PocketSession) {
         liveTask?.cancel()
         let conversation = ConversationState(sessionId: session.sessionId)
-        conversations[session.sessionId] = conversation
+        sessionStore.conversations[session.sessionId] = conversation
         activeConversation = conversation
-        selectedSession = session
+        sessionStore.selected = session
         messages = Self.demoMessages(for: session.sessionId)
         steps = Self.demoSteps(for: session.sessionId)
         isTurnRunning = session.running
@@ -77,7 +77,7 @@ extension ConnectionModel {
     func sendDemoMessage() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = draftImages
-        guard (!text.isEmpty || !images.isEmpty), selectedSession != nil, !isSending else { return }
+        guard (!text.isEmpty || !images.isEmpty), sessionStore.selected != nil, !isSending else { return }
         let pending = PocketMessage(pendingText: text, localImages: images.map(\.uiImage))
         messages.append(pending)
         pendingSendID = pending.id
@@ -122,9 +122,9 @@ extension ConnectionModel {
         }
         if en {
             return [
-                PocketMessage(demoText: "Build an iOS client for DSH. It should reach the sessions on my Mac, and it has to be native — not a web wrapper.", isUser: true, sequence: 1),
+                PocketMessage(demoText: "Build an iOS client for DSH. It should reach the sessionStore.sessions on my Mac, and it has to be native — not a web wrapper.", isUser: true, sequence: 1),
                 PocketMessage(demoText: "DSH is plugins all the way down. I'll look for a connector in the plugin market, then keep the interface in the app.", isUser: false, sequence: 2),
-                PocketMessage(demoText: "Split them. The connector is a plugin. The app only renders sessions, live messages, and images.", isUser: true, sequence: 3),
+                PocketMessage(demoText: "Split them. The connector is a plugin. The app only renders sessionStore.sessions, live messages, and images.", isUser: true, sequence: 3),
                 PocketMessage(demoText: "That's the split. dsh-pocket-ios handles pairing and forwarding. The app renders the session list, the live stream, and images.", isUser: false, sequence: 4),
                 PocketMessage(demoText: "Don't make people type a password after they scan.", isUser: true, sequence: 5),
                 PocketMessage(demoText: "The pairing code rotates every 60 seconds and works once. Scan to log in. The address stays on Tailscale.", isUser: false, sequence: 6)

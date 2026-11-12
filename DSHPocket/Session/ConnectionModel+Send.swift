@@ -31,7 +31,7 @@ extension ConnectionModel {
             if Task.isCancelled { return }
             try? await Task.sleep(for: LiveStreamPolicy.historyPollInterval)
             if Task.isCancelled { return }
-            guard selectedSession?.sessionId == session.sessionId else { return }
+            guard sessionStore.selected?.sessionId == session.sessionId else { return }
             // 实时 follow 已经把回复送到时就不必再轮询分页了；轮询只作为断流兜底。
             if messages.contains(where: { !$0.isUser && !$0.isPending && $0.sequence > afterSequence }) {
                 timingLog("reply_available source=follow total_elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
@@ -43,7 +43,7 @@ extension ConnectionModel {
                 // await 期间可能已切换会话，返回后必须再校验，否则旧会话消息会串进当前会话。
                 guard !Task.isCancelled,
                       activeConversation?.sessionId == session.sessionId,
-                      selectedSession?.sessionId == session.sessionId else { return }
+                      sessionStore.selected?.sessionId == session.sessionId else { return }
                 let records = page["records"] as? [[String: Any]] ?? []
                 let incoming = records.compactMap(PocketMessage.init(record:))
                 timingLog("history_poll_result messages=\(incoming.count) elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1000))")
@@ -63,9 +63,9 @@ extension ConnectionModel {
 
     @MainActor
     func sendMessage(in session: PocketSession) {
-        if selectedSession?.sessionId != session.sessionId {
+        if sessionStore.selected?.sessionId != session.sessionId {
             recordDiagnostic("发送前纠正会话：期望 \(session.displayTitle)")
-            selectedSession = session
+            sessionStore.selected = session
             open(session)
             // 继续发送，避免"点了发送但输入框内容还在、也没发出去"。
             sendMessage()
@@ -88,7 +88,7 @@ extension ConnectionModel {
         }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = draftImages
-        guard (!text.isEmpty || !attachments.isEmpty), selectedSession != nil else {
+        guard (!text.isEmpty || !attachments.isEmpty), sessionStore.selected != nil else {
             recordDiagnostic("发送被忽略：文本为空或未打开会话")
             return
         }
@@ -109,7 +109,7 @@ extension ConnectionModel {
     @MainActor
     func clearDraftImmediately() {
         let conversation = activeConversation
-        let sessionId = conversation?.sessionId ?? selectedSession?.sessionId
+        let sessionId = conversation?.sessionId ?? sessionStore.selected?.sessionId
         conversation?.draft = ""
         conversation?.draftImages = []
         draft = ""
@@ -152,8 +152,8 @@ extension ConnectionModel {
 
     @MainActor
     func performSend(text: String, attachments: [PocketDraftImage]) async {
-        guard let session = selectedSession, !isSending else { return }
-        let sendConversation = conversations[session.sessionId]
+        guard let session = sessionStore.selected, !isSending else { return }
+        let sendConversation = sessionStore.conversations[session.sessionId]
         let lastSequence = messages.filter { !$0.isPending }.map(\.sequence).max() ?? -1
         let requestId = UUID().uuidString.lowercased()
         let sortAnchor = TimelineOrdering.pendingAnchor(

@@ -20,19 +20,19 @@ extension ConnectionModel {
     /// 用最新 session 列表更新 running 状态机，识别"运行中 → 已结束"的会话。
     @MainActor
     func detectSessionCompletions() {
-        let latest = Dictionary(sessions.map { ($0.sessionId, $0.running) }, uniquingKeysWith: { first, _ in first })
+        let latest = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0.running) }, uniquingKeysWith: { first, _ in first })
         let completed = completionTracker.update(latest: latest)
         UserDefaults.standard.set(latest, forKey: Self.runningSnapshotKey)
         recordDiagnostic("可用会话刷新：\(latest.count) 个，完成事件 \(completed.count) 个")
 
         // 重新开始运行的会话不再算"等待回复"。
-        for session in sessions where session.running {
+        for session in sessionStore.sessions where session.running {
             finishedAwaitingSessionIds.remove(session.sessionId)
         }
 
         guard !completed.isEmpty else { return }
         for sessionId in completed {
-            guard let session = sessions.first(where: { $0.sessionId == sessionId }) else { continue }
+            guard let session = sessionStore.sessions.first(where: { $0.sessionId == sessionId }) else { continue }
             let viewing = visibleSessionId == sessionId && isAppActive
             if viewing {
                 finishedAwaitingSessionIds.remove(sessionId)
@@ -82,15 +82,15 @@ extension ConnectionModel {
     @MainActor
     func loadSessions(silently: Bool = false) async {
         if isDemoMode { return }
-        guard !isLoadingSessions else { return }
-        if !silently { isLoadingSessions = true }
-        defer { isLoadingSessions = false }
+        guard !sessionStore.isLoadingSessions else { return }
+        if !silently { sessionStore.isLoadingSessions = true }
+        defer { sessionStore.isLoadingSessions = false }
         do {
-            sessions = try await fetchSessions()
+            sessionStore.sessions = try await fetchSessions()
             syncSelectedSessionMetadata()
             detectSessionCompletions()
-            errorMessage = nil
-            recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
+            connection.errorMessage = nil
+            recordDiagnostic("会话列表刷新：\(sessionStore.sessions.count) 个，隐藏归档 \(sessionStore.archivedSessionIds.count) 个")
             // 能拉到列表说明网络通了：把各会话的断网暂存按写入顺序一并补发。
             flushQueuedSends()
         } catch {
@@ -107,7 +107,7 @@ extension ConnectionModel {
                 isStaleTunnel: isStaleTunnelError(error),
                 isTransient: transient,
                 isSilent: silently,
-                hasExistingSessions: !sessions.isEmpty,
+                hasExistingSessions: !sessionStore.sessions.isEmpty,
                 message: transient ? "连接电脑超时，正在重试…" : "无法读取会话：\(error.localizedDescription)"
             )
             switch action {
@@ -123,7 +123,7 @@ extension ConnectionModel {
                 recordDiagnostic("会话列表刷新遇到网络抖动，保留当前列表")
             case .showMessage(let message):
                 recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
-                errorMessage = message
+                connection.errorMessage = message
                 scheduleSessionListRetry()
             }
         }
@@ -132,13 +132,13 @@ extension ConnectionModel {
     /// 超时/断连这类抖动：自动退避重试，成功就把红字清掉。
     @MainActor
     func scheduleSessionListRetry() {
-        sessionListRetryTask?.cancel()
-        sessionListRetryTask = Task { [weak self] in
+        sessionStore.retryTask?.cancel()
+        sessionStore.retryTask = Task { [weak self] in
             for delay in [2.0, 4.0, 8.0] {
                 try? await Task.sleep(for: .seconds(delay))
                 guard let self, !Task.isCancelled else { return }
                 await self.loadSessions(silently: true)
-                if await MainActor.run(body: { self.errorMessage == nil }) { return }
+                if await MainActor.run(body: { self.connection.errorMessage == nil }) { return }
             }
         }
     }
@@ -150,8 +150,8 @@ extension ConnectionModel {
     /// 拉列表并把归档/置顶写回 store（只读访问与解析在 SessionAPI）。
     func fetchSessions() async throws -> [PocketSession] {
         let listing = try await sessionAPI.fetchListing()
-        archivedSessionIds = listing.archived
-        pinnedSessionIds = listing.pinned
+        sessionStore.archivedSessionIds = listing.archived
+        sessionStore.pinnedSessionIds = listing.pinned
         return listing.sessions
     }
 
@@ -170,9 +170,9 @@ extension ConnectionModel {
             },
             socketURL: { [weak self] in
                 guard let self,
-                      let base = URL(string: self.serverAddress),
+                      let base = URL(string: self.connection.serverAddress),
                       let url = Self.webSocketURL(from: base, path: "api/remote.mux") else {
-                    throw ConnectionError.invalidURL(self?.serverAddress ?? "")
+                    throw ConnectionError.invalidURL(self?.connection.serverAddress ?? "")
                 }
                 return url
             }
@@ -183,9 +183,9 @@ extension ConnectionModel {
     /// 原生不会把聊过的每条会话都摊在内存里；我们也别一直涨。
     @MainActor
     func trimRetainedConversations(keeping sessionId: String, limit: Int = ConversationCachePolicy.defaultLimit) {
-        guard conversations.count > limit else { return }
+        guard sessionStore.conversations.count > limit else { return }
         let active = activeConversation?.sessionId ?? sessionId
-        let refs = conversations.values.map {
+        let refs = sessionStore.conversations.values.map {
             CachedConversationRef(id: $0.sessionId, lastOpenedAt: $0.lastOpenedAt)
         }
         // 淘汰谁交给 DSHKit；当前会话和正在看的会话永不淘汰。
@@ -194,14 +194,14 @@ extension ConnectionModel {
                                                        limit: limit)
         guard !doomed.isEmpty else { return }
         for id in doomed {
-            guard let conversation = conversations[id] else { continue }
+            guard let conversation = sessionStore.conversations[id] else { continue }
             conversation.liveTask?.cancel()
             conversation.fallbackTask?.cancel()
             conversation.coordinatorTask?.cancel()
             jobRoster.stop()
-            conversations.removeValue(forKey: id)
+            sessionStore.conversations.removeValue(forKey: id)
         }
-        recordDiagnostic("会话缓存回收 \(doomed.count) 条，剩 \(conversations.count) 条")
+        recordDiagnostic("会话缓存回收 \(doomed.count) 条，剩 \(sessionStore.conversations.count) 条")
     }
 
     // MARK: 单条会话操作（实现在 SessionActions）
@@ -228,7 +228,7 @@ extension ConnectionModel {
             },
             store: sessionStore,
             isDemoMode: { [weak self] in self?.isDemoMode ?? false },
-            reportError: { @MainActor [weak self] message in self?.errorMessage = message },
+            reportError: { @MainActor [weak self] message in self?.connection.errorMessage = message },
             record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
             reload: { @MainActor [weak self] in await self?.loadSessions() },
             modelGroups: { [weak self] in self?.modelGroups ?? [] },

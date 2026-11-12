@@ -95,7 +95,7 @@ struct ConversationActivityBar: View {
                 .frame(maxWidth: .infinity)
                 .background(.background)
             }
-            if let note = model.offlineFlushNote {
+            if let note = model.outbox.flushNote {
                 HStack(spacing: 6) {
                     ProgressView().scaleEffect(0.6)
                     Text(note).font(.caption2).foregroundStyle(.secondary)

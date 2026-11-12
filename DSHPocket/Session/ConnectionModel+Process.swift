@@ -129,7 +129,7 @@ extension ConnectionModel {
     }
 
     func loadImage(_ ref: PocketImageRef, tier: ImagePipeline.Tier) async -> UIImage? {
-        guard let session = selectedSession else { return nil }
+        guard let session = sessionStore.selected else { return nil }
         let maxPixel: CGFloat = tier == .full
             ? CGFloat(ImageFetchPolicy.fullMaxPixel)
             : CGFloat(ImageFetchPolicy.thumbnailMaxPixel)
@@ -157,10 +157,10 @@ extension ConnectionModel {
     /// 打开任务面板时才订阅。重复调用无副作用。
     @MainActor
     func ensureJobRoster() {
-        guard !isDemoMode, let session = selectedSession,
-              let conversation = conversations[session.sessionId] else { return }
+        guard !isDemoMode, let session = sessionStore.selected,
+              let conversation = sessionStore.conversations[session.sessionId] else { return }
         guard !jobRoster.isRunning else { return }
-        guard let base = URL(string: serverAddress),
+        guard let base = URL(string: connection.serverAddress),
               let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else { return }
         jobRoster.start(sessionId: session.sessionId, socketURL: socketURL) { [weak conversation] rows in
             // 名单写回会话状态；订阅器本身不持有业务数据（见 JobRoster 注释）。
@@ -179,7 +179,7 @@ extension ConnectionModel {
     @MainActor
     func leave(_ session: PocketSession) {
         let leaveStarted = Date()
-        guard let conversation = conversations[session.sessionId] else { return }
+        guard let conversation = sessionStore.conversations[session.sessionId] else { return }
         conversation.liveTask?.cancel()
         conversation.fallbackTask?.cancel()
         conversation.coordinatorTask?.cancel()
@@ -196,8 +196,8 @@ extension ConnectionModel {
             conversation.coordinator = nil
             Task { await coordinator.stop() }
         }
-        if selectedSession?.sessionId == session.sessionId {
-            selectedSession = nil
+        if sessionStore.selected?.sessionId == session.sessionId {
+            sessionStore.selected = nil
         }
         // 退出后不再有可见会话；未读/回到底部据此判断。
         if visibleSessionId == session.sessionId {
@@ -209,7 +209,7 @@ extension ConnectionModel {
     /// 展开某一组过程时才拉取正文。分页按序号切开，不把整段历史再装进内存。
     @MainActor
     func loadProcessDetails(for group: PocketStepGroup) async {
-        guard let session = selectedSession else { return }
+        guard let session = sessionStore.selected else { return }
         let first = group.steps.map(\.sequence).min() ?? group.sequence
         let last = group.steps.map(\.sequence).max() ?? group.sequence
         do {
@@ -274,7 +274,7 @@ extension ConnectionModel {
     func addDraftImage(_ image: UIImage) {
         guard let prepared = Self.prepareImage(image) else { return }
         draftImages.append(prepared)
-        if let id = selectedSession?.sessionId {
+        if let id = sessionStore.selected?.sessionId {
             DraftImageStore.save(draftImages, sessionId: id)
         }
     }
@@ -283,7 +283,7 @@ extension ConnectionModel {
     @MainActor
     func removeDraftImage(id: UUID) {
         draftImages.removeAll { $0.id == id }
-        if let id = selectedSession?.sessionId {
+        if let id = sessionStore.selected?.sessionId {
             DraftImageStore.save(draftImages, sessionId: id)
         }
     }

@@ -25,10 +25,10 @@ extension ConnectionModel {
     /// 进入会话：只切状态、让界面立刻有内容；订阅与维护工作交给 startBackgroundFeeds。
     func open(_ session: PocketSession) {
         if isDemoMode { openDemo(session); return }
-        if selectedSession?.sessionId == session.sessionId,
+        if sessionStore.selected?.sessionId == session.sessionId,
            activeConversation?.coordinatorStarted == true { return }
 
-        // 切到独立会话实例：旧会话的实时流停止，状态留存在 conversations 里，不再写入新会话。
+        // 切到独立会话实例：旧会话的实时流停止，状态留存在 sessionStore.conversations 里，不再写入新会话。
         if let current = activeConversation, current.sessionId != session.sessionId {
             current.liveTask?.cancel()
             current.fallbackTask?.cancel()
@@ -116,7 +116,7 @@ extension ConnectionModel {
         await follow(session)
         _ = await historyTask.value
         if activeConversation?.sessionId == session.sessionId,
-           selectedSession?.sessionId == session.sessionId,
+           sessionStore.selected?.sessionId == session.sessionId,
            isLoadingConversation {
             isLoadingConversation = false
         }
@@ -127,11 +127,11 @@ extension ConnectionModel {
     func pollLiveFallback(_ session: PocketSession) async {
         while !Task.isCancelled,
               activeConversation?.sessionId == session.sessionId,
-              selectedSession?.sessionId == session.sessionId {
+              sessionStore.selected?.sessionId == session.sessionId {
             try? await Task.sleep(for: .seconds(5))
             if Task.isCancelled { break }
             guard activeConversation?.sessionId == session.sessionId,
-                  selectedSession?.sessionId == session.sessionId else { return }
+                  sessionStore.selected?.sessionId == session.sessionId else { return }
             let stalled = isTurnRunning && Date().timeIntervalSince(lastLiveFrameAt) > 15
             if !liveConnection.isConnected || stalled {
                 await loadHistory(session)
@@ -146,7 +146,7 @@ extension ConnectionModel {
             let page = try await rpcClient.rpcAdapted("session/page", args: ["request": ["address": address, "maxMessages": Self.conversationMessageLimit]])
             if let token, token != conversationToken { return }
             guard activeConversation?.sessionId == session.sessionId,
-                  selectedSession?.sessionId == session.sessionId else { return }
+                  sessionStore.selected?.sessionId == session.sessionId else { return }
             let wasEmpty = messages.isEmpty
             let records = page["records"] as? [[String: Any]] ?? []
             let history = records.compactMap(PocketMessage.init(record:))
@@ -160,7 +160,7 @@ extension ConnectionModel {
             if wasEmpty { requestScrollToBottom() }
         } catch {
             if error is CancellationError { return }
-            guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
+            guard sessionStore.selected?.sessionId == session.sessionId, messages.isEmpty else { return }
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
             if let authError = error as? ConnectionError, authError.isUnauthorized {
                 handleAuthExpired()

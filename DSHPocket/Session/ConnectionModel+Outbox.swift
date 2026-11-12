@@ -119,7 +119,7 @@ extension ConnectionModel {
     /// 发件箱里已发出、但列表里没有对应消息的条目：补成 pending 气泡，避免"发了但看不见"。
     @MainActor
     func restoreMissingOutboxMessages() {
-        guard !isDemoMode, let session = selectedSession else { return }
+        guard !isDemoMode, let session = sessionStore.selected else { return }
         loadOutboxIfNeeded()
         let representedRpcIds = Set(messages.compactMap(\.rpcId).map { $0.lowercased() })
         let missing = outboxEntries.filter {
@@ -177,7 +177,7 @@ extension ConnectionModel {
     /// 失败消息重发：从发件箱取回文本，作为新消息重新发送。
     @MainActor
     func retryPendingMessage(_ message: PocketMessage) {
-        guard let rpcId = message.rpcId, let session = selectedSession,
+        guard let rpcId = message.rpcId, let session = sessionStore.selected,
               let entry = outboxEntries.first(where: { $0.id == rpcId }) else { return }
         failedSendRpcIds.remove(rpcId)
         ackedSendRpcIds.remove(rpcId)
@@ -200,22 +200,22 @@ extension ConnectionModel {
     /// 补发使用原来的 rpcId，成功前不从磁盘删除；服务端历史确认后才移除。
     @MainActor
     func flushQueuedSends() {
-        guard !isDemoMode, !offlineFlushInFlight else { return }
+        guard !isDemoMode, !outbox.flushInFlight else { return }
         loadOutboxIfNeeded()
-        if let conversation = activeConversation, let sessionId = selectedSession?.sessionId {
+        if let conversation = activeConversation, let sessionId = sessionStore.selected?.sessionId {
             applyOutboxFlags(to: conversation, sessionId: sessionId)
         }
         // 候选 = 断网暂存 + 首次失败的（SendRetryPolicy 决定）。
         let pending = outbox.resendCandidates()
         guard !pending.isEmpty else { return }
-        offlineFlushInFlight = true
+        outbox.flushInFlight = true
         let total = pending.count
         var sent = 0
-        offlineFlushNote = "正在补发 0/\(total)"
+        outbox.flushNote = "正在补发 0/\(total)"
         recordDiagnostic("网络恢复，准备一并补发 \(total) 条断网暂存")
         Task { [weak self] in
             guard let self else { return }
-            defer { Task { @MainActor [weak self] in self?.offlineFlushInFlight = false } }
+            defer { Task { @MainActor [weak self] in self?.outbox.flushInFlight = false } }
             for entry in pending {
                 // 发送前先标记「自动重试过」：失败也只会重试这一次。
                 let isFailedEntry = entry.sendFailed
@@ -235,14 +235,14 @@ extension ConnectionModel {
                     case .acked:
                         self.noteHeldOfflineAccepted(entry)
                         sent += 1
-                        self.offlineFlushNote = "正在补发 \(sent)/\(total)"
+                        self.outbox.flushNote = "正在补发 \(sent)/\(total)"
                         return false
                     case .stillOffline:
-                        self.offlineFlushNote = "已补发 \(sent)/\(total)，网络又断了，剩余 \(total - sent) 条仍在手机上"
+                        self.outbox.flushNote = "已补发 \(sent)/\(total)，网络又断了，剩余 \(total - sent) 条仍在手机上"
                         self.recordDiagnostic("补发仍无网络，剩余断网暂存留在本机：\(entry.id)")
                         return true
                     case .auth:
-                        self.offlineFlushNote = "已补发 \(sent)/\(total)，登录失效，剩余 \(total - sent) 条仍在手机上"
+                        self.outbox.flushNote = "已补发 \(sent)/\(total)，登录失效，剩余 \(total - sent) 条仍在手机上"
                         self.handleAuthExpired()
                         return true
                     case .failed:
@@ -256,11 +256,11 @@ extension ConnectionModel {
                 await self.loadHistory(session)
             }
             await MainActor.run {
-                self.offlineFlushInFlight = false
+                self.outbox.flushInFlight = false
                 if sent == total {
-                    self.offlineFlushNote = nil
-                } else if self.offlineFlushNote == nil {
-                    self.offlineFlushNote = "已补发 \(sent)/\(total)，剩余留在手机上"
+                    self.outbox.flushNote = nil
+                } else if self.outbox.flushNote == nil {
+                    self.outbox.flushNote = "已补发 \(sent)/\(total)，剩余留在手机上"
                 }
             }
         }
@@ -310,7 +310,7 @@ extension ConnectionModel {
     func noteHeldOfflineAccepted(_ entry: OutboxEntry) {
         markOutboxAccepted(rpcId: entry.id)
         let id = entry.id.lowercased()
-        if let conversation = conversations[entry.sessionId] {
+        if let conversation = sessionStore.conversations[entry.sessionId] {
             conversation.queuedRpcIds.remove(id)
             conversation.failedRpcIds.remove(id)
             conversation.ackedRpcIds.insert(id)
@@ -322,8 +322,8 @@ extension ConnectionModel {
     func noteHeldOfflineFailed(_ entry: OutboxEntry) {
         markOutboxSendFailed(rpcId: entry.id)
         let id = entry.id.lowercased()
-        conversations[entry.sessionId]?.queuedRpcIds.remove(id)
-        conversations[entry.sessionId]?.failedRpcIds.insert(id)
+        sessionStore.conversations[entry.sessionId]?.queuedRpcIds.remove(id)
+        sessionStore.conversations[entry.sessionId]?.failedRpcIds.insert(id)
         recordDiagnostic("断网暂存补发失败，正文仍留在本机：\(id)")
     }
 
@@ -334,21 +334,21 @@ extension ConnectionModel {
 
     @MainActor
     func updateSessionTitle(_ title: String) {
-        guard let id = selectedSession?.sessionId else { return }
-        if let index = sessions.firstIndex(where: { $0.sessionId == id }) {
-            sessions[index] = sessions[index].withTitle(title)
+        guard let id = sessionStore.selected?.sessionId else { return }
+        if let index = sessionStore.sessions.firstIndex(where: { $0.sessionId == id }) {
+            sessionStore.sessions[index] = sessionStore.sessions[index].withTitle(title)
         }
-        if let current = selectedSession {
-            selectedSession = current.withTitle(title)
+        if let current = sessionStore.selected {
+            sessionStore.selected = current.withTitle(title)
         }
     }
 
     /// 列表刷新后，把已打开会话的标题/运行状态同步过来。
     @MainActor
     func syncSelectedSessionMetadata() {
-        guard let id = selectedSession?.sessionId,
-              let fresh = sessions.first(where: { $0.sessionId == id }) else { return }
-        selectedSession = fresh
+        guard let id = sessionStore.selected?.sessionId,
+              let fresh = sessionStore.sessions.first(where: { $0.sessionId == id }) else { return }
+        sessionStore.selected = fresh
     }
 }
 
@@ -364,7 +364,7 @@ extension ConnectionModel {
         networkWatcher.onBecomeReachable = { [weak self] in
             guard let self else { return }
             // 地址还没配置（首启/刚装）时不要触发刷新，否则会每两秒重试刷屏。
-            guard (try? Self.serverURL(from: self.serverAddress)) != nil else { return }
+            guard (try? Self.serverURL(from: self.connection.serverAddress)) != nil else { return }
             self.recordDiagnostic("网络恢复（路径监听），立即补发并刷新列表")
             self.flushQueuedSends()
             Task { await self.loadSessions(silently: true) }

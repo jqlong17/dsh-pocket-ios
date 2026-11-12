@@ -23,12 +23,12 @@ extension ConnectionModel {
         var messageCount = 0
         var textBytes = 0
         var stepBytes = 0
-        for conversation in conversations.values {
+        for conversation in sessionStore.conversations.values {
             messageCount += conversation.messages.count
             textBytes += conversation.messages.reduce(0) { $0 + $1.text.utf8.count }
             stepBytes += conversation.steps.reduce(0) { $0 + $1.resultText.utf8.count + $1.detail.utf8.count }
         }
-        return (conversations.count, messageCount, textBytes, stepBytes)
+        return (sessionStore.conversations.count, messageCount, textBytes, stepBytes)
     }
 
     @MainActor
@@ -39,46 +39,46 @@ extension ConnectionModel {
             components.host != nil else {
             // 扫到的不是电脑地址：属于「地址无效」，提示里直接引导再扫一次，所以给重新扫码入口。
             let failure = ConnectFailureMessage.scannedAddressInvalid()
-            addressNeedsRescan = failure.needsRescan
-            errorMessage = failure.text
+            connection.addressNeedsRescan = failure.needsRescan
+            connection.errorMessage = failure.text
             return false
         }
-        // 二维码/粘贴的地址可能携带：?token=<DSH 认证 token>（登录后浏览器地址栏），或旧版 ?pin=<密码>。
+        // 二维码/粘贴的地址可能携带：?token=<DSH 认证 token>（登录后浏览器地址栏），或旧版 ?connection.pin=<密码>。
         if let pairToken = components.queryItems?.first(where: { $0.name == "pair" })?.value,
         !pairToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             pendingPairToken = pairToken
-            pin = ""
+            connection.pin = ""
         } else if let token = components.queryItems?.first(where: { $0.name == "token" })?.value,
         !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             pendingLoginToken = token
-            pin = ""
-        } else if let scannedPin = components.queryItems?.first(where: { $0.name == "pin" })?.value,
+            connection.pin = ""
+        } else if let scannedPin = components.queryItems?.first(where: { $0.name == "connection.pin" })?.value,
             scannedPin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil {
-            pin = scannedPin
+            connection.pin = scannedPin
         }
         components.path = ""
         components.query = nil
         components.fragment = nil
-        serverAddress = components.string ?? value
-        errorMessage = nil
+        connection.serverAddress = components.string ?? value
+        connection.errorMessage = nil
         return true
     }
 
     @MainActor
     func connect() async {
-        errorMessage = nil
-        addressNeedsRescan = false
+        connection.errorMessage = nil
+        connection.addressNeedsRescan = false
         let url: URL
         do {
-            url = try Self.serverURL(from: serverAddress)
+            url = try Self.serverURL(from: connection.serverAddress)
             // 地址里可能带扫码的配对 token：只留 scheme/host/端口，token 不落到存档和日志里。
-            serverAddress = DSHURL.baseAddress(url)
+            connection.serverAddress = DSHURL.baseAddress(url)
         } catch {
             // 地址在发请求之前就解析不了：属于「地址无效」，不是网络问题。
             let failure = ConnectFailureMessage(error: error, context: .address)
-            addressNeedsRescan = failure.needsRescan
-            errorMessage = failure.text
-            recordDiagnostic("地址校验失败 [\(failure.kind.label)]：\(DSHURL.redactedAddress(serverAddress)) \(ConnectFailureMessage.diagnosticText(error))")
+            connection.addressNeedsRescan = failure.needsRescan
+            connection.errorMessage = failure.text
+            recordDiagnostic("地址校验失败 [\(failure.kind.label)]：\(DSHURL.redactedAddress(connection.serverAddress)) \(ConnectFailureMessage.diagnosticText(error))")
             return
         }
         recordDiagnostic("开始连接：\(DSHURL.redacted(url))")
@@ -104,10 +104,10 @@ extension ConnectionModel {
             _ = try await loginSession.data(for: request)
             let hasAuth = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name.hasPrefix("dsh-auth") } ?? false
             guard hasAuth else { throw ConnectionError.invalidPin }
-            sessions = try await fetchSessions()
-            isConnected = true
-            errorMessage = nil
-            addressNeedsRescan = false
+            sessionStore.sessions = try await fetchSessions()
+            connection.isConnected = true
+            connection.errorMessage = nil
+            connection.addressNeedsRescan = false
             PinKeychain.clear()
             ConnectionVault.saveAuthCookies(from: url)
             ConnectionVault.saveDeviceToken(from: url)
@@ -116,14 +116,14 @@ extension ConnectionModel {
             } else {
             recordDiagnostic("未收到长期设备凭证：插件可能还是旧版")
             }
-            recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
+            recordDiagnostic("配对登录成功：会话 \(sessionStore.sessions.count) 个")
             return
             } catch {
             // 配对分支的失败不只是「二维码过期」：超时、断网也会落到这里。
             // 以前一律说二维码失效，会把网络问题误报成需要重新配对，所以交给分型判断。
             let failure = ConnectFailureMessage(error: error, context: .pairing)
-            addressNeedsRescan = failure.needsRescan
-            errorMessage = failure.text
+            connection.addressNeedsRescan = failure.needsRescan
+            connection.errorMessage = failure.text
             recordDiagnostic("配对登录失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
             return
             }
@@ -140,37 +140,37 @@ extension ConnectionModel {
             _ = try await loginSession.data(from: tokenURL)
             let hasAuth = HTTPCookieStorage.shared.cookies(for: url)?.contains { $0.name.hasPrefix("dsh-auth") } ?? false
             guard hasAuth else { throw ConnectionError.invalidPin }
-            sessions = try await fetchSessions()
-            isConnected = true
-            errorMessage = nil
-            addressNeedsRescan = false
-            PinKeychain.save(pin)
+            sessionStore.sessions = try await fetchSessions()
+            connection.isConnected = true
+            connection.errorMessage = nil
+            connection.addressNeedsRescan = false
+            PinKeychain.save(connection.pin)
             await syncPushRegistration()
             ConnectionVault.saveAuthCookies(from: url)
-            recordDiagnostic("token 登录成功：会话 \(sessions.count) 个")
+            recordDiagnostic("token 登录成功：会话 \(sessionStore.sessions.count) 个")
             return
             } catch {
             // 同上：登录链接失效和网络超时是两回事，分别给「重新复制地址」和「稍后重试」。
             let failure = ConnectFailureMessage(error: error, context: .loginToken)
-            addressNeedsRescan = failure.needsRescan
-            errorMessage = failure.text
+            connection.addressNeedsRescan = failure.needsRescan
+            connection.errorMessage = failure.text
             recordDiagnostic("token 登录失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
             return
             }
         }
         // 先拦空密码，再说格式：空输入报「格式不对」会让人以为密码本身有问题。
-        guard !pin.isEmpty else {
-            errorMessage = ConnectFailureMessage.pinMissing().text
+        guard !connection.pin.isEmpty else {
+            connection.errorMessage = ConnectFailureMessage.pinMissing().text
             return
         }
         // 访问密码只允许 8-64 位字母或数字；避免把密码管理器自动填入的长密码发给服务器后变成“密码错误”。
-        guard pin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil else {
-            errorMessage = ConnectFailureMessage.pinFormatInvalid().text
-            recordDiagnostic("密码格式无效（长度 \(pin.count)），未发起请求")
+        guard connection.pin.range(of: #"^[A-Za-z0-9]{8,64}$"#, options: .regularExpression) != nil else {
+            connection.errorMessage = ConnectFailureMessage.pinFormatInvalid().text
+            recordDiagnostic("密码格式无效（长度 \(connection.pin.count)），未发起请求")
             return
         }
-        isConnecting = true
-        defer { isConnecting = false }
+        connection.isConnecting = true
+        defer { connection.isConnecting = false }
         // 登录请求需要跟随 302 回到 `/?dsh-pocket-auth=1`，代理会借此完成 dsh web 的
         // 启动 token 握手并写入 dsh-auth cookie；因此必须跟随重定向，只是要记录是否发生过。
         let recorder = LoginRedirectRecorder()
@@ -186,7 +186,7 @@ extension ConnectionModel {
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             var body = URLComponents()
-            body.queryItems = [URLQueryItem(name: "token", value: pin)]
+            body.queryItems = [URLQueryItem(name: "token", value: connection.pin)]
             request.httpBody = body.percentEncodedQuery?.data(using: .utf8)
             request.httpShouldHandleCookies = true
             let (_, response) = try await loginSession.data(for: request)
@@ -216,18 +216,18 @@ extension ConnectionModel {
             }
             guard loginOK else { throw ConnectionError.invalidPin }
 
-            sessions = try await fetchSessions()
-            isConnected = true
-            addressNeedsRescan = false
-            UserDefaults.standard.set(serverAddress, forKey: Self.savedServerAddressKey)
+            sessionStore.sessions = try await fetchSessions()
+            connection.isConnected = true
+            connection.addressNeedsRescan = false
+            UserDefaults.standard.set(connection.serverAddress, forKey: Self.savedServerAddressKey)
             // 同时写 Keychain：重装后沙盒被清，靠它自动恢复地址与登录态。
-            ConnectionVault.saveAddress(serverAddress)
-            if let url = try? Self.serverURL(from: serverAddress) {
+            ConnectionVault.saveAddress(connection.serverAddress)
+            if let url = try? Self.serverURL(from: connection.serverAddress) {
             ConnectionVault.saveAuthCookies(from: url)
             }
-            recordEndpoint(serverAddress)
-            pin = ""
-            recordDiagnostic("连接成功：会话 \(sessions.count) 个")
+            recordEndpoint(connection.serverAddress)
+            connection.pin = ""
+            recordDiagnostic("连接成功：会话 \(sessionStore.sessions.count) 个")
         } catch {
             // 密码登录分支：invalidPin 是密码问题，URLError 是网络问题，由分型决定说什么。
             applyConnectError(error, context: .password)
@@ -245,8 +245,8 @@ extension ConnectionModel {
     @MainActor
     func applyConnectError(_ error: Error, context: ConnectFailureMessage.Context = .general) {
         let failure = ConnectFailureMessage(error: error, context: context)
-        addressNeedsRescan = failure.needsRescan
-        errorMessage = failure.text
+        connection.addressNeedsRescan = failure.needsRescan
+        connection.errorMessage = failure.text
         recordDiagnostic("连接失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
     }
 
@@ -306,10 +306,10 @@ extension ConnectionModel {
     /// 商店截图的连接页：示例地址，不生成、不展示二维码。
     func seedStoreShotHome() {
         let en = LanguageStore.shared.isEnglish
-        pin = ""
-        errorMessage = nil
-        serverAddress = "https://studio.example.ts.net"
-        UserDefaults.standard.set(serverAddress, forKey: "dsh-pocket.store-shot-address")
+        connection.pin = ""
+        connection.errorMessage = nil
+        connection.serverAddress = "https://studio.example.ts.net"
+        UserDefaults.standard.set(connection.serverAddress, forKey: "dsh-pocket.store-shot-address")
         let now = Date().timeIntervalSince1970
         savedEndpoints = [
             SavedEndpoint(address: "https://studio.example.ts.net", kind: .publicNetwork,

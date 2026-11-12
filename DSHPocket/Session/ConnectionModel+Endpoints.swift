@@ -111,7 +111,7 @@ extension ConnectionModel {
            let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) {
             return url
         }
-        guard let base = try? Self.serverURL(from: serverAddress) else { return nil }
+        guard let base = try? Self.serverURL(from: connection.serverAddress) else { return nil }
         var raw = destination.removingPercentEncoding ?? destination
         if raw.hasPrefix("file://") { raw = String(raw.dropFirst("file://".count)) }
         else if raw.hasPrefix("file:") { raw = String(raw.dropFirst("file:".count)) }
@@ -119,7 +119,7 @@ extension ConnectionModel {
         let absolute: String
         if raw.hasPrefix("/") {
             absolute = raw
-        } else if let cwd = selectedSession?.cwd, cwd.hasPrefix("/") {
+        } else if let cwd = sessionStore.selected?.cwd, cwd.hasPrefix("/") {
             absolute = URL(fileURLWithPath: cwd).appendingPathComponent(raw).standardized.path
         } else {
             return nil
@@ -145,10 +145,10 @@ extension ConnectionModel {
         }
         // 删掉的正是当前这台电脑：把 Keychain 里的地址与登录 cookie 一起清掉，
         // 否则下次启动又会凭旧凭证自动连回来——用户会以为「删了还在」。
-        if address == serverAddress {
+        if address == connection.serverAddress {
             ConnectionVault.clear()
             UserDefaults.standard.removeObject(forKey: Self.savedServerAddressKey)
-            pin = ""
+            connection.pin = ""
             PinKeychain.clear()
         }
     }
@@ -166,18 +166,18 @@ extension ConnectionModel {
     @MainActor
     func switchToEndpoint(_ endpoint: SavedEndpoint) async {
         guard !isDemoMode else { return }
-        let previous = serverAddress
-        serverAddress = endpoint.address
-        errorMessage = nil
+        let previous = connection.serverAddress
+        connection.serverAddress = endpoint.address
+        connection.errorMessage = nil
         do {
-            sessions = try await fetchSessions()
-            isConnected = true
+            sessionStore.sessions = try await fetchSessions()
+            connection.isConnected = true
             recordEndpoint(endpoint.address)
             recordDiagnostic("切换连接：\(endpoint.kind.label) \(DSHURL.redactedAddress(endpoint.address))")
         } catch {
-            serverAddress = previous
+            connection.serverAddress = previous
             applyConnectError(error)
-            if isConnected { recordDiagnostic("切换连接失败，已回滚：\(error.localizedDescription)") }
+            if connection.isConnected { recordDiagnostic("切换连接失败，已回滚：\(error.localizedDescription)") }
         }
     }
 
@@ -188,8 +188,8 @@ extension ConnectionModel {
         if DebugLaunch.showConnect { return }
         if DebugLaunch.demoMode { startDemoMode(); return }
         if let server = DebugLaunch.server {
-            serverAddress = server
-            if let pin = DebugLaunch.pin { self.pin = pin }
+            connection.serverAddress = server
+            if let pin = DebugLaunch.pin { connection.pin = pin }
             recordDiagnostic("Debug 自动连接：\(DSHURL.redactedAddress(server))")
             await connect()
             return
@@ -198,15 +198,15 @@ extension ConnectionModel {
         // 地址可能来自 Keychain（重装后沙盒被清），所以不只看 UserDefaults。
         let hasAddress = UserDefaults.standard.string(forKey: Self.savedServerAddressKey) != nil
             || ConnectionVault.loadAddress() != nil
-        guard hasAddress, let base = try? Self.serverURL(from: serverAddress) else { return }
+        guard hasAddress, let base = try? Self.serverURL(from: connection.serverAddress) else { return }
         // 恢复登录态：沙盒被清后 cookie 会丢，从 Keychain 放回，避免重新扫码。
         ConnectionVault.restoreAuthCookies(to: base)
         do {
-            sessions = try await fetchSessions()
-            isConnected = true
-            errorMessage = nil
+            sessionStore.sessions = try await fetchSessions()
+            connection.isConnected = true
+            connection.errorMessage = nil
         } catch {
-            isConnected = false
+            connection.isConnected = false
             applyConnectError(error)
         }
     }
@@ -220,18 +220,18 @@ extension ConnectionModel {
         liveTask?.cancel()
         fallbackTask?.cancel()
         liveTask = nil
-        for conversation in conversations.values {
+        for conversation in sessionStore.conversations.values {
             conversation.liveTask?.cancel()
             conversation.fallbackTask?.cancel()
             conversation.coordinatorTask?.cancel()
             if let coordinator = conversation.coordinator { Task { await coordinator.stop() } }
         }
-        conversations.removeAll()
+        sessionStore.conversations.removeAll()
         activeConversation = nil
-        selectedSession = nil
-        sessions = []
-        archivedSessionIds = []
+        sessionStore.selected = nil
+        sessionStore.sessions = []
+        sessionStore.archivedSessionIds = []
         liveConnection = .idle
-        isConnected = false
+        connection.isConnected = false
     }
 }

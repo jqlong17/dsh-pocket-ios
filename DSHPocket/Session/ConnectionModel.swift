@@ -33,7 +33,7 @@ final class ConnectionModel {
     var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
-    /// 当前屏幕上真正可见的会话（返回列表后会清空；不能用 selectedSession 判断，它不会清）。
+    /// 当前屏幕上真正可见的会话（返回列表后会清空；不能用 sessionStore.selected 判断，它不会清）。
     var visibleSessionId: String?
     /// session/list 的 running 状态机，用于识别"运行中 → 已结束"。
     var completionTracker = SessionCompletionTracker(
@@ -50,61 +50,12 @@ final class ConnectionModel {
             ?? ConnectionVault.loadAddress()
             ?? "http://"
     )
-    var serverAddress: String {
-        get { connection.serverAddress }
-        set { connection.serverAddress = newValue }
-    }
-    var pin: String {
-        get { connection.pin }
-        set { connection.pin = newValue }
-    }
-    var isConnecting: Bool {
-        get { connection.isConnecting }
-        set { connection.isConnecting = newValue }
-    }
-    var errorMessage: String? {
-        get { connection.errorMessage }
-        set { connection.errorMessage = newValue }
-    }
-    /// 连接失败的原因是"电脑地址已失效"（如 quick tunnel 重建换了域名）→ UI 提示重新扫码。
-    var addressNeedsRescan: Bool {
-        get { connection.addressNeedsRescan }
-        set { connection.addressNeedsRescan = newValue }
-    }
-    var isConnected: Bool {
-        get { connection.isConnected }
-        set { connection.isConnected = newValue }
-    }
     var isDemoMode = false
     /// 会话列表与缓存的唯一真相（spec/12 第五个对象）。调用点走转发。
     let sessionStore = SessionStore()
-    var sessions: [PocketSession] {
-        get { sessionStore.sessions }
-        set { sessionStore.sessions = newValue }
-    }
-    var archivedSessionIds: Set<String> {
-        get { sessionStore.archivedSessionIds }
-        set { sessionStore.archivedSessionIds = newValue }
-    }
-    var pinnedSessionIds: [String] {
-        get { sessionStore.pinnedSessionIds }
-        set { sessionStore.pinnedSessionIds = newValue }
-    }
-    var isLoadingSessions: Bool {
-        get { sessionStore.isLoadingSessions }
-        set { sessionStore.isLoadingSessions = newValue }
-    }
-    var sessionListRetryTask: Task<Void, Never>? {
-        get { sessionStore.retryTask }
-        set { sessionStore.retryTask = newValue }
-    }
     var selectedSession: PocketSession? {
         get { sessionStore.selected }
         set { sessionStore.selected = newValue }
-    }
-    var navigationPath: [PocketSession] {
-        get { sessionStore.navigationPath }
-        set { sessionStore.navigationPath = newValue }
     }
     var isSending = false
 
@@ -125,10 +76,9 @@ final class ConnectionModel {
 
     // MARK: 会话级状态（按 sessionId 独立存放，切换会话即切换实例）
 
-    var conversations: [String: ConversationState] {
-        get { sessionStore.conversations }
-        set { sessionStore.conversations = newValue }
-    }
+    /// 当前打开的会话。**保留在模型上**（不属于待删的纯转发）：
+    /// 它是「正在编辑哪个会话」这一场景的核心句柄，被 messages/steps/draft 等访问器依赖。
+    /// 删掉它等于模型不再持有当前会话，属于改行为，超出 spec/17 范围。
     var activeConversation: ConversationState? {
         get { sessionStore.active }
         set { sessionStore.active = newValue }
@@ -268,15 +218,7 @@ final class ConnectionModel {
     let outbox = OutboxCoordinator()
     static let outboxDefaultsKey = OutboxCoordinator.defaultsKey
     var outboxEntries: [OutboxEntry] { outbox.entries }
-    var offlineFlushNote: String? {
-        get { outbox.flushNote }
-        set { outbox.flushNote = newValue }
-    }
     var outboxLoaded: Bool { outbox.loaded }
-    var offlineFlushInFlight: Bool {
-        get { outbox.flushInFlight }
-        set { outbox.flushInFlight = newValue }
-    }
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     var conversationToken: UUID {
         get { activeConversation?.conversationToken ?? UUID() }
@@ -337,7 +279,7 @@ final class ConnectionModel {
             }
         }
 #endif
-        if pin.isEmpty, let savedPin = PinKeychain.load() { pin = savedPin }
+        if connection.pin.isEmpty, let savedPin = PinKeychain.load() { connection.pin = savedPin }
         CompletionNotifier.shared.configure()
         CompletionNotifier.shared.onReply = { [weak self] sessionId, text in
             await self?.sendNotificationReply(sessionId: sessionId, text: text)
@@ -484,9 +426,9 @@ final class ConnectionModel {
     /// 组顺序按最近活跃出现顺序。
     var sessionGroups: [SessionGroup] {
         // 分组规则在 DSHKit（可测）；这里只做类型映射与文案。
-        let items = sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) }
-        let byId = Dictionary(sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
-        return SessionGrouping.groups(items: items, pinnedIds: pinnedSessionIds).compactMap { group in
+        let items = sessionStore.sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) }
+        let byId = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
+        return SessionGrouping.groups(items: items, pinnedIds: sessionStore.pinnedSessionIds).compactMap { group in
             let members = group.sessionIds.compactMap { byId[$0] }
             guard !members.isEmpty else { return nil }
             let title: String
@@ -505,11 +447,11 @@ final class ConnectionModel {
 
     /// 列表展示顺序：置顶在前（最近置顶优先），其余保持服务端顺序。
     var displaySessions: [PocketSession] {
-        guard !pinnedSessionIds.isEmpty else { return sessions }
-        let byId = Dictionary(sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
+        guard !sessionStore.pinnedSessionIds.isEmpty else { return sessionStore.sessions }
+        let byId = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         return SessionGrouping.displayOrder(
-            items: sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) },
-            pinnedIds: pinnedSessionIds
+            items: sessionStore.sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) },
+            pinnedIds: sessionStore.pinnedSessionIds
         ).compactMap { byId[$0] }
     }
 
@@ -519,24 +461,24 @@ final class ConnectionModel {
 
     /// 会话地址（用于复制给其他 Agent / 自己记录）。
     var sessionAddress: String {
-        guard let session = selectedSession else { return "" }
-        return "\(serverAddress)/?session=\(session.sessionId)"
+        guard let session = sessionStore.selected else { return "" }
+        return "\(connection.serverAddress)/?session=\(session.sessionId)"
     }
 
     var lastArchivedSession: PocketSession?
 
-    /// 电脑端该会话的日志文件绝对路径（DSH 的磁盘布局：~/.dsh/sessions/--<cwd转义>--/<sessionId>/session.v4.jsonl.zstd）。
+    /// 电脑端该会话的日志文件绝对路径（DSH 的磁盘布局：~/.dsh/sessionStore.sessions/--<cwd转义>--/<sessionId>/session.v4.jsonl.zstd）。
     var sessionLogPath: String? {
-        guard let session = selectedSession, let cwd = session.cwd, cwd.hasPrefix("/") else { return nil }
+        guard let session = sessionStore.selected, let cwd = session.cwd, cwd.hasPrefix("/") else { return nil }
         let trimmed = String(cwd.dropFirst())
         let encoded = "--" + trimmed.replacingOccurrences(of: "/", with: "-") + "--"
-        return "\(Self.homeDirectory(for: cwd))/.dsh/sessions/\(encoded)/\(session.sessionId)/session.v4.jsonl.zstd"
+        return "\(Self.homeDirectory(for: cwd))/.dsh/sessionStore.sessions/\(encoded)/\(session.sessionId)/session.v4.jsonl.zstd"
     }
 
     /// 会话页标题：优先用列表中最新标题，避免打开后改标题不刷新。
     var currentConversationTitle: String {
-        guard let id = selectedSession?.sessionId else { return "对话" }
-        return (sessions.first(where: { $0.sessionId == id }) ?? selectedSession)?.displayTitle ?? "对话"
+        guard let id = sessionStore.selected?.sessionId else { return "对话" }
+        return (sessionStore.sessions.first(where: { $0.sessionId == id }) ?? sessionStore.selected)?.displayTitle ?? "对话"
     }
 
     // MARK: - 本地发件箱（防止已发送但未落库的消息"消失"）
@@ -559,7 +501,7 @@ final class ConnectionModel {
 
     /// 用 DSHKit 构建的协议客户端（共享 URLSession cookie）。
     var syncClient: DSHClient? {
-        guard let url = try? Self.serverURL(from: serverAddress) else { return nil }
+        guard let url = try? Self.serverURL(from: connection.serverAddress) else { return nil }
         return DSHClient(baseURL: url)
     }
 
@@ -567,7 +509,7 @@ final class ConnectionModel {
     /// 地址无效时抛 `ConnectionError.invalidURL`，与旧实现一致。
     var rpcClient: DSHClient {
         get throws {
-            guard let client = syncClient else { throw ConnectionError.invalidURL(serverAddress) }
+            guard let client = syncClient else { throw ConnectionError.invalidURL(connection.serverAddress) }
             return client
         }
     }
