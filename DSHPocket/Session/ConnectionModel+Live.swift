@@ -768,7 +768,7 @@ extension ConnectionModel {
         messages.append(pending)
         pendingSendID = pending.id
         pendingSendRpcId = requestId
-        addOutbox(sessionId: session.sessionId, rpcId: requestId, text: text)
+        addOutbox(sessionId: session.sessionId, rpcId: requestId, text: text, images: attachments)
         cancelledDraft = text
         cancelledImages = attachments
         draft = ""

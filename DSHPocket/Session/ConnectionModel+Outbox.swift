@@ -46,11 +46,26 @@ extension ConnectionModel {
     }
 
     @MainActor
-    func addOutbox(sessionId: String, rpcId: String, text: String) {
-        guard !text.isEmpty else { return }
+    func addOutbox(sessionId: String, rpcId: String, text: String,
+                   images: [PocketDraftImage] = []) {
+        guard !text.isEmpty || !images.isEmpty else { return }
+        // 图片一起落盘：数量与总大小按策略卡住，超了就只排文字并提示。
+        var stored: [OutboxAttachment] = []
+        if !images.isEmpty {
+            let bytes = images.reduce(0) { $0 + $1.data.count }
+            let withinMessage = OutboxAttachmentPolicy.canHold(imageCount: images.count, totalBytes: bytes)
+            let withinBudget = OutboxAttachmentPolicy.fits(currentTotalBytes: OutboxImageStore.totalBytes(),
+                                                           adding: bytes)
+            if withinMessage && withinBudget {
+                stored = OutboxImageStore.save(images, rpcId: rpcId)
+            } else {
+                recordDiagnostic("图片未排队：超出暂存上限（\(images.count) 张 / \(bytes) 字节）")
+            }
+        }
         loadOutboxIfNeeded()
         outboxEntries.append(OutboxEntry(id: rpcId.lowercased(), sessionId: sessionId, text: text,
-                                         createdAt: Date().timeIntervalSince1970))
+                                         createdAt: Date().timeIntervalSince1970,
+                                         attachments: stored))
         persistOutbox()
     }
 
@@ -128,7 +143,10 @@ extension ConnectionModel {
         loadOutboxIfNeeded()
         let before = outboxEntries.count
         outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
-        if outboxEntries.count != before { persistOutbox() }
+        if outboxEntries.count != before {
+            persistOutbox()
+            ids.forEach(OutboxImageStore.delete(rpcId:))
+        }
     }
 
     /// 发件箱里已发出、但列表里没有对应消息的条目：补成 pending 气泡，避免"发了但看不见"。
@@ -138,7 +156,8 @@ extension ConnectionModel {
         loadOutboxIfNeeded()
         let representedRpcIds = Set(messages.compactMap(\.rpcId).map { $0.lowercased() })
         let missing = outboxEntries.filter {
-            $0.sessionId == session.sessionId && !$0.text.isEmpty && !representedRpcIds.contains($0.id.lowercased())
+            $0.sessionId == session.sessionId && (!$0.text.isEmpty || !$0.attachments.isEmpty)
+                && !representedRpcIds.contains($0.id.lowercased())
         }
         guard !missing.isEmpty else { return }
         for entry in missing {
@@ -158,6 +177,7 @@ extension ConnectionModel {
         let ids = Set(rpcIds.map { $0.lowercased() })
         outboxEntries.removeAll { ids.contains($0.id.lowercased()) }
         persistOutbox()
+        ids.forEach(OutboxImageStore.delete(rpcId:))
     }
 
     func restoreOutboxPending(for session: PocketSession) -> [PocketMessage] {
@@ -195,6 +215,14 @@ extension ConnectionModel {
         ackedSendRpcIds.remove(rpcId)
         queuedSendRpcIds.remove(rpcId)
         messages.removeAll { $0.id == message.id }
+        // 图片改回草稿，重发时一起带上。
+        let restored = OutboxImageStore.load(entry.attachments, rpcId: entry.id)
+        if !restored.isEmpty, let ui = restored.compactMap({ UIImage(data: $0.data) }) as [UIImage]? {
+            for (item, image) in zip(restored, ui) {
+                draftImages.append(PocketDraftImage(data: item.data, mediaType: item.attachment.mediaType,
+                                                    name: item.attachment.name, uiImage: image))
+            }
+        }
         removeOutbox(rpcIds: [rpcId])
         draft = entry.text
         sendMessage(in: session)
@@ -272,12 +300,22 @@ extension ConnectionModel {
         let now = Date()
         let createdAt = Date(timeIntervalSince1970: entry.createdAt)
         let text = OfflineDeliveryPolicy.annotatedText(entry.text, createdAt: createdAt, now: now)
+        var content: [[String: Any]] = []
+        if !text.isEmpty { content.append(["type": "text", "text": text]) }
+        for item in OutboxImageStore.load(entry.attachments, rpcId: entry.id) {
+            content.append([
+                "type": "image",
+                "mediaType": item.attachment.mediaType,
+                "data": item.data.base64EncodedString(),
+                "name": item.attachment.name
+            ])
+        }
         do {
             _ = try await rpcWithRetry("session/prompt", args: ["request": [
                 "requestId": entry.id,
                 "sessionId": entry.sessionId,
                 "mode": OfflineDeliveryPolicy.deliveryMode,
-                "content": [["type": "text", "text": text]],
+                "content": content,
                 "clientTimeZone": TimeZone.current.identifier,
                 "clientSentAt": entry.createdAt
             ]])
