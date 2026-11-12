@@ -16,50 +16,6 @@ import ImageIO
 import UserNotifications
 
 
-struct DiagnosticVisit {
-    var index: Int
-    var enterMs: Int?
-    var leaveMs: Int?
-    var reusedMessages: Int
-    var memoryEnter: Int
-    var memoryLeave: Int?
-    var viewsAfterLeave: Int?
-
-    var line: String {
-        let enter = enterMs.map { "进 \($0)ms" } ?? "进 …"
-        let leave = leaveMs.map { "出 \($0)ms" } ?? "出 —"
-        let views = viewsAfterLeave.map { "页 \($0)" } ?? "页 …"
-        let left = memoryLeave.map(String.init) ?? "—"
-        return "\(index)  \(enter) 复用\(reusedMessages)条  \(leave)  \(views)  内存 \(memoryEnter)→\(left)"
-    }
-}
-
-struct DiagnosticSample {
-    var at: Date
-    var memoryMB: Int
-    var pending: Int
-    var queued: Int
-    var failed: Int
-    var network: String
-    var enterMs: Int?
-
-    var line: String {
-        let clock = Self.clock.string(from: at)
-        var text = "\(clock)  内存 \(memoryMB)  待确认 \(pending)  断网 \(queued)  失败 \(failed)  网络 \(network)"
-        if let enterMs {
-            text += "  进入 \(enterMs) ms"
-        }
-        return text
-    }
-
-    private static let clock: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter
-    }()
-}
-
 @Observable
 final class ConnectionModel {
     static let savedServerAddressKey = "dsh-pocket.server-address"
