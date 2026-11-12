@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T21:21:16+08:00",
-  "commit": "6115534",
+  "generated_at": "2026-11-12T21:52:07+08:00",
+  "commit": "faf5234",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 74,
-      "lines": 10349
+      "files": 75,
+      "lines": 10372
     },
     {
       "layer": "ui-tests",
@@ -1876,9 +1876,20 @@
       ]
     },
     {
+      "file": "DSHPocket/Views/ConversationMoreMenu.swift",
+      "layer": "app",
+      "lines": 51,
+      "types": [
+        "ConversationMoreMenu"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
       "file": "DSHPocket/Views/ConversationView.swift",
       "layer": "app",
-      "lines": 656,
+      "lines": 628,
       "types": [
         "ConversationView"
       ],
@@ -2321,7 +2332,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
-      "detail": "656 行"
+      "detail": "628 行"
     },
     {
       "rule": "extension-split-smell",

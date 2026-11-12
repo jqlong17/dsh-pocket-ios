@@ -498,38 +498,10 @@ struct ConversationView: View {
                 JobsToolbarButton { showingJobs = true }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        UIPasteboard.general.string = model.sessionAddress
-                        copiedLogPath = model.sessionAddress
-                    } label: {
-                        Label(L10n.t("复制会话地址"), systemImage: "link")
-                    }
-                    Button {
-                        if let path = model.sessionLogPath {
-                            UIPasteboard.general.string = path
-                            copiedLogPath = path
-                        }
-                    } label: {
-                        Label(L10n.t("复制会话日志路径"), systemImage: "doc.on.doc")
-                    }
-                    Divider()
-                    Button {
-                        showingModelPicker = true
-                    } label: {
-                        Label(model.selectedModelLabel.map { L10n.t("选择模型") + "：" + $0 } ?? L10n.t("选择模型"),
-                              systemImage: "cpu")
-                    }
-                    Button {
-                        UIPasteboard.general.string = model.diagnosticReport()
-                        copiedLogPath = model.diagnosticReport()
-                    } label: {
-                        Label(L10n.t("复制诊断信息"), systemImage: "stethoscope")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .accessibilityLabel(L10n.t("更多"))
+                // 菜单项已拆到 ConversationMoreMenu.swift。
+                ConversationMoreMenu(model: model,
+                                     showingModelPicker: $showingModelPicker,
+                                     onCopied: { copiedLogPath = $0 })
             }
         }
         .alert(L10n.t("已复制"), isPresented: Binding(
