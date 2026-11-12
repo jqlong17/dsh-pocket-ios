@@ -102,15 +102,21 @@ struct ConversationView: View {
     /// 离开底部之后到达的助手回复条数（用户自己的消息不算）。
     private var unreadReplies: Int {
         guard let mark = unreadSinceSequence else { return 0 }
-        return model.messages.filter { !$0.isUser && !$0.isPending && $0.sequence > mark }.count
+        // 计数规则在 DSHKit（可测）：用户消息与待发都不算。
+        return UnreadCounter.replies(after: mark, messages: model.messages.map {
+            (isUser: $0.isUser, isPending: $0.isPending, sequence: $0.sequence)
+        })
     }
 
     /// 消息列表的垂直节奏：同人连续 8、换角色 18、过程行相邻 10、turn 切换 24。
     private static func messageSpacing(previous: TimelineEntry, current: TimelineEntry) -> CGFloat {
-        if previous.group != nil || current.group != nil || previous.failure != nil || current.failure != nil { return 10 }
-        guard let prevMessage = previous.message, let currentMessage = current.message else { return 10 }
-        if prevMessage.isUser != currentMessage.isUser { return 18 }
-        return 8
+        // 节奏规则在 DSHKit（可测）：同人 8、换角色 18、过程行/失败卡 10。
+        CGFloat(TimelineSpacing.between(
+            previousIsGroup: previous.group != nil || previous.failure != nil,
+            currentIsGroup: current.group != nil || current.failure != nil,
+            previousIsUser: previous.message?.isUser,
+            currentIsUser: current.message?.isUser
+        ))
     }
 
     private var canSend: Bool {

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:43:48+08:00",
-  "commit": "f6f38f1",
+  "generated_at": "2026-11-12T11:44:15+08:00",
+  "commit": "8b97034",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 46,
-      "lines": 2773
+      "files": 47,
+      "lines": 2801
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 69,
-      "lines": 10049
+      "lines": 10055
     },
     {
       "layer": "ui-tests",
@@ -651,6 +651,18 @@
       ],
       "imports": [
         "CoreGraphics",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/UI/TimelineSpacing.swift",
+      "layer": "pure-logic",
+      "lines": 28,
+      "types": [
+        "TimelineSpacing",
+        "UnreadCounter"
+      ],
+      "imports": [
         "Foundation"
       ]
     },
@@ -1730,7 +1742,7 @@
     {
       "file": "DSHPocket/Views/ConversationView.swift",
       "layer": "app",
-      "lines": 735,
+      "lines": 741,
       "types": [
         "ConversationView"
       ],
@@ -2173,7 +2185,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
-      "detail": "735 行"
+      "detail": "741 行"
     },
     {
       "rule": "extension-split-smell",
