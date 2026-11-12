@@ -39,6 +39,8 @@ struct ConversationView: View {
     @State private var suppressAutoScrollUntil = Date.distantPast
     /// 手指正在拖动列表。拖动期间一律不自动贴底，否则用户上滑会被按住。
     @State private var userDragging = false
+    /// 这次拖动的方向。往上带就要立刻停止跟随，不能因为还贴着底又把跟随打开。
+    @State private var dragIntent: ScrollDragIntent = .none
     /// 分页加载冷却，避免滚动到顶部时连续翻页。
     @State private var olderCooldownUntil = Date.distantPast
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
@@ -241,11 +243,18 @@ struct ConversationView: View {
                             // 用户一旦主动拖动，立刻取消"刚进会话时的多次补滚"，不要跟手指抢滚动。
                             scrollGeneration &+= 1
                             userDragging = true
-                            if value.translation.height > 10 { followsLatest = false }
+                            // 滑动方向：往上带 >2 点就算在读历史
+                            if value.translation.height > 2 {
+                                dragIntent = .up
+                                followsLatest = false
+                            } else if value.translation.height < -2 {
+                                dragIntent = .down
+                            }
                         }
                         .onEnded { _ in
                             // 手指抬起才允许恢复自动贴底；拖动期间任何贴底都会把用户按住。
                             userDragging = false
+                            dragIntent = .none
                         }
                 )
                 // 视图刚出现时先补滚一次（打开会话的 tick 可能早于 onChange 订阅）。
@@ -343,7 +352,7 @@ struct ConversationView: View {
                     // 判定全部交给 DSHKit：只有贴底才跟随，手指在屏上不抢。
                     let atBottom = ScrollFollowPolicy.isAtBottom(distanceFromBottom: distance)
                     switch ScrollFollowPolicy.action(distanceFromBottom: distance,
-                                                     isDragging: userDragging,
+                                                     drag: userDragging ? dragIntent : .none,
                                                      followsLatest: followsLatest) {
                     case .follow:
                         isAtBottom = true

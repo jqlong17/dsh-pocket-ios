@@ -10,27 +10,45 @@ final class ScrollFollowPolicyTests: XCTestCase {
         XCTAssertFalse(ScrollFollowPolicy.isAtBottom(distanceFromBottom: 48))
     }
 
-    func testBottomRestoresFollow() {
+    func testBottomRestoresFollowWhenNotDragging() {
         XCTAssertEqual(
-            ScrollFollowPolicy.action(distanceFromBottom: 2, isDragging: true, followsLatest: false),
+            ScrollFollowPolicy.action(distanceFromBottom: 2, drag: .none, followsLatest: false),
+            .follow
+        )
+    }
+
+    func testDraggingUpNeverRefollowsEvenAtBottom() {
+        XCTAssertEqual(
+            ScrollFollowPolicy.action(distanceFromBottom: 0, drag: .up, followsLatest: true),
+            .stopFollow
+        )
+        XCTAssertEqual(
+            ScrollFollowPolicy.action(distanceFromBottom: 2, drag: .up, followsLatest: false),
+            .stopFollow
+        )
+    }
+
+    func testDraggingDownAtBottomRefollows() {
+        XCTAssertEqual(
+            ScrollFollowPolicy.action(distanceFromBottom: 1, drag: .down, followsLatest: false),
             .follow
         )
     }
 
     func testLeavingBottomStopsFollow() {
         XCTAssertEqual(
-            ScrollFollowPolicy.action(distanceFromBottom: 30, isDragging: true, followsLatest: true),
+            ScrollFollowPolicy.action(distanceFromBottom: 30, drag: .up, followsLatest: true),
             .stopFollow
         )
     }
 
     func testGrowthPinsOnlyWhileFollowing() {
         XCTAssertEqual(
-            ScrollFollowPolicy.action(distanceFromBottom: 30, isDragging: false, followsLatest: true),
+            ScrollFollowPolicy.action(distanceFromBottom: 30, drag: .none, followsLatest: true),
             .pinToBottom
         )
         XCTAssertEqual(
-            ScrollFollowPolicy.action(distanceFromBottom: 30, isDragging: false, followsLatest: false),
+            ScrollFollowPolicy.action(distanceFromBottom: 30, drag: .none, followsLatest: false),
             .keep
         )
     }
