@@ -1,8 +1,14 @@
 # DSH Pocket iOS 重构 Spec
 
-> **新写 spec 先看 [`00-TEMPLATE.md`](00-TEMPLATE.md)**——模板骨架取自
+> **新写 spec 先看两份**：
+> - [`00-TEMPLATE.md`](00-TEMPLATE.md) —— 结构模板（填空用）
+> - [`00-GOOD-EXAMPLE.md`](00-GOOD-EXAMPLE.md) —— **填空示范**（每段「合格长什么样」）
+>
+> 模板骨架取自
 > [rust-lang/rfcs 的 0000-template.md](https://github.com/rust-lang/rfcs/blob/master/0000-template.md)（约 6 万 star），
 > 并补了三段外部模板没有的：测试计划（标 target）、预估工时（+校准）、验收记录。
+>
+> **文件名**：`YYYY-MM-DD-HHMM-slug.md`（日期时间编号，不用连号——见模板顶部说明）。
 >
 > **定位**：我们的 spec 是**执行契约（pitch）**，不是 20 页的设计讨论文档。
 > 判据是有时间预算、有方案、有验收标准，接受即执行；不要求「评审意见征集」。
@@ -22,16 +28,17 @@
 | Accepted | 已确认、正在或已经实现 |
 | Superseded | 被新 spec 取代，保留不动（历史记录，不回改） |
 
-## 07 之前的历史 spec
+## 归档
 
-`01`–`10` 写在模板定稿之前，多数只有 2–3 段（缺目标/测试计划/预估工时）。
-**处理方式**：标记为 `Superseded (historical)`，不补写。
-理由：spec 的价值在执行期，事后补写等于编造决策过程；它们对应的代码已迭代数轮，
-补写出来的「当初为什么这样做」是假的。
+`archive/` 下是 2026-11-12 之前写的 18 份 spec，**只作历史记录，不要照着写**。
+里面逐条列了不规范点（数字编号、缺 Status、缺被否决方案、缺未决问题、只有风险没有代价、
+测试计划不标 target、预估凭直觉），以及为什么归档而不是补写。
+
+新 spec 一律照 [`00-TEMPLATE.md`](00-TEMPLATE.md) 写，文件名用日期时间。
 
 ---
 
-# 原 TDD 版说明
+# 原 TDD 版说明（保留作历史）
 
 本目录是架构重构的规格文档，按**可独立优化的模块**顺序编号。开发规则：**先测试、后实现**；
 每个模块独立验收；最终跑端到端测试并统计覆盖率（**≥85%** 才允许验收）。
@@ -40,11 +47,11 @@
 
 | 编号 | 模块 | 目标 | 依赖 |
 | --- | --- | --- | --- |
-| [01](01-dshkit-transport-protocol.md) | DSHKit / Transport + Protocol | 抽出可单测的协议客户端（RPC、WS、解码） | — ✅ 已验收 |
-| [02](02-sync-coordinator.md) | Sync Coordinator | 单一同步真相源：snapshot/事件/轮询/重连/分页 | 01 ✅ 已验收（包内） |
-| [03](03-message-lifecycle.md) | 消息生命周期 | 状态机、rpcId 对账、发件箱、排序、steer | 01,02 |
-| [04](04-conversation-ui.md) | Conversation UI / ViewModel | 滚动、发送、键盘、复制、附件、渲染 | 03 |
-| [05](05-e2e-and-coverage.md) | 端到端测试 + 覆盖率 | 全链路场景、覆盖率门槛、验收流程 | 01–04 |
+| [01](archive/01-dshkit-transport-protocol.md) | DSHKit / Transport + Protocol | 抽出可单测的协议客户端（RPC、WS、解码） | — ✅ 已验收 |
+| [02](archive/02-sync-coordinator.md) | Sync Coordinator | 单一同步真相源：snapshot/事件/轮询/重连/分页 | 01 ✅ 已验收（包内） |
+| [03](archive/03-message-lifecycle.md) | 消息生命周期 | 状态机、rpcId 对账、发件箱、排序、steer | 01,02 |
+| [04](archive/04-conversation-ui.md) | Conversation UI / ViewModel | 滚动、发送、键盘、复制、附件、渲染 | 03 |
+| [05](archive/05-e2e-and-coverage.md) | 端到端测试 + 覆盖率 | 全链路场景、覆盖率门槛、验收流程 | 01–04 |
 
 ## TDD 工作流（每个模块必须遵守）
 
@@ -112,4 +119,4 @@ xcrun xccov view --report --json build/TestResults.xcresult > build/coverage.jso
 | 集成测试 | `DSHKit/Tests/Integration/` | 用 MockTransport 跑 sync coordinator 全流程 |
 | 端到端测试 | `DSHPocketUITests/`（XCUITest）+ Demo 模式 | 登录/演示/收发/切换/断线重连 |
 
-- [06 · 后台完成推送（APNs）](06-apns-background-notifications.md) — 设计稿
+- [06 · 后台完成推送（APNs）](archive/06-apns-background-notifications.md) — 设计稿
