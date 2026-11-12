@@ -1,4 +1,4 @@
-// LiveStreamRunner
+// 实时流
 
 import Foundation
 import DSHKit
@@ -12,61 +12,34 @@ import DSHKit
 ///
 /// 依赖全部注入：它需要知道「当前是不是这条会话」「是否在生成中」「断线该不该重新登录」，
 /// 但这些判断属于模型，不该被搬到流循环里。
-final class LiveStreamRunner {
-    struct Providers {
-        var isDemoMode: () -> Bool
-        /// 当前 WebSocket 地址（每次重连重新取，地址可能变）。
-        var socketURL: () throws -> URL
-        /// 这一帧/这个循环是否仍属于当前会话。
-        var isCurrentSession: (String) -> Bool
-        var setFollowing: (Bool) -> Void
-        var setConnection: (LiveConnectionState) -> Void
-        var conversationError: () -> String?
-        var setConversationError: (String?) -> Void
-        var isTurnRunning: () -> Bool
-        var record: (String) -> Void
-        var log: (String) -> Void
-        var logError: (String) -> Void
-        /// 收到一帧（已确认 streamId 匹配）。
-        var onItem: ([String: Any], String) -> Void
-        /// 实时流恢复后：把断网暂存一并补发。
-        var flushQueued: () -> Void
-        var loadHistory: () async -> Void
-        /// 重连多次失败后探测登录态；返回 true 表示已失效。
-        var authExpired: () async -> Bool
-        var onAuthExpired: () -> Void
-        var maxMessages: Int
-    }
-
-    var providers: Providers?
-
-    func run(sessionId: String) async {
-        guard let providers, !providers.isDemoMode() else { return }
-        defer { providers.setFollowing(false) }
-        let socketURL: URL
-        do {
-            socketURL = try providers.socketURL()
-        } catch {
-            providers.record("实时连接未启动：地址无效")
+extension ConnectionModel {
+    @MainActor
+    func runLiveStream(sessionId: String) async {
+        guard !isDemoMode else { return }
+        defer { activeConversation?.isFollowing = false }
+        // 每次进入循环前重新取地址（地址可能在重连期间被改）。
+        guard let base = URL(string: connection.serverAddress),
+              let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
+            recordDiagnostic("实时连接未启动：地址无效")
             return
         }
-        providers.setFollowing(true)
+        activeConversation?.isFollowing = true
         var retryDelay: Duration = LiveStreamPolicy.initialReconnectDelay
         var retryCount = 0
         var receivedSnapshot = false
         var usedHistoryFallback = false
 
-        while !Task.isCancelled, providers.isCurrentSession(sessionId) {
-            providers.setConnection(.connecting)
+        while !Task.isCancelled, (activeConversation?.sessionId == sessionId && sessionStore.selected?.sessionId == sessionId) {
+            liveConnection = .connecting
             let socket = URLSession.shared.webSocketTask(with: socketURL)
             socket.resume()
-            providers.record("实时连接：发起连接")
-            providers.log("follow connecting session=\(sessionId) url=\(socketURL.absoluteString)")
+            recordDiagnostic("实时连接：发起连接")
+            pocketLogger.info("follow connecting session=\(sessionId) url=\(socketURL.absoluteString)")
             let streamId = UUID().uuidString
             let open = StreamOpen(type: "open", streamId: streamId, endpoint: "session/follow",
                                   payload: ["args": ["request": [
                                     "address": ["kind": "session", "sessionId": sessionId],
-                                    "maxMessages": providers.maxMessages
+                                    "maxMessages": Self.conversationMessageLimit
                                   ]]])
             do {
                 let data = try JSONEncoder().encode(open)
@@ -88,7 +61,7 @@ final class LiveStreamRunner {
                 defer { heartbeat.cancel() }
                 while !Task.isCancelled {
                     let frame = try await Self.receiveFrame(socket: socket,
-                                                            isTurnRunning: providers.isTurnRunning())
+                                                            isTurnRunning: isTurnRunning)
                     guard let object = try? JSONSerialization.jsonObject(with: frame) as? [String: Any],
                           let value = StreamFrames.itemValue(object, streamId: streamId) else {
                         NSLog("DSH_DIAG ignored frame type=%@ streamMatch=%@",
@@ -97,32 +70,32 @@ final class LiveStreamRunner {
                         continue
                     }
                     if value["type"] as? String == "snapshot" { receivedSnapshot = true }
-                    providers.setConnection(.connected)
-                    if providers.conversationError()?.hasPrefix("实时连接") == true {
-                        providers.setConversationError(nil)
+                    liveConnection = .connected
+                    if conversationError?.hasPrefix("实时连接") == true {
+                        conversationError = nil
                     }
                     // 实时流一恢复就把各会话的断网暂存一并补发。
-                    providers.flushQueued()
+                    flushQueuedSends()
                     retryDelay = LiveStreamPolicy.initialReconnectDelay
-                    providers.onItem(value, sessionId)
+                    acceptLive(value, sessionId: sessionId)
                 }
                 if !Task.isCancelled { throw ConnectionError.remote("实时连接已结束") }
             } catch {
                 socket.cancel(with: .goingAway, reason: nil)
                 guard !Task.isCancelled else { break }
-                providers.setConnection(.reconnecting(attempt: retryCount))
+                liveConnection = .reconnecting(attempt: retryCount)
                 if (error as? URLError)?.code == .cancelled { return }
-                providers.setConversationError("实时连接中断，正在重连：\(error.localizedDescription)")
-                providers.record("实时连接中断，\(Int(retryDelay.components.seconds)) 秒后重试：\(error.localizedDescription)")
-                providers.logError("follow failed: \(error.localizedDescription)")
+                conversationError = "实时连接中断，正在重连：\(error.localizedDescription)"
+                recordDiagnostic("实时连接中断，\(Int(retryDelay.components.seconds)) 秒后重试：\(error.localizedDescription)")
+                pocketLogger.error("follow failed: \(error.localizedDescription)")
                 if !receivedSnapshot && !usedHistoryFallback {
                     usedHistoryFallback = true
-                    await providers.loadHistory()
+                    if let s = sessionStore.selected { await loadHistory(s) }
                 }
                 // 重连多次仍失败时探测登录态：DSH 重启后 browser-auth cookie 会失效，
                 // WS 只会一直重连，必须回到连接页重新输入密码。
-                if retryCount >= 1, await providers.authExpired() {
-                    providers.onAuthExpired()
+                if retryCount >= 1, await probeAuthExpired() {
+                    handleAuthExpired()
                     return
                 }
                 do { try await Task.sleep(for: retryDelay) } catch { break }
@@ -130,8 +103,22 @@ final class LiveStreamRunner {
                 retryCount += 1
             }
         }
-        if providers.isCurrentSession(sessionId) {
-            providers.setConnection(.disconnected(reason: nil))
+        if (activeConversation?.sessionId == sessionId && sessionStore.selected?.sessionId == sessionId) {
+            liveConnection = .disconnected(reason: nil)
+        }
+    }
+
+    /// 重连多次仍失败时探测登录态：DSH 重启后 browser-auth cookie 会失效，
+    /// WS 只会一直重连，必须回到连接页重新输入密码。
+    @MainActor
+    func probeAuthExpired() async -> Bool {
+        do {
+            _ = try await fetchSessions()
+            return false
+        } catch let error as ConnectionError {
+            return error.isUnauthorized
+        } catch {
+            return false
         }
     }
 

@@ -113,7 +113,7 @@ extension ConnectionModel {
         fallbackTask = Task { await pollLiveFallback(session) }
         let token = conversationToken
         let historyTask = Task { await self.loadHistory(session, token: token) }
-        await follow(session)
+        await runLiveStream(sessionId: session.sessionId)
         _ = await historyTask.value
         if activeConversation?.sessionId == session.sessionId,
            sessionStore.selected?.sessionId == session.sessionId,
