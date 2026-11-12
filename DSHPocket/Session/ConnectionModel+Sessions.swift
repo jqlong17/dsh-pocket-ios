@@ -395,8 +395,8 @@ extension ConnectionModel {
     }
 
     @MainActor
+    /// 进入会话：只切状态、让界面立刻有内容；订阅与维护工作交给 startBackgroundFeeds。
     func open(_ session: PocketSession) {
-        pruneStaleOutbox()
         if isDemoMode { openDemo(session); return }
         if selectedSession?.sessionId == session.sessionId,
            activeConversation?.coordinatorStarted == true { return }
@@ -445,8 +445,6 @@ extension ConnectionModel {
         for pending in outboxPending where !conversation.messages.contains(where: { $0.rpcId == pending.rpcId }) {
             conversation.messages.append(pending)
         }
-        recordDiagnostic("打开会话：\(session.displayTitle)")
-        startDiagnosticSampler()
         beginDiagnosticVisit(reusedMessages: isNewConversation ? 0 : conversation.messages.count)
         // 加载态由策略决定：有缓存就直接显示内容，不再转圈等快照。
         // 顺序很关键：先把计时起点设好，再按策略收尾，否则 noteLoadFinished 会直接返回（踩过）。
@@ -457,35 +455,49 @@ extension ConnectionModel {
         if openPlan.skipLoadingState, let source = openPlan.loadSource {
             noteLoadFinished(source: source, conversation: conversation)
         }
-        trimRetainedConversations(keeping: session.sessionId)
         requestScrollToBottom()
-        // 任务名单不再随进入订阅：打不开任务面板就不建这条连接（按需，见 ensureJobRoster）。
-        if let client = syncClient {
-            startCoordinator(for: conversation, session: session, client: client,
-                             showsLoading: !openPlan.skipLoadingState)
-            // 列表里的 running 可能滞后：4 秒后（且期间没有实时 turn 事件）再核实一次。
-            if session.running {
-                Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(4))
-                    await self?.refreshRunningState(for: session.sessionId)
-                }
-            }
-#if DEBUG
-            let olderLoads = DebugLaunch.loadOlderCount
-            if olderLoads > 0 {
-                Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(3))
-                    for _ in 0..<olderLoads {
-                        self?.loadOlderMessages()
-                        try? await Task.sleep(for: .seconds(2))
-                    }
-                }
-            }
-#endif
-        } else {
+
+        // 首帧之后再起订阅与维护：进入路径上不做网络与清理工作。
+        let showsLoading = !openPlan.skipLoadingState
+        Task { @MainActor [weak self] in
+            await self?.startBackgroundFeeds(for: conversation, session: session, showsLoading: showsLoading)
+        }
+    }
+
+    /// 进入之后的订阅与维护（不在首帧同步路径上）。
+    @MainActor
+    func startBackgroundFeeds(for conversation: ConversationState, session: PocketSession,
+                              showsLoading: Bool) async {
+        guard activeConversation === conversation else { return }
+        pruneStaleOutbox()
+        recordDiagnostic("打开会话：\(session.displayTitle)")
+        startDiagnosticSampler()
+        trimRetainedConversations(keeping: session.sessionId)
+        guard let client = syncClient else {
             // 地址异常时保留旧路径兜底。
             liveTask = Task { await loadConversation(session) }
+            return
         }
+        startCoordinator(for: conversation, session: session, client: client, showsLoading: showsLoading)
+        // 列表里的 running 可能滞后：4 秒后（且期间没有实时 turn 事件）再核实一次。
+        if session.running {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(4))
+                await self?.refreshRunningState(for: session.sessionId)
+            }
+        }
+#if DEBUG
+        let olderLoads = DebugLaunch.loadOlderCount
+        if olderLoads > 0 {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                for _ in 0..<olderLoads {
+                    self?.loadOlderMessages()
+                    try? await Task.sleep(for: .seconds(2))
+                }
+            }
+        }
+#endif
     }
 
     @MainActor
