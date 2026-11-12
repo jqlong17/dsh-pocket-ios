@@ -222,6 +222,8 @@ final class ConnectionModel {
     let networkWatcher = NetworkWatcher()
     /// 监听只启动一次。
     var networkWatcherStarted = false
+    /// 本轮启动是否已尝试用设备凭证换票，避免 401 循环。
+    var authRefreshAttempted = false
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }

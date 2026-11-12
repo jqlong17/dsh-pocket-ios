@@ -280,6 +280,7 @@ extension ConnectionModel {
                 addressNeedsRescan = false
                 PinKeychain.clear()
                 ConnectionVault.saveAuthCookies(from: url)
+                ConnectionVault.saveDeviceToken(from: url)
                 recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
                 return
             } catch {

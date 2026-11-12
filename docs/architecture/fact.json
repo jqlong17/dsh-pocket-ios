@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:10:15+08:00",
-  "commit": "f0e8bdb",
+  "generated_at": "2026-11-12T22:15:31+08:00",
+  "commit": "7b73d43",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 75,
-      "lines": 10540
+      "lines": 10606
     },
     {
       "layer": "ui-tests",
@@ -1283,7 +1283,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 486,
+      "lines": 487,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1349,7 +1349,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 907,
+      "lines": 948,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1439,7 +1439,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 568,
+      "lines": 570,
       "types": [
         "ConnectionModel"
       ],
@@ -1636,7 +1636,7 @@
     {
       "file": "DSHPocket/Support/AppSupport.swift",
       "layer": "app",
-      "lines": 260,
+      "lines": 282,
       "types": [
         "AccessibilityAnnouncer",
         "ConversationViewLifetime",
@@ -2313,12 +2313,12 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
-      "detail": "486 行"
+      "detail": "487 行"
     },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "907 行"
+      "detail": "948 行"
     },
     {
       "rule": "file-max-400",
@@ -2328,7 +2328,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "568 行"
+      "detail": "570 行"
     },
     {
       "rule": "file-max-400",

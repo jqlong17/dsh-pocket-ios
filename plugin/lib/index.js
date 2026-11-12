@@ -28,6 +28,52 @@ const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
 
 // 一次性配对 token（60 秒有效、用后作废），用于扫码免密码连接。
 const pairTokens = new Map()
+
+/**
+ * 长期设备凭证。
+ *
+ * 为什么需要：DSH 的 dsh-auth cookie 是 **session 级**的，DSH 一重启就失效，
+ * 用户就得重新扫码。设备凭证存在电脑上（不含密码），App 存一份在 Keychain，
+ * cookie 失效时用它换新的——除非用户主动撤销设备，否则不必再扫。
+ *
+ * 存储：~/.dsh/dsh-pocket-ios/devices.json
+ *   { "<token>": { name, createdAt, lastUsedAt } }
+ * token 是 32 字节随机串，只在本机文件与用户 Keychain 里，不上传任何地方。
+ */
+const DEVICE_FILE = join(LOG_DIR, 'devices.json')
+let devicesCache = null
+
+async function readDevices() {
+  if (devicesCache) return devicesCache
+  try {
+    devicesCache = JSON.parse(await readFile(DEVICE_FILE, 'utf8'))
+    if (!devicesCache || typeof devicesCache !== 'object') devicesCache = {}
+  } catch {
+    devicesCache = {}
+  }
+  return devicesCache
+}
+
+async function saveDevices(map) {
+  devicesCache = map
+  await mkdir(LOG_DIR, { recursive: true })
+  await writeFile(DEVICE_FILE, JSON.stringify(map, null, 2), { mode: 0o600 })
+}
+
+function newDeviceToken() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+  return Array.from({ length: 43 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
+/** 从请求里取设备凭证：优先 header，其次 cookie。 */
+function deviceTokenFrom(req, urlObject) {
+  const header = String(req.headers['x-dsh-pocket-device'] ?? '').trim()
+  if (header) return header
+  const cookie = String(req.headers.cookie ?? '')
+  const match = cookie.match(/(?:^|;\s*)dsh-pocket-device=([^;]+)/)
+  if (match) return decodeURIComponent(match[1])
+  return String(urlObject?.searchParams?.get('device') ?? '').trim()
+}
 async function logLine(line) {
   try {
     await mkdir(LOG_DIR, { recursive: true })
@@ -288,8 +334,30 @@ export function apply(ctx) {
           const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
           const proto = forwardedProto || (isLoopback ? 'http' : 'https')
           const target = connection.authenticatedUrl(`${proto}://${host}/`)
+          // 顺带签发长期设备凭证：cookie 是 session 级的，DSH 重启后失效，
+          // App 靠这份凭证换新 cookie，不必重新扫码。
+          let deviceCookie = []
+          try {
+            const devices = await readDevices()
+            // 复用同名设备，避免每次配对都堆一条。
+            const deviceName = String(req.headers['user-agent'] ?? 'iOS').slice(0, 80)
+            let existing = Object.keys(devices).find((key) => devices[key]?.name === deviceName)
+            if (!existing) {
+              existing = newDeviceToken()
+              devices[existing] = { name: deviceName, createdAt: Date.now(), lastUsedAt: Date.now() }
+              await saveDevices(devices)
+            } else {
+              devices[existing].lastUsedAt = Date.now()
+              await saveDevices(devices)
+            }
+            deviceCookie = [`dsh-pocket-device=${encodeURIComponent(existing)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`]
+          } catch (error) {
+            await logLine(`device token issue failed: ${error?.message ?? error}`)
+          }
           await logLine('pair login ok')
-          res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+          const headers = { location: target, 'cache-control': 'no-store' }
+          if (deviceCookie.length) headers['set-cookie'] = deviceCookie
+          res.writeHead(302, headers)
           res.end()
           return
         }
@@ -336,6 +404,57 @@ export function apply(ctx) {
         }
         const body = await readBody(req)
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
+        // 用长期设备凭证换新的 dsh-auth cookie。
+        // DSH 重启后原 cookie 失效，App 调这里拿新的，不必重新扫码。
+        if (endpoint === 'refresh') {
+          if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
+          const deviceToken = deviceTokenFrom(req, urlObject)
+          const devices = await readDevices()
+          const record = deviceToken ? devices[deviceToken] : undefined
+          if (!record) {
+            await logLine('refresh rejected (unknown device)')
+            send(res, 401, { ok: false })
+            return
+          }
+          const host = String(req.headers.host ?? '')
+          if (!host || typeof connection?.authenticatedUrl !== 'function') { send(res, 503, { ok: false }); return }
+          const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
+          const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
+          const proto = forwardedProto || (isLoopback ? 'http' : 'https')
+          const target = connection.authenticatedUrl(`${proto}://${host}/`)
+          record.lastUsedAt = Date.now()
+          await saveDevices(devices)
+          await logLine('refresh ok')
+          res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+          res.end()
+          return
+        }
+        // 撤销设备（用户在电脑端「已连接设备」里点删除）。
+        if (endpoint === 'device.revoke') {
+          const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
+          const target = String(args.device ?? args.token ?? '')
+          const devices = await readDevices()
+          if (target && devices[target]) {
+            delete devices[target]
+            await saveDevices(devices)
+            await logLine('device revoked')
+          }
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { ok: true } } })
+          return
+        }
+        // 列出已配对设备（供设置页展示与撤销）。
+        if (endpoint === 'device.list') {
+          const devices = await readDevices()
+          const value = Object.entries(devices).map(([token, info]) => ({
+            token: `${token.slice(0, 6)}…`,
+            full: token,
+            name: info?.name ?? '',
+            createdAt: info?.createdAt ?? 0,
+            lastUsedAt: info?.lastUsedAt ?? 0
+          }))
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { devices: value } } })
+          return
+        }
         if (endpoint === 'pair.create') {
           const pairToken = Array.from({ length: 32 }, () => {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'

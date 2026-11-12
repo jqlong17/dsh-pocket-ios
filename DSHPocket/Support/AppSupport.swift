@@ -157,6 +157,27 @@ enum ConnectionVault {
         read(service: addressService)
     }
 
+    // MARK: 长期设备凭证
+
+    private static let deviceService = "com.ruska.dsh-pocket-ios.device"
+
+    /// 配对后插件会种一个 `dsh-pocket-device` cookie；把它单独存进 Keychain，
+    /// 用来在 DSH 重启、session cookie 失效时静默换新票，不必重新扫码。
+    static func saveDeviceToken(from url: URL) {
+        let token = HTTPCookieStorage.shared.cookies(for: url)?
+            .first { $0.name == "dsh-pocket-device" }?.value
+        guard let token, !token.isEmpty else { return }
+        write(token, service: deviceService)
+    }
+
+    static func loadDeviceToken() -> String? {
+        read(service: deviceService)
+    }
+
+    static func clearDeviceToken() {
+        delete(service: deviceService)
+    }
+
     // MARK: 登录 cookie
 
     /// 只保存 dsh-auth 开头的 cookie（其余是无关的会话 cookie）。
@@ -212,6 +233,7 @@ enum ConnectionVault {
     static func clear() {
         delete(service: addressService)
         delete(service: cookieService)
+        delete(service: deviceService)
     }
 
     /// 只清登录 cookie（认证失效时用，避免拿废凭证反复失败）。

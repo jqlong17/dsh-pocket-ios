@@ -279,7 +279,48 @@ extension ConnectionModel {
     @MainActor
     func handleAuthExpired() {
         guard !isDemoMode else { return }
-        recordDiagnostic("登录已过期或密码已变更：返回连接页")
+        // DSH 重启后 session cookie 会失效，但设备凭证还在：
+        // 先用它静默换一张新票，成功就直接重连，用户看不到任何提示。
+        if !authRefreshAttempted, ConnectionVault.loadDeviceToken() != nil {
+            authRefreshAttempted = true
+            Task { @MainActor in
+                if await self.tryRefreshAuth() {
+                    self.recordDiagnostic("设备凭证换票成功，自动重连")
+                    await self.connect()
+                    return
+                }
+                self.finishAuthExpired()
+            }
+            return
+        }
+        finishAuthExpired()
+    }
+
+    /// 用长期设备凭证向插件换新的 `dsh-auth` cookie（跟随 302 即种上）。
+    @MainActor
+    func tryRefreshAuth() async -> Bool {
+        guard let token = ConnectionVault.loadDeviceToken(),
+              let base = try? Self.serverURL(from: serverAddress) else { return false }
+        var request = URLRequest(url: base.appending(path: "dsh-pocket-ios/refresh"))
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "x-dsh-pocket-device")
+        request.timeoutInterval = 10
+        request.httpShouldHandleCookies = true
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<400).contains(http.statusCode) else {
+            recordDiagnostic("设备凭证换票失败：请求未成功")
+            return false
+        }
+        let hasAuth = HTTPCookieStorage.shared.cookies(for: base)?
+            .contains { $0.name.hasPrefix("dsh-auth") } ?? false
+        if hasAuth { ConnectionVault.saveAuthCookies(from: base) }
+        return hasAuth
+    }
+
+    /// 真正失效：清理并提示用户重新配对。
+    @MainActor
+    func finishAuthExpired() {
+        recordDiagnostic("登录已过期且设备凭证不可用：返回连接页")
         isConnected = false
         pin = ""
         PinKeychain.clear()
