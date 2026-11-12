@@ -226,7 +226,11 @@ struct ConnectedView: View {
                         } else if finishedAwaiting {
                             Circle().fill(.red).frame(width: 7, height: 7)
                         }
-                    }.padding(.vertical, 2)
+                    }
+                    // 行高：标题 + 状态两行本身约 42 点，上下各留 7 点 → 约 56 点。
+                    // 不再吃 List 默认的上下各 11 点（那样会到 68 点左右，显得松）。
+                    // 大字号下高度仍随文字自动长，不写死。
+                    .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
                 }
                 .listRowBackground(isPinned ? Color(red: 0.08, green: 0.48, blue: 0.37).opacity(0.05) : Color.clear)
                 // 整行读成一句：标题 + 状态（+ 置顶）。红绿点只是视觉，状态必须有文字。
