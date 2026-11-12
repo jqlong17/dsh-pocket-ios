@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:31:58+08:00",
-  "commit": "eb9f365",
+  "generated_at": "2026-11-12T22:33:17+08:00",
+  "commit": "915b250",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 80,
-      "lines": 11019
+      "files": 81,
+      "lines": 11047
     },
     {
       "layer": "ui-tests",
@@ -1295,7 +1295,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 492,
+      "lines": 322,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1318,6 +1318,28 @@
       "file": "DSHPocket/Session/ConnectionModel+Demo.swift",
       "layer": "app",
       "lines": 261,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Diagnostics.swift",
+      "layer": "app",
+      "lines": 198,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2393,11 +2415,6 @@
     }
   ],
   "violations": [
-    {
-      "rule": "file-max-400",
-      "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
-      "detail": "492 行"
-    },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
