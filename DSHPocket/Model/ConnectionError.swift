@@ -56,3 +56,21 @@ extension ConnectionError {
         }
     }
 }
+
+extension ConnectionError {
+    /// 是不是「登录失效」。
+    ///
+    /// 为什么要这个判断而不是直接 `case .server(401)`：
+    /// RPC 收口后 401 会被 `from(_:address:)` 适配成 `.invalidPin`（给用户看「密码不正确」更准），
+    /// 于是原先所有 `case .server(401)` 的判断全部失效——连不上时既不提示重新配对、
+    /// 也不触发设备凭证换票，表现成每两秒重试一次「密码不正确」。
+    /// 这里把两种形态统一起来，判断点只认这一个属性。
+    var isUnauthorized: Bool {
+        switch self {
+        case .invalidPin: return true
+        case .server(let status): return status == 401 || status == 403
+        case .rateLimited: return false
+        case .invalidURL, .unexpectedResponse, .invalidPayload, .remote: return false
+        }
+    }
+}

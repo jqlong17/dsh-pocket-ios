@@ -281,6 +281,11 @@ extension ConnectionModel {
                 PinKeychain.clear()
                 ConnectionVault.saveAuthCookies(from: url)
                 ConnectionVault.saveDeviceToken(from: url)
+                if ConnectionVault.loadDeviceToken() != nil {
+                    recordDiagnostic("已保存长期设备凭证（下次 DSH 重启免扫码）")
+                } else {
+                    recordDiagnostic("未收到长期设备凭证：插件可能还是旧版")
+                }
                 recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
                 return
             } catch {

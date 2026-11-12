@@ -186,7 +186,7 @@ extension ConnectionModel {
                     do {
                         _ = try await fetchSessions()
                     } catch let authError as ConnectionError {
-                        if case .server(401) = authError {
+                        if authError.isUnauthorized {
                             handleAuthExpired()
                             return
                         }
@@ -870,7 +870,7 @@ extension ConnectionModel {
             // 处置优先级在 DSHKit（可测）：取消 > 登录失效 > 网络不通 > 其它失败。
             let isCancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
             let unauthorized: Bool = {
-                if case .server(401)? = (error as? ConnectionError) { return true }
+                if (error as? ConnectionError)?.isUnauthorized == true { return true }
                 return false
             }()
             let action = SendFailurePolicy.action(isCancelled: isCancelled,

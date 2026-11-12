@@ -97,11 +97,9 @@ extension ConnectionModel {
             // 处置规则在 DSHKit（可测）：取消→忽略、401→回连接页、地址失效→报错、
             // 抖动且已有列表→静默重试、其余→提示。
             let isCancelled = Task.isCancelled || (error as? URLError)?.code == .cancelled
-            let unauthorized: Bool = {
-                if case .server(let status)? = (error as? ConnectionError),
-                   TimelineOrdering.isUnauthorized(statusCode: status) { return true }
-                return false
-            }()
+            // 收到 401 时 `ConnectionError` 可能是 .invalidPin（适配层按「密码错」给的），
+            // 必须用 isUnauthorized 统一判断，否则永远不会触发重新配对。
+            let unauthorized = (error as? ConnectionError)?.isUnauthorized ?? false
             let transient = Self.isTransientNetworkError(error)
             let action = SessionListFailurePolicy.action(
                 isCancelled: isCancelled,
@@ -384,9 +382,7 @@ extension ConnectionModel {
             if error is CancellationError { return }
             guard selectedSession?.sessionId == session.sessionId, messages.isEmpty else { return }
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
-            if let authError = error as? ConnectionError,
-               case .server(let status) = authError,
-               TimelineOrdering.isUnauthorized(statusCode: status) {
+            if let authError = error as? ConnectionError, authError.isUnauthorized {
                 handleAuthExpired()
                 return
             }

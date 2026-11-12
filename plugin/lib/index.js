@@ -293,7 +293,13 @@ export function apply(ctx) {
     handler: async (req, res) => {
       try {
         const rawPath = new URL(req.url ?? '/', 'http://127.0.0.1').pathname
-        const isLogin = rawPath === `${CHANNEL}/login` || rawPath === `${CHANNEL}/pair`
+        // 免浏览器会话的白名单：这三个端点自带凭证校验
+        //   login  = PIN
+        //   pair   = 一次性配对 token
+        //   refresh= 长期设备凭证（DSH 重启后 cookie 失效时用它换新票）
+        const isLogin = rawPath === `${CHANNEL}/login`
+          || rawPath === `${CHANNEL}/pair`
+          || rawPath === `${CHANNEL}/refresh`
         if (!isLogin && typeof connection?.requestRejection === 'function') {
           const rejection = connection.requestRejection(req)
           if (rejection !== undefined) {

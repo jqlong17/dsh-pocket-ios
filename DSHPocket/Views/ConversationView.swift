@@ -125,36 +125,8 @@ struct ConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let error = model.conversationError {
-                Text(error).font(.footnote).foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(.red.opacity(0.06))
-            }
-#if DEBUG
-            let showsDemoBanner = model.isDemoMode && !DebugLaunch.hideDemoBanner
-#else
-            let showsDemoBanner = model.isDemoMode
-#endif
-            if showsDemoBanner || (!model.isDemoMode && model.liveConnection != .connected) {
-                HStack(spacing: 6) {
-                    if model.isDemoMode {
-                        Image(systemName: "play.circle").font(.caption2).foregroundStyle(.secondary)
-                        Text(L10n.t("演示模式 · 示例数据，未连接电脑")).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                    } else {
-                        Circle().fill(Self.liveStateColor(model.liveConnection)).frame(width: 6, height: 6)
-                        Text(model.liveConnection.label).font(.caption2).foregroundStyle(.secondary)
-                        if model.liveConnection.isDisconnected {
-                            Button(L10n.t("重连")) { model.manualReconnect() }
-                                .font(.caption2.weight(.semibold))
-                        }
-                        Spacer()
-                    }
-                }
-                .padding(.horizontal).padding(.vertical, 4)
-                .transition(.opacity)
-            }
+            // 连接状态与错误提示已拆到 ConversationStatusViews.swift。
+            ConversationStatusBanner(model: model)
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -443,50 +415,8 @@ struct ConversationView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
-            if let question = model.pendingQuestion {
-                UserQuestionCard(request: question, model: model)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if model.isTurnRunning {
-                // 生成状态放在输入栏上方左侧：等待时视线就在这里。
-                HStack(spacing: 6) {
-                    ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text("\(L10n.t("深度求索中")) · \(elapsed(since: model.turnStartedAt, now: context.date))")
-                            .font(.caption)
-                            .foregroundStyle(PocketChrome.brandText)
-                            .monospacedDigit()
-                    }
-                    Spacer()
-                    Button { Task { await model.cancelTurn() } } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "stop.circle.fill")
-                            Text(L10n.t("停止"))
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("停止生成")
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-                .background(.background)
-            }
-            if let note = model.offlineFlushNote {
-                HStack(spacing: 6) {
-                    ProgressView().scaleEffect(0.6)
-                    Text(note).font(.caption2).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
-            }
+            // 问答卡 / 生成状态 / 补发进度已拆到 ConversationStatusViews.swift。
+            ConversationActivityBar(model: model)
             Divider()
             inputBar
             }
@@ -619,9 +549,4 @@ struct ConversationView: View {
         }
     }
 
-    private func elapsed(since start: Date?, now: Date) -> String {
-        guard let start else { return "计算中" }
-        let seconds = max(0, Int(now.timeIntervalSince(start)))
-        return seconds < 60 ? "\(seconds) 秒" : "\(seconds / 60) 分 \(seconds % 60) 秒"
-    }
 }

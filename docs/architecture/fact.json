@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:15:31+08:00",
-  "commit": "7b73d43",
+  "generated_at": "2026-11-12T22:20:31+08:00",
+  "commit": "40d4ab3",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 75,
-      "lines": 10606
+      "files": 76,
+      "lines": 10672
     },
     {
       "layer": "ui-tests",
@@ -812,7 +812,7 @@
     {
       "file": "DSHPocket/Model/ConnectionError.swift",
       "layer": "app",
-      "lines": 59,
+      "lines": 77,
       "types": [
         "ConnectionError"
       ],
@@ -1283,7 +1283,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 487,
+      "lines": 492,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1417,7 +1417,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 519,
+      "lines": 515,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1888,9 +1888,21 @@
       ]
     },
     {
+      "file": "DSHPocket/Views/ConversationStatusViews.swift",
+      "layer": "app",
+      "lines": 122,
+      "types": [
+        "ConversationStatusBanner",
+        "ConversationActivityBar"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
       "file": "DSHPocket/Views/ConversationView.swift",
       "layer": "app",
-      "lines": 628,
+      "lines": 553,
       "types": [
         "ConversationView"
       ],
@@ -2313,7 +2325,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
-      "detail": "487 行"
+      "detail": "492 行"
     },
     {
       "rule": "file-max-400",
@@ -2323,7 +2335,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
-      "detail": "519 行"
+      "detail": "515 行"
     },
     {
       "rule": "file-max-400",
@@ -2333,7 +2345,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
-      "detail": "628 行"
+      "detail": "553 行"
     },
     {
       "rule": "extension-split-smell",

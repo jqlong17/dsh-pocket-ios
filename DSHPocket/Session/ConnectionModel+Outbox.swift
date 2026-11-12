@@ -296,7 +296,7 @@ extension ConnectionModel {
             ]])
             return .acked
         } catch {
-            if let authError = error as? ConnectionError, case .server(401) = authError {
+            if let authError = error as? ConnectionError, authError.isUnauthorized {
                 return .auth
             }
             if isTransientNetworkError(error), !isStaleTunnelError(error) {
