@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:34:12+08:00",
-  "commit": "3e0a04c",
+  "generated_at": "2026-11-12T11:35:35+08:00",
+  "commit": "44e6f43",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 40,
-      "lines": 2560
+      "files": 41,
+      "lines": 2605
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 66,
-      "lines": 9851
+      "lines": 9854
     },
     {
       "layer": "ui-tests",
@@ -114,6 +114,18 @@
     }
   ],
   "modules": [
+    {
+      "file": "DSHKit/Sources/DSHKit/Conversation/TimelineAssembly.swift",
+      "layer": "pure-logic",
+      "lines": 45,
+      "types": [
+        "TimelineSortKey",
+        "TimelineAssembly"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
     {
       "file": "DSHKit/Sources/DSHKit/Conversation/TimelineOrdering.swift",
       "layer": "pure-logic",
@@ -1625,7 +1637,7 @@
     {
       "file": "DSHPocket/Views/ConversationView.swift",
       "layer": "app",
-      "lines": 732,
+      "lines": 735,
       "types": [
         "ConversationView"
       ],
@@ -2073,7 +2085,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
-      "detail": "732 行"
+      "detail": "735 行"
     },
     {
       "rule": "extension-split-smell",

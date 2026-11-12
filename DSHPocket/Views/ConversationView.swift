@@ -69,31 +69,34 @@ struct ConversationView: View {
 
     private var entries: [TimelineEntry] {
         guard isSwitchedToSession else { return [] }
-        var result: [TimelineEntry] = model.messages.map {
-            TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), sequence: $0.sequence, message: $0, group: nil, failure: nil)
+        // 排序规则在 DSHKit（可测）；这里只负责把元素映射成排序键、再映射回来。
+        var byID: [String: TimelineEntry] = [:]
+        var keys: [TimelineSortKey] = []
+        for message in model.messages {
+            let entry = TimelineEntry(id: message.id,
+                                      sortKey: model.displaySortKey(for: message),
+                                      sequence: message.sequence,
+                                      message: message, group: nil, failure: nil)
+            byID[entry.id] = entry
+            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey, sequence: entry.sequence,
+                                        isMessage: true, isPending: message.isPending,
+                                        localOrder: message.localOrder))
         }
         for group in model.stepGroups {
-            result.append(TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence, message: nil, group: group, failure: nil))
+            let entry = TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence,
+                                      message: nil, group: group, failure: nil)
+            byID[entry.id] = entry
+            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
+                                        sequence: entry.sequence, isMessage: false))
         }
         for failure in model.turnFailures {
-            result.append(TimelineEntry(id: failure.id, sortKey: failure.sequence, sequence: failure.sequence, message: nil, group: nil, failure: failure))
+            let entry = TimelineEntry(id: failure.id, sortKey: failure.sequence, sequence: failure.sequence,
+                                      message: nil, group: nil, failure: failure)
+            byID[entry.id] = entry
+            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
+                                        sequence: entry.sequence, isMessage: false))
         }
-        return result.sorted { lhs, rhs in
-            if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
-            // 同一排序键（同一 turn 内排队的多条消息）用原始 seq 保持发送先后。
-            if lhs.sequence != rhs.sequence { return lhs.sequence < rhs.sequence }
-            switch (lhs.message, rhs.message) {
-            case let (.some(l), .some(r)):
-                if l.isPending != r.isPending { return !l.isPending }
-                // 两条都在等地发送：按本地发送顺序，不要用随机 id。
-                if l.localOrder != r.localOrder { return l.localOrder < r.localOrder }
-                return l.id < r.id
-            case (.some, nil):
-                return true
-            case (nil, .some), (nil, nil):
-                return lhs.id < rhs.id
-            }
-        }
+        return TimelineAssembly.ordered(keys).compactMap { byID[$0.id] }
     }
 
     /// 离开底部之后到达的助手回复条数（用户自己的消息不算）。
