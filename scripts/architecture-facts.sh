@@ -107,10 +107,17 @@ for mod in modules:
     base = os.path.basename(mod["file"])
     if "+" in base:
         by_prefix[base.split("+")[0]].append(mod["file"])
+# 假拆分的判据不是「文件多」，而是「文件多但仍然是同一坨」。
+# 按职责拆 extension 在 Swift 里是正常做法；只有当拆出来以后单个文件依然过长
+# （说明职责没被真正分开）才值得报警。阈值 600：编排层文件天然比策略层长。
+line_of = {mod["file"]: mod["lines"] for mod in modules}
 for prefix, paths in sorted(by_prefix.items()):
-    if len(paths) >= 3:
+    if len(paths) < 3:
+        continue
+    oversized = [p for p in paths if line_of.get(p, 0) > 600]
+    if oversized:
         violations.append({"rule": "extension-split-smell", "file": prefix + ".swift",
-                           "detail": f"{len(paths)} 个 +Feature 文件"})
+                           "detail": f"{len(paths)} 个 +Feature 文件，其中 {len(oversized)} 个仍超 600 行"})
 
 try:
     commit = subprocess.check_output(["git", "rev-parse", "--short=7", "HEAD"], text=True).strip()

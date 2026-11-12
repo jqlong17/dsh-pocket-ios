@@ -201,72 +201,44 @@ extension ConnectionModel {
     }
 
     @MainActor
+    /// 帧处理实现在 LiveFrameApplier（依赖闭包注入）；这里只转发。
     func acceptLive(_ value: [String: Any], sessionId: String) {
-        // 结构隔离：只接受"当前激活会话"的帧，旧会话迟到帧直接丢弃。
-        guard activeConversation?.sessionId == sessionId,
-              selectedSession?.sessionId == sessionId else { return }
-        lastLiveFrameAt = Date()
-        // 帧类型判定在 DSHKit（可测）：快照 / 消息 / steer 收件箱 / 过程事件 / 认不出。
-        switch LiveFrameRouter.kind(of: value) {
-        case .snapshot:
-            let records = value["records"] as? [[String: Any]] ?? []
-            let history = records.compactMap(PocketMessage.init(record:))
-            mergeMessages(history)
-            mergeSteps(from: records)
-            confirmInboxOutbox(in: records)
-            recordDiagnostic("收到历史快照：\(history.count) 条消息")
-            isLoadingConversation = false
-            if let conversation = activeConversation {
-                noteLoadFinished(source: "follow", conversation: conversation)
-            }
-            if messages.isEmpty { requestScrollToBottom() }
-
-        case .message:
-            guard let event = value["event"] as? [String: Any],
-                  let message = PocketMessage(event: event) else { return }
-            pocketLogger.info("follow message kind=\(message.kind, privacy: .public) seq=\(message.sequence) chars=\(message.text.count)")
-            if let pendingIndex = messages.firstIndex(where: { pending in
-                pending.isPending && pending.isUser && (pending.text == message.text
-                    || (pending.rpcId != nil && pending.rpcId == message.rpcId))
-            }) {
-                messages.remove(at: pendingIndex)
-            }
-            if message.isUser, let rpcId = message.rpcId {
-                confirmOutbox(rpcIds: [rpcId])
-            }
-            if !messages.contains(where: { !$0.isPending && $0.sequence == message.sequence }) {
-                messages.append(message)
-                messages.sort { $0.sequence < $1.sequence }
-            }
-            timingLog("reply_available source=follow kind=\(message.kind) seq=\(message.sequence) chars=\(message.text.count) total_messages=\(messages.count)")
-            recordDiagnostic("实时收到\(message.isUser ? "用户" : "助手")消息，序号 \(message.sequence)，\(message.text.count) 字")
-
-        case .steerInbox:
-            guard let event = value["event"] as? [String: Any] else { return }
-            // steer 消息先进 agent inbox（spliced），这里也视为已送达，避免误报失败。
-            let ids = LiveFrameRouter.steerInboxRpcIds(from: event)
-            if !ids.isEmpty {
-                confirmOutbox(rpcIds: ids)
-                ackedSendRpcIds.subtract(ids)
-                failedSendRpcIds.subtract(ids)
-                conversationError = nil
-                recordDiagnostic("steer 已进入收件箱（\(ids.count) 条），等待注入")
-            }
-            applyStepEvent(event)
-
-        case .event:
-            guard let event = value["event"] as? [String: Any] else { return }
-            applyStepEvent(event)
-            let described = LiveFrameRouter.describe(value)
-            if described.type == "assistant/message"
-                || (described.type == "user/message" && described.sourceKind == "user") {
-                recordDiagnostic("消息事件未解析：\(described.type)，source=\(described.sourceKind ?? "-")")
-            }
-
-        case .unknown:
-            recordDiagnostic("未识别 follow 数据：\(value.keys.sorted().joined(separator: ","))")
-        }
+        liveFrameApplier.accept(value, sessionId: sessionId)
     }
+
+    /// 装配实时帧处理的依赖（幂等）。
+    @MainActor
+    func installLiveFrameProviders() {
+        guard liveFrameApplier.providers == nil else { return }
+        liveFrameApplier.providers = LiveFrameApplier.Providers(
+            isCurrentSession: { [weak self] sessionId in
+                self?.activeConversation?.sessionId == sessionId
+                    && self?.selectedSession?.sessionId == sessionId
+            },
+            markFrameArrived: { @MainActor [weak self] in self?.lastLiveFrameAt = Date() },
+            mergeMessages: { @MainActor [weak self] messages in self?.mergeMessages(messages) },
+            mergeSteps: { @MainActor [weak self] records in self?.mergeSteps(from: records) },
+            confirmInboxOutbox: { @MainActor [weak self] records in self?.confirmInboxOutbox(in: records) },
+            messages: { [weak self] in self?.messages ?? [] },
+            replaceMessages: { @MainActor [weak self] list in self?.messages = list },
+            confirmOutbox: { @MainActor [weak self] ids in self?.confirmOutbox(rpcIds: ids) },
+            markAccepted: { _ in },
+            removeAcked: { @MainActor [weak self] ids in self?.ackedSendRpcIds.subtract(ids) },
+            removeFailed: { @MainActor [weak self] ids in self?.failedSendRpcIds.subtract(ids) },
+            clearConversationError: { @MainActor [weak self] in self?.conversationError = nil },
+            applyStepEvent: { @MainActor [weak self] event in self?.applyStepEvent(event) },
+            finishLoading: { @MainActor [weak self] source in
+                guard let self, let conversation = self.activeConversation else { return }
+                self.noteLoadFinished(source: source, conversation: conversation)
+            },
+            setLoadingConversation: { @MainActor [weak self] value in self?.isLoadingConversation = value },
+            requestScrollToBottom: { @MainActor [weak self] in self?.requestScrollToBottom() },
+            record: { @MainActor [weak self] message in self?.recordDiagnostic(message) },
+            log: { message in pocketLogger.info("\(message, privacy: .public)") },
+            timing: { message in timingLog(message) }
+        )
+    }
+
 
     func sendPing(_ socket: URLSessionWebSocketTask) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:28:19+08:00",
-  "commit": "66c00e1",
+  "generated_at": "2026-11-12T22:29:45+08:00",
+  "commit": "7a306a4",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 77,
-      "lines": 10799
+      "files": 78,
+      "lines": 10880
     },
     {
       "layer": "ui-tests",
@@ -1361,7 +1361,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 938,
+      "lines": 910,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1451,7 +1451,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 572,
+      "lines": 574,
       "types": [
         "ConnectionModel"
       ],
@@ -1565,6 +1565,18 @@
       "lines": 79,
       "types": [
         "JobRoster"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/LiveFrameApplier.swift",
+      "layer": "app",
+      "lines": 106,
+      "types": [
+        "LiveFrameApplier"
       ],
       "imports": [
         "DSHKit",
@@ -2241,7 +2253,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 86,
+      "lines": 87,
       "types": [
         "RootView"
       ],
@@ -2355,7 +2367,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "938 行"
+      "detail": "910 行"
     },
     {
       "rule": "file-max-400",
@@ -2365,7 +2377,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "572 行"
+      "detail": "574 行"
     },
     {
       "rule": "file-max-400",
@@ -2375,7 +2387,7 @@
     {
       "rule": "extension-split-smell",
       "file": "ConnectionModel.swift",
-      "detail": "7 个 +Feature 文件"
+      "detail": "7 个 +Feature 文件，其中 1 个仍超 600 行"
     }
   ]
 }
