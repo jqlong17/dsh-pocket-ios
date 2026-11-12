@@ -148,12 +148,13 @@ extension ConnectionModel {
                     case .string(let text): data = Data(text.utf8)
                     @unknown default: continue
                     }
-                    NSLog("DSH_DIAG websocket frame bytes=%ld", data.count)
-                    guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          object["streamId"] as? String == streamId,
-                          object["type"] as? String == "item",
-                          let value = object["value"] as? [String: Any] else {
-                        NSLog("DSH_DIAG ignored frame keys=%@ type=%@ streamMatch=%@", (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "invalid", ((try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["type"] as? String) ?? "nil", (((try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["streamId"] as? String) == streamId) ? "yes" : "no")
+                    // 只解析一次：原先 guard 里解一次、调试日志里又解三次，
+                    // 实时流高频时纯属浪费 CPU（每帧 4 次 JSONSerialization）。
+                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    guard let object, let value = StreamFrames.itemValue(object, streamId: streamId) else {
+                        NSLog("DSH_DIAG ignored frame type=%@ streamMatch=%@",
+                              object?["type"] as? String ?? "nil",
+                              (object?["streamId"] as? String) == streamId ? "yes" : "no")
                         continue
                     }
                     let valueType = value["type"] as? String ?? "未知"
