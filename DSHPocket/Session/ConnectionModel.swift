@@ -86,13 +86,36 @@ final class ConnectionModel {
 
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     static let conversationMessageLimit = 30
-    var serverAddress = UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
-    var pin = ""
-    var isConnecting = false
-    var errorMessage: String?
+    /// 连接配置与状态机（spec/12 第三个对象）。
+    /// 字段用计算属性转发，约 140 处调用点暂不改；视图收敛留到批次 3。
+    let connection = ConnectionState(
+        serverAddress: UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
+    )
+    var serverAddress: String {
+        get { connection.serverAddress }
+        set { connection.serverAddress = newValue }
+    }
+    var pin: String {
+        get { connection.pin }
+        set { connection.pin = newValue }
+    }
+    var isConnecting: Bool {
+        get { connection.isConnecting }
+        set { connection.isConnecting = newValue }
+    }
+    var errorMessage: String? {
+        get { connection.errorMessage }
+        set { connection.errorMessage = newValue }
+    }
     /// 连接失败的原因是"电脑地址已失效"（如 quick tunnel 重建换了域名）→ UI 提示重新扫码。
-    var addressNeedsRescan = false
-    var isConnected = false
+    var addressNeedsRescan: Bool {
+        get { connection.addressNeedsRescan }
+        set { connection.addressNeedsRescan = newValue }
+    }
+    var isConnected: Bool {
+        get { connection.isConnected }
+        set { connection.isConnected = newValue }
+    }
     var isDemoMode = false
     var sessions: [PocketSession] = []
     var archivedSessionIds: Set<String> = []
