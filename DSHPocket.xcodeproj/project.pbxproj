@@ -67,6 +67,7 @@
 		106A00462AB962C44389D1B4 /* SessionListMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AE55C5264E5C1CE5EBB34A2 /* SessionListMode.swift */; };
 		968FD4B86719F532D08EBEE9 /* TurnFailureRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E8F8DF3D62D60746D3DACE /* TurnFailureRow.swift */; };
 		BBEF506D7DA55C1D03AA7564 /* UserQuestionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E003B5499B61166B328F688D /* UserQuestionCard.swift */; };
+		D1CFA11E0000000000000002 /* ConnectFailureMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000001 /* ConnectFailureMessage.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -131,6 +132,7 @@
 		2AE55C5264E5C1CE5EBB34A2 /* SessionListMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListMode.swift; sourceTree = "<group>"; };
 		A1E8F8DF3D62D60746D3DACE /* TurnFailureRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFailureRow.swift; sourceTree = "<group>"; };
 		E003B5499B61166B328F688D /* UserQuestionCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserQuestionCard.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000001 /* ConnectFailureMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectFailureMessage.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -224,6 +226,7 @@
 			children = (
 				AB1A6B9FB357E266C42F477A /* CompletionNotifier.swift */,
 				27FDC7CB731962834253EE21 /* ConnectionError.swift */,
+				D1CFA11E0000000000000001 /* ConnectFailureMessage.swift */,
 				318E4B662503E27FF3D68E6A /* ConversationHeightKey.swift */,
 				A183FD8FD15973AEBC183F71 /* DebugLaunch.swift */,
 				0C593E1E45DC62B712320A23 /* DraftStore.swift */,
@@ -453,6 +456,7 @@
 				737076F014E4D48D363DBF26 /* ConversationState.swift in Sources */,
 				6C008D78DD977ECC7B3913E2 /* CompletionNotifier.swift in Sources */,
 				6A8DF3E8D7F2FBE2F9B171F0 /* ConnectionError.swift in Sources */,
+				D1CFA11E0000000000000002 /* ConnectFailureMessage.swift in Sources */,
 				AEB8B5356A2153C16FAB014E /* ConversationHeightKey.swift in Sources */,
 				07502C15EA9C7A72C5E80C5F /* DebugLaunch.swift in Sources */,
 				BCD36373A030A722743F6DBB /* DraftStore.swift in Sources */,
