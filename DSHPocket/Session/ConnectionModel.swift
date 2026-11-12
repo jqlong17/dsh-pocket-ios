@@ -215,6 +215,10 @@ final class ConnectionModel {
     let sessionAPI = SessionAPI()
     /// 单条会话操作（spec/12）。
     let sessionActions = SessionActions()
+    /// 网络恢复监听：从断网恢复时立刻补发，不等列表轮询或 WS 重连。
+    let networkWatcher = NetworkWatcher()
+    /// 监听只启动一次。
+    var networkWatcherStarted = false
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }

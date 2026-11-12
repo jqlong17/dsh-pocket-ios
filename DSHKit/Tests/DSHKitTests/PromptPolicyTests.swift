@@ -2,17 +2,13 @@ import XCTest
 @testable import DSHKit
 
 final class PromptPolicyTests: XCTestCase {
-    func testLiveSteersOnlyWhenTurnEventsConfirmed() {
-        XCTAssertEqual(PromptPolicy.liveMode(turnEventsSeen: true, isRunning: true), .steer)
-    }
-
-    func testLiveQueuesWhenTurnStateIsGuess() {
-        // 没见过实时事件时，列表里的 running 不可信：排队比打断安全。
-        XCTAssertEqual(PromptPolicy.liveMode(turnEventsSeen: false, isRunning: true), .queue)
+    func testLiveSteersWhileRunning() {
+        // 生成中发的消息必须打断当前轮；排队会让电脑端显示「排队」，用户以为卡住。
+        XCTAssertEqual(PromptPolicy.liveMode(isRunning: true), .steer)
     }
 
     func testLiveQueuesWhenIdle() {
-        XCTAssertEqual(PromptPolicy.liveMode(turnEventsSeen: true, isRunning: false), .queue)
+        XCTAssertEqual(PromptPolicy.liveMode(isRunning: false), .queue)
     }
 
     func testReplyNeverSteers() {

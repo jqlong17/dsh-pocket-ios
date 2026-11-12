@@ -47,6 +47,8 @@
 		D1CFA11E0000000000000020 /* ConnectionValueTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000001F /* ConnectionValueTypes.swift */; };
 		D1CFA11E0000000000000022 /* SessionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000021 /* SessionAPI.swift */; };
 		D1CFA11E0000000000000024 /* SessionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000023 /* SessionActions.swift */; };
+		D1CFA11E0000000000000026 /* ComposerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000025 /* ComposerBar.swift */; };
+		D1CFA11E0000000000000028 /* NetworkWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000027 /* NetworkWatcher.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -129,6 +131,8 @@
 		D1CFA11E000000000000001F /* ConnectionValueTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionValueTypes.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000021 /* SessionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAPI.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000023 /* SessionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionActions.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000025 /* ComposerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerBar.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000027 /* NetworkWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkWatcher.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -250,6 +254,7 @@
 				D1CFA11E000000000000001F /* ConnectionValueTypes.swift */,
 				D1CFA11E0000000000000021 /* SessionAPI.swift */,
 				D1CFA11E0000000000000023 /* SessionActions.swift */,
+				D1CFA11E0000000000000027 /* NetworkWatcher.swift */,
 				D1CFA11E000000000000000F /* ConnectionState.swift */,
 				D1CFA11E0000000000000011 /* OutboxCoordinator.swift */,
 				D1CFA11E0000000000000013 /* SessionStore.swift */,
@@ -308,6 +313,7 @@
 				54B07D653E7B1C8C92ED0142 /* ConnectedView.swift */,
 				958811678C6EF9B1A9D2BB6A /* ConversationView.swift */,
 				D1CFA11E0000000000000019 /* ConnectScanCard.swift */,
+				D1CFA11E0000000000000025 /* ComposerBar.swift */,
 				D1CFA11E000000000000001B /* ConnectHeaderCard.swift */,
 				FAA9BC74A81D648A2199324B /* FullscreenImageViewer.swift */,
 				A6A3D7D6842891C3F447702A /* JobRow.swift */,
@@ -503,6 +509,8 @@
 				D1CFA11E0000000000000020 /* ConnectionValueTypes.swift in Sources */,
 				D1CFA11E0000000000000022 /* SessionAPI.swift in Sources */,
 				D1CFA11E0000000000000024 /* SessionActions.swift in Sources */,
+				D1CFA11E0000000000000028 /* NetworkWatcher.swift in Sources */,
+				D1CFA11E0000000000000026 /* ComposerBar.swift in Sources */,
 				D1CFA11E0000000000000010 /* ConnectionState.swift in Sources */,
 				D1CFA11E0000000000000012 /* OutboxCoordinator.swift in Sources */,
 				D1CFA11E0000000000000014 /* SessionStore.swift in Sources */,

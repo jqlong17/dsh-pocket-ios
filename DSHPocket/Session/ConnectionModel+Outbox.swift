@@ -346,3 +346,24 @@ extension ConnectionModel {
         selectedSession = fresh
     }
 }
+
+extension ConnectionModel {
+    /// 启动网络恢复监听（幂等）。网络一恢复就补发 + 静默刷新列表。
+    ///
+    /// 为什么需要：补发原先只靠「列表刷新成功」（10 秒轮询）和「实时流收到帧」（要先重连上 WS）。
+    /// 断网恢复后若两者都没到点，消息会一直停在「等联网时将一并发送」。
+    @MainActor
+    func installNetworkWatcher() {
+        guard !networkWatcherStarted else { return }
+        networkWatcherStarted = true
+        networkWatcher.onBecomeReachable = { [weak self] in
+            guard let self else { return }
+            // 地址还没配置（首启/刚装）时不要触发刷新，否则会每两秒重试刷屏。
+            guard (try? Self.serverURL(from: self.serverAddress)) != nil else { return }
+            self.recordDiagnostic("网络恢复（路径监听），立即补发并刷新列表")
+            self.flushQueuedSends()
+            Task { await self.loadSessions(silently: true) }
+        }
+        networkWatcher.start()
+    }
+}

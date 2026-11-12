@@ -41,6 +41,7 @@ struct RootView: View {
                 model.installQuestionProviders()
                 model.installSessionAPIProviders()
                 model.installSessionActionProviders()
+                model.installNetworkWatcher()
             }
             .onChange(of: reduceMotion) { _, value in PocketMotion.reduceMotion = value }
             .toolbar {

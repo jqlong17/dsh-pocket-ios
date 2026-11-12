@@ -762,8 +762,7 @@ extension ConnectionModel {
             }
             // 只有「确认过实时 turn 事件、且确实在跑」才用 steer 打断；
             // 没见到实时事件时按 queue 处理——queue 最多排到本轮之后，steer 会打断正在做的事。
-            let promptMode = PromptPolicy.liveMode(turnEventsSeen: liveTurnEventsSeen,
-                                                   isRunning: isTurnRunning).rawValue
+            let promptMode = PromptPolicy.liveMode(isRunning: isTurnRunning).rawValue
             recordDiagnostic("发送模式：\(promptMode)（生成中=\(isTurnRunning)）")
             _ = try await rpcClient.rpcWithRetryAdapted("session/prompt", args: ["request": [
                 "requestId": requestId,

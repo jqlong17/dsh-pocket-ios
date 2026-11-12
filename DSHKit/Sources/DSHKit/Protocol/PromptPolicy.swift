@@ -11,10 +11,14 @@ public enum PromptMode: String, Equatable, Sendable {
 }
 
 public enum PromptPolicy {
-    /// 实时发送：只有**确认过实时 turn 事件且确实在跑**才打断；
-    /// 否则排队——queue 最多晚一轮，steer 会打断正在做的事。
-    public static func liveMode(turnEventsSeen: Bool, isRunning: Bool) -> PromptMode {
-        (turnEventsSeen && isRunning) ? .steer : .queue
+    /// 实时发送：**在跑就打断**。
+    ///
+    /// 曾经要求「见过实时 turn 事件」才 steer，结果生成中发的消息全被排到当前轮之后，
+    /// 电脑端显示「排队」——用户以为消息卡住了。排队带来的体感损失远大于误打断：
+    /// 误打断最多让 AI 多问一句，排队则要等整轮跑完。
+    /// `isRunning` 本身已由 turn 事件驱动（列表状态只用于首帧），足够可信。
+    public static func liveMode(isRunning: Bool) -> PromptMode {
+        isRunning ? .steer : .queue
     }
 
     /// 通知/手表回复：列表里的 running 可能滞后，统一排队，避免误打断。

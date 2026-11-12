@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:58:12+08:00",
-  "commit": "48fddf1",
+  "generated_at": "2026-11-12T12:02:56+08:00",
+  "commit": "4b670ce",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
       "files": 52,
-      "lines": 3033
+      "lines": 3037
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 72,
-      "lines": 10247
+      "files": 74,
+      "lines": 10364
     },
     {
       "layer": "ui-tests",
@@ -45,6 +45,11 @@
     {
       "from_layer": "app",
       "to": "ImageIO",
+      "kind": "external"
+    },
+    {
+      "from_layer": "app",
+      "to": "Network",
       "kind": "external"
     },
     {
@@ -277,7 +282,7 @@
     {
       "file": "DSHKit/Sources/DSHKit/Protocol/PromptPolicy.swift",
       "layer": "pure-logic",
-      "lines": 28,
+      "lines": 32,
       "types": [
         "PromptMode",
         "PromptPolicy"
@@ -1333,7 +1338,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 905,
+      "lines": 904,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1355,7 +1360,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Outbox.swift",
       "layer": "app",
-      "lines": 349,
+      "lines": 370,
       "types": [
         "HeldOfflineDelivery"
       ],
@@ -1423,7 +1428,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 561,
+      "lines": 565,
       "types": [
         "ConnectionModel"
       ],
@@ -1541,6 +1546,18 @@
       "imports": [
         "DSHKit",
         "Foundation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/NetworkWatcher.swift",
+      "layer": "app",
+      "lines": 42,
+      "types": [
+        "NetworkWatcher"
+      ],
+      "imports": [
+        "Foundation",
+        "Network"
       ]
     },
     {
@@ -1767,6 +1784,17 @@
       ]
     },
     {
+      "file": "DSHPocket/Views/ComposerBar.swift",
+      "layer": "app",
+      "lines": 135,
+      "types": [
+        "ComposerBar"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
       "file": "DSHPocket/Views/ConnectHeaderCard.swift",
       "layer": "app",
       "lines": 43,
@@ -1839,7 +1867,7 @@
     {
       "file": "DSHPocket/Views/ConversationView.swift",
       "layer": "app",
-      "lines": 741,
+      "lines": 656,
       "types": [
         "ConversationView"
       ],
@@ -2153,7 +2181,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 84,
+      "lines": 85,
       "types": [
         "RootView"
       ],
@@ -2267,7 +2295,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "905 行"
+      "detail": "904 行"
     },
     {
       "rule": "file-max-400",
@@ -2277,12 +2305,12 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "561 行"
+      "detail": "565 行"
     },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
-      "detail": "741 行"
+      "detail": "656 行"
     },
     {
       "rule": "extension-split-smell",

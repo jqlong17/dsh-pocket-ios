@@ -604,98 +604,13 @@ struct ConversationView: View {
         }
     }
 
+    /// 输入栏已拆到 ComposerBar.swift（引用条/草稿图/输入行）。
     private var inputBar: some View {
-        VStack(spacing: 8) {
-            if let quote = model.pendingQuote {
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(L10n.t("引用")) \(quote.sender) · #\(quote.sequence)")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(PocketChrome.brandText)
-                        Text(quote.text)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    .padding(.leading, 12)
-                    .overlay(alignment: .leading) {
-                        Capsule().fill(Color(red: 0.08, green: 0.48, blue: 0.37)).frame(width: 3)
-                    }
-                    Spacer(minLength: 0)
-                    Button { model.cancelQuote() } label: {
-                        Image(systemName: "xmark.circle.fill").font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("取消引用")
-                }
-                .padding(.horizontal, 12).padding(.vertical, 10)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .padding(.horizontal)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-            if !model.draftImages.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(model.draftImages) { image in
-                            ZStack(alignment: .topTrailing) {
-                                Image(uiImage: image.uiImage).resizable().scaledToFill()
-                                    .frame(width: 64, height: 64)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                Button {
-                                    model.removeDraftImage(id: image.id)
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill").font(.callout)
-                                        .foregroundStyle(.white, .black.opacity(0.55))
-                                }
-                                .offset(x: 5, y: -5)
-                            }
-                        }
-                    }.padding(.horizontal).padding(.top, 6)
-                }
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                Menu {
-                    Button { showingPhotoPicker = true } label: {
-                        Label("相册", systemImage: "photo")
-                    }
-                    Button { showingCamera = true } label: {
-                        Label("拍照", systemImage: "camera")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.body.weight(.semibold))
-                        .pocketSystemGlassCircle(size: Self.composerControlHeight)
-                }
-                .accessibilityLabel("添加图片或拍照")
-                TextField(L10n.t("发送消息"), text: $model.draft, axis: .vertical).lineLimit(1...5)
-                    .focused($composerFocused)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .frame(minHeight: Self.composerControlHeight)
-                    .pocketSystemGlassField(cornerRadius: Self.composerControlHeight / 2)
-                    .accessibilityIdentifier("composer-field")
-                Button {
-                    composerFocused = false
-                    model.sendMessage(in: session)
-                } label: {
-                    Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
-                        .pocketSystemGlassCircle(size: Self.composerControlHeight)
-                }
-                .disabled(!canSend)
-                .accessibilityLabel("发送消息")
-                .accessibilityIdentifier("send-button")
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 720)
-            .frame(maxWidth: .infinity)
-        }
-        .background(.bar)
+        ComposerBar(model: model,
+                    session: session,
+                    showingPhotoPicker: $showingPhotoPicker,
+                    showingCamera: $showingCamera,
+                    focused: $composerFocused)
     }
 
     private static let bottomAnchorID = "conversation-bottom-anchor"
