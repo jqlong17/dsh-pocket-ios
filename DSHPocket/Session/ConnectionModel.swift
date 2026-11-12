@@ -211,6 +211,8 @@ final class ConnectionModel {
     let jobRoster = JobRoster()
     /// 问答卡状态机（spec/12 第六个抽取对象）。
     let questionInbox = QuestionInbox()
+    /// 会话列表的只读网络访问（spec/12）。
+    let sessionAPI = SessionAPI()
     var diagnosticSamples: [DiagnosticSample] { diagnostics.samples }
     var diagnosticVisits: [DiagnosticVisit] { diagnostics.visits }
     var liveConnectionState: String { liveConnection.label }

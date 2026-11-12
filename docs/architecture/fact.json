@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T11:53:31+08:00",
-  "commit": "b88d2b6",
+  "generated_at": "2026-11-12T11:54:33+08:00",
+  "commit": "5cac8da",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 70,
-      "lines": 10048
+      "files": 71,
+      "lines": 10119
     },
     {
       "layer": "ui-tests",
@@ -1390,7 +1390,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
       "layer": "app",
-      "lines": 678,
+      "lines": 650,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1412,7 +1412,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 570,
+      "lines": 572,
       "types": [
         "ConnectionModel"
       ],
@@ -1553,6 +1553,18 @@
         "DSHKit",
         "Foundation",
         "Observation"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/SessionAPI.swift",
+      "layer": "app",
+      "lines": 96,
+      "types": [
+        "SessionAPI"
+      ],
+      "imports": [
+        "DSHKit",
+        "Foundation"
       ]
     },
     {
@@ -2115,7 +2127,7 @@
     {
       "file": "DSHPocket/Views/RootView.swift",
       "layer": "app",
-      "lines": 82,
+      "lines": 83,
       "types": [
         "RootView"
       ],
@@ -2234,12 +2246,12 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Sessions.swift",
-      "detail": "678 行"
+      "detail": "650 行"
     },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "570 行"
+      "detail": "572 行"
     },
     {
       "rule": "file-max-400",

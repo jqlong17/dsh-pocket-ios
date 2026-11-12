@@ -149,64 +149,36 @@ extension ConnectionModel {
         DSHNetworkErrorPolicy.isTransient(error)
     }
 
+    /// 拉列表并把归档/置顶写回 store（只读访问与解析在 SessionAPI）。
     func fetchSessions() async throws -> [PocketSession] {
-        // 列表只拉一份摘要，20 秒还没回来基本就是连不上，早点交给重试。
-        let value = try await rpcClient.rpcAdapted("session/list", args: ["_request": ["excludeArchived": true]], timeout: 20)
-        let items = value["items"] as? [[String: Any]] ?? []
-        let sessions = items.compactMap(PocketSession.init(json:))
-        let archived: Set<String>
-        if value["archivedSessionsExcluded"] as? Bool == true {
-            archived = []
-            pinnedSessionIds = []
-        } else {
-            let flags = try await fetchWorkspaceSessionFlags()
-            archived = flags.archived
-            pinnedSessionIds = flags.pinned
-        }
-        archivedSessionIds = archived
-        // 与 DSH 桌面端侧边栏保持一致：隐藏已归档、subagent 子会话和空会话，
-        // 这样 iOS 列表数量和 Mac 端看到的数量一致。
-        return sessions.filter { !archived.contains($0.sessionId) && !$0.isSubagent && !$0.isHiddenFromList }
+        let listing = try await sessionAPI.fetchListing()
+        archivedSessionIds = listing.archived
+        pinnedSessionIds = listing.pinned
+        return listing.sessions
     }
 
     func fetchWorkspaceSessionFlags() async throws -> (archived: Set<String>, pinned: [String]) {
-        guard let base = try? Self.serverURL(from: serverAddress),
-              let socketURL = Self.webSocketURL(from: base, path: "api/remote.mux") else {
-            throw ConnectionError.invalidURL(serverAddress)
-        }
-        let socket = URLSession.shared.webSocketTask(with: socketURL)
-        let streamId = UUID().uuidString
-        let open = StreamOpen(type: "open", streamId: streamId, endpoint: "workspace/follow", payload: ["args": [:]])
-        let timeout = Task {
-            try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled { socket.cancel(with: .goingAway, reason: nil) }
-        }
-        defer {
-            timeout.cancel()
-            socket.cancel(with: .goingAway, reason: nil)
-        }
-        socket.resume()
-        let encoded = try JSONEncoder().encode(open)
-        guard let requestText = String(data: encoded, encoding: .utf8) else { throw ConnectionError.invalidPayload }
-        try await socket.send(.string(requestText))
-        while true {
-            let frame = try await socket.receive()
-            let data: Data
-            switch frame {
-            case .data(let bytes): data = bytes
-            case .string(let text): data = Data(text.utf8)
-            @unknown default: continue
+        try await sessionAPI.fetchWorkspaceFlags()
+    }
+
+    /// 装配 SessionAPI 的依赖（幂等）。
+    @MainActor
+    func installSessionAPIProviders() {
+        guard sessionAPI.providers == nil else { return }
+        sessionAPI.providers = SessionAPI.Providers(
+            client: { [weak self] in
+                guard let self else { throw ConnectionError.invalidURL("") }
+                return try self.rpcClient
+            },
+            socketURL: { [weak self] in
+                guard let self,
+                      let base = URL(string: self.serverAddress),
+                      let url = Self.webSocketURL(from: base, path: "api/remote.mux") else {
+                    throw ConnectionError.invalidURL(self?.serverAddress ?? "")
+                }
+                return url
             }
-            // 帧结构判断在 DSHKit（可测）；这里只处理结果。
-            switch WorkspaceBaseline.decode(frame: data, streamId: streamId) {
-            case .skip:
-                continue
-            case .malformed:
-                throw ConnectionError.invalidPayload
-            case .baseline(let decoded):
-                return (decoded.archived, decoded.pinned)
-            }
-        }
+        )
     }
 
     /// 重命名会话（DSH `session/rename`，桌面端同步）。
