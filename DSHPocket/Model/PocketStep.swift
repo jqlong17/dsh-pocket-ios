@@ -33,16 +33,16 @@ struct PocketStep: Identifiable {
 
     var label: String {
         switch name {
-        case "bash": "执行了命令"
-        case "read": "读取了文件"
-        case "read_image": "查看了图片"
-        case "edit": "编辑了文件"
-        case "write": "写入了文件"
-        case "web_search": "搜索了网页"
-        case "web_fetch": "抓取了网页"
-        case "job_output": "读取了任务输出"
-        case "todo_write": "更新了待办"
-        case "ask_user_question": "向你确认问题"
+        case "bash": L10n.t("执行了命令")
+        case "read": L10n.t("读取了文件")
+        case "read_image": L10n.t("查看了图片")
+        case "edit": L10n.t("编辑了文件")
+        case "write": L10n.t("写入了文件")
+        case "web_search": L10n.t("搜索了网页")
+        case "web_fetch": L10n.t("抓取了网页")
+        case "job_output": L10n.t("读取了任务输出")
+        case "todo_write": L10n.t("更新了待办")
+        case "ask_user_question": L10n.t("向你确认问题")
         default: name
         }
     }
@@ -50,20 +50,20 @@ struct PocketStep: Identifiable {
     /// 正在执行时的进行时文案（Mac 端那种"正在运行命令…"的实时感）。
     var runningLabel: String {
         switch name {
-        case "bash", "exec_command", "pwsh", "write_stdin", "terminal_read", "terminal_open": "正在运行命令…"
-        case "read": "正在读取文件…"
-        case "read_image": "正在查看图片…"
-        case "grep", "glob", "search": "正在搜索…"
-        case "write": "正在写入文件…"
-        case "edit", "apply_patch": "正在编辑文件…"
-        case "web_search": "正在搜索网页…"
-        case "web_fetch": "正在打开网页…"
-        case "job_output": "正在读取任务输出…"
-        case "todo_write": "正在更新待办…"
-        case "ask_user_question": "正在等待你的选择…"
-        case "present": "正在展示…"
-        case "subagent", "subagent_fork": "正在运行子任务…"
-        default: "正在执行 \(name)…"
+        case "bash", "exec_command", "pwsh", "write_stdin", "terminal_read", "terminal_open": L10n.t("正在运行命令…")
+        case "read": L10n.t("正在读取文件…")
+        case "read_image": L10n.t("正在查看图片…")
+        case "grep", "glob", "search": L10n.t("正在搜索…")
+        case "write": L10n.t("正在写入文件…")
+        case "edit", "apply_patch": L10n.t("正在编辑文件…")
+        case "web_search": L10n.t("正在搜索网页…")
+        case "web_fetch": L10n.t("正在打开网页…")
+        case "job_output": L10n.t("正在读取任务输出…")
+        case "todo_write": L10n.t("正在更新待办…")
+        case "ask_user_question": L10n.t("正在等待你的选择…")
+        case "present": L10n.t("正在展示…")
+        case "subagent", "subagent_fork": L10n.t("正在运行子任务…")
+        default: L10n.tf("正在执行 %@…", name)
         }
     }
 

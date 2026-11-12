@@ -144,6 +144,7 @@ extension ConnectionModel {
 #if DEBUG
         if DebugLaunch.storeShots { return storeShotMessages(for: sessionId) }
 #endif
+        if LanguageStore.shared.isEnglish { return demoMessagesEN(for: sessionId) }
         switch sessionId {
         case "demo-1":
             return [
@@ -241,20 +242,124 @@ extension ConnectionModel {
         if DebugLaunch.storeShots { return [] }
 #endif
         guard sessionId == "demo-1" else { return [] }
+        let en = LanguageStore.shared.isEnglish
         return [
             PocketStep(id: "demo-step-1", sequence: 3, turn: 1, number: 1,
-                       name: "search", detail: "插件市场 · ios",
-                       resultText: "dsh-pocket-ios（连接） · dsh-usage（用量） · huashu-design（设计）",
+                       name: "search",
+                       detail: en ? "plugin market · ios" : "插件市场 · ios",
+                       resultText: en
+                           ? "dsh-pocket-ios (connector) · dsh-usage (billing) · huashu-design (design)"
+                           : "dsh-pocket-ios（连接） · dsh-usage（用量） · huashu-design（设计）",
                        finished: true),
             PocketStep(id: "demo-step-2", sequence: 4, turn: 1, number: 2,
                        name: "bash", detail: "dsh plugin add dsh-pocket-ios",
                        resultText: "installed dsh-pocket-ios@0.2.1", finished: true),
             PocketStep(id: "demo-step-3", sequence: 5, turn: 1, number: 3,
-                       name: "write", detail: "生成 SwiftUI 工程 + DSHKit",
-                       resultText: "App target / DSHKit 已生成", finished: true),
+                       name: "write",
+                       detail: en ? "Generated SwiftUI app + DSHKit" : "生成 SwiftUI 工程 + DSHKit",
+                       resultText: en ? "App target / DSHKit generated" : "App target / DSHKit 已生成",
+                       finished: true),
             PocketStep(id: "demo-step-4", sequence: 6, turn: 1, number: 4,
                        name: "bash", detail: "xcodebuild → BUILD SUCCEEDED",
-                       resultText: "模拟器验证通过，会话已同步", finished: true)
+                       resultText: en ? "Verified on simulator · session synced" : "模拟器验证通过，会话已同步",
+                       finished: true)
         ]
+    }
+
+    /// 英文演示消息。与中文版逐条对应，只换文案不换结构——
+    /// 英文 App Store 截图里不能出现中文，但数据形状必须一致。
+    static func demoMessagesEN(for sessionId: String) -> [PocketMessage] {
+        switch sessionId {
+        case "demo-1":
+            return [
+                PocketMessage(demoText: "Build an iOS client for DSH — it has to reach the sessions on my Mac, native, not a web wrapper.",
+                              isUser: true, sequence: 1),
+                PocketMessage(demoText: "Sure. DSH is plugins all the way down — let me find a ready-made connector first, then assemble the app around it.",
+                              isUser: false, sequence: 2),
+                PocketMessage(demoText: """
+                Done. Here is how the client is assembled:
+
+                | Layer | Plugin | Role |
+                | --- | --- | --- |
+                | Connection | dsh-pocket-ios | Puts your phone on the Mac's DSH |
+                | Usage | dsh-usage | Balance and token stats |
+                | Transcribe | parse-convert | Audio and links to text |
+
+                ### What shipped
+
+                - Native SwiftUI client: sessions, live stream, images, Markdown
+                - Pair by QR: LAN, Tailscale, or public tunnel
+                - Verified on simulator; history stays in sync with the Mac
+
+                Want more capability? Install another plugin from the market.
+                """, isUser: false, sequence: 7)
+            ]
+        case "demo-2":
+            return [
+                PocketMessage(demoText: "What is there to play with in the DSH plugin market?",
+                              isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                The whole idea of DSH is that everything is a plugin — connectors, tools, UI, skills all load and unload independently.
+
+                | Category | Example | What it does |
+                | --- | --- | --- |
+                | Connection | dsh-pocket-ios | Use your Mac's DSH from the phone |
+                | Usage | dsh-usage | Balance, tokens, spend trend |
+                | Transcribe | parse-convert | Video and audio to text, subtitles |
+                | Design | huashu-design | Hi-fi prototypes, slides, motion |
+
+                Installing one needs no launcher change — restart and the new capability shows up in settings.
+                """, isUser: false, sequence: 2)
+            ]
+        case "demo-3":
+            return [
+                PocketMessage(demoText: "Plan a 5-day Tokyo trip. Staying in Shinjuku, into coffee and architecture, not too rushed.",
+                              isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                One focus per half-day, leaving room for coffee and walking:
+
+                | Day | Morning | Afternoon | Evening |
+                | --- | --- | --- | --- |
+                | D1 | Arrive / Shinjuku | Metropolitan Gov. observatory | Omoide Yokocho |
+                | D2 | Senso-ji | Sumida riverside walk | Jimbocho bookshops |
+                | D3 | Omotesando architecture | Aoyama coffee | Roppongi night view |
+                | D4 | Daikanyama | Nakameguro | Meguro river |
+                | D5 | Tsukiji | Ginza | Departure |
+
+                **Tip**: get a Suica, and cluster coffee stops by area so you don't zig-zag across the city.
+                """, isUser: false, sequence: 2)
+            ]
+        case "demo-4":
+            return [
+                PocketMessage(demoText: "Can you look at this health report and explain a few of the numbers?",
+                              isUser: true, sequence: 1, localImages: [demoPicture]),
+                PocketMessage(demoText: """
+                Nothing alarming overall — three items worth watching:
+
+                | Marker | Result | Reading |
+                | --- | --- | --- |
+                | Total cholesterol | Slightly high | Adjust diet, retest in 3 months |
+                | Uric acid | High | Cut sugary drinks, drink more water |
+                | Vitamin D | Low | More daylight, supplement if needed |
+
+                Everything else is in range. Take the report to a clinic so a doctor can weigh it against your symptoms.
+                """, isUser: false, sequence: 2)
+            ]
+        default:
+            return [
+                PocketMessage(demoText: "Turn today's meeting notes into action items with owners.",
+                              isUser: true, sequence: 1),
+                PocketMessage(demoText: """
+                Done:
+
+                1. **By Wednesday** — Q2 metric definitions doc — @Wang
+                2. **Thursday** — confirm new home screen with design — @Li
+                3. **Next Monday** — send demo environment to client — @me
+                4. TBD: whether to add third-party sign-in
+
+                Two items had no owner in the notes, so I marked them TBD — tell me and I'll fill them in.
+                """, isUser: false, sequence: 2)
+            ]
+        }
     }
 }

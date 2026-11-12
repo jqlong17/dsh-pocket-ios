@@ -294,18 +294,22 @@ final class ConnectionModel {
 
     // MARK: - 演示模式（App Store 审核 / 没有电脑时体验）
 
-    static let demoSessionList: [PocketSession] = [
-        PocketSession(sessionId: "demo-1", updatedAt: Date().timeIntervalSince1970 - 60, running: false, blank: false,
-                      title: "做一个 iOS 版 DSH", cwd: "~/projects/ios-client"),
-        PocketSession(sessionId: "demo-2", updatedAt: Date().timeIntervalSince1970 - 3600, running: false, blank: false,
-                      title: "插件市场里有什么好玩的", cwd: "~/projects/dsh"),
-        PocketSession(sessionId: "demo-3", updatedAt: Date().timeIntervalSince1970 - 7200, running: false, blank: false,
-                      title: "规划东京 5 天行程", cwd: "~/Documents/旅行"),
-        PocketSession(sessionId: "demo-4", updatedAt: Date().timeIntervalSince1970 - 86400, running: false, blank: false,
-                      title: "这份体检报告怎么看", cwd: "~/Documents/健康"),
-        PocketSession(sessionId: "demo-5", updatedAt: Date().timeIntervalSince1970 - 172800, running: false, blank: false,
-                      title: "把会议记录变成行动项", cwd: "~/Documents/工作")
-    ]
+    /// 演示会话列表。标题走 L10n——英文界面的 App Store 截图不能出现中文标题。
+    static var demoSessionList: [PocketSession] {
+        let now = Date().timeIntervalSince1970
+        return [
+            PocketSession(sessionId: "demo-1", updatedAt: now - 60, running: false, blank: false,
+                          title: L10n.t("做一个 iOS 版 DSH"), cwd: "~/projects/ios-client"),
+            PocketSession(sessionId: "demo-2", updatedAt: now - 3600, running: false, blank: false,
+                          title: L10n.t("插件市场里有什么好玩的"), cwd: "~/projects/dsh"),
+            PocketSession(sessionId: "demo-3", updatedAt: now - 7200, running: false, blank: false,
+                          title: L10n.t("规划东京 5 天行程"), cwd: "~/Documents/trip"),
+            PocketSession(sessionId: "demo-4", updatedAt: now - 86400, running: false, blank: false,
+                          title: L10n.t("这份体检报告怎么看"), cwd: "~/Documents/health"),
+            PocketSession(sessionId: "demo-5", updatedAt: now - 172800, running: false, blank: false,
+                          title: L10n.t("把会议记录变成行动项"), cwd: "~/Documents/work")
+        ]
+    }
 
     static let demoPicture: UIImage = {
         if let cover = UIImage(named: "DemoHarnessCover") { return cover }
