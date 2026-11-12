@@ -91,7 +91,7 @@ extension ConnectionModel {
             detectSessionCompletions()
             errorMessage = nil
             recordDiagnostic("会话列表刷新：\(sessions.count) 个，隐藏归档 \(archivedSessionIds.count) 个")
-            // 能拉到列表说明网络通了：把断网期间排队的消息补发出去。
+            // 能拉到列表说明网络通了：把各会话的断网暂存按写入顺序一并补发。
             flushQueuedSends()
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled { return }
@@ -447,6 +447,7 @@ extension ConnectionModel {
         for pending in outboxPending where !conversation.messages.contains(where: { $0.rpcId == pending.rpcId }) {
             conversation.messages.append(pending)
         }
+        applyOutboxFlags(to: conversation, sessionId: session.sessionId)
         beginDiagnosticVisit(reusedMessages: isNewConversation ? 0 : conversation.messages.count)
         // 加载态由策略决定：有缓存就直接显示内容，不再转圈等快照。
         // 顺序很关键：先把计时起点设好，再按策略收尾，否则 noteLoadFinished 会直接返回（踩过）。
@@ -668,30 +669,10 @@ extension ConnectionModel {
         recordDiagnostic("历史中确认 steer 已送达（\(ids.count) 条）")
     }
 
-    /// 发件箱超时清理：
-    /// - 已 ACK 的旧条目 → 视为已送达，移除（避免 steer 永远"发送中"）；
-    /// - 未 ACK 且超时的 → 标为失败，让用户看到「重新发送」而不是无限转圈。
+    /// 不再按时间删除发件箱。未确认正文留到服务端历史确认，或用户取消发送。
     @MainActor
-    func pruneStaleOutbox(maxAge: TimeInterval = 120) {
+    func pruneStaleOutbox() {
         loadOutboxIfNeeded()
-        let now = Date().timeIntervalSince1970
-        var changed = false
-        for entry in outboxEntries where now - entry.createdAt > maxAge {
-            let rpcId = entry.id.lowercased()
-            // 断网排队的消息不按时间清理：网络可能很久才回来，用户也没做错什么。
-            if queuedSendRpcIds.contains(rpcId) { continue }
-            if ackedSendRpcIds.contains(rpcId) || ackedSendRpcIds.contains(entry.id) {
-                confirmOutbox(rpcIds: [rpcId])
-                ackedSendRpcIds.remove(rpcId)
-                recordDiagnostic("发件箱超时清理（已 ACK，视为送达）：\(rpcId)")
-            } else {
-                failedSendRpcIds.insert(rpcId)
-                removeOutbox(rpcIds: [rpcId])
-                recordDiagnostic("发件箱超时清理（未确认，标为失败）：\(rpcId)")
-            }
-            changed = true
-        }
-        if changed { persistOutbox() }
     }
 
     /// 消息展示排序键：服务端 seq 即唯一真相。

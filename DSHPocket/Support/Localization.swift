@@ -144,7 +144,7 @@ enum L10n {
         "已发出，等待处理": "Sent · waiting",
         "已引导，正在继续": "Steering · continuing",
         "发送失败": "Send failed",
-        "等待网络，恢复后自动发送": "Waiting for network · will send automatically",
+        "现在断网，等联网时将一并发送": "Offline. These will be sent together when you're back online.",
         "后台任务": "Background jobs",
         "没有后台任务": "No background jobs",
         "这个会话还没有启动后台任务。": "This session has not started any background job.",

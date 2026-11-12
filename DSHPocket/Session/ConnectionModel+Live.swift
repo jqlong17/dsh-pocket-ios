@@ -160,7 +160,7 @@ extension ConnectionModel {
                     if valueType == "snapshot" { receivedSnapshot = true }
                     liveConnection = .connected
                     if conversationError?.hasPrefix("实时连接") == true { conversationError = nil }
-                    // 实时流一恢复就补发排队的消息。
+                    // 实时流一恢复就把各会话的断网暂存一并补发。
                     flushQueuedSends()
                     retryDelay = .seconds(1)
                     pocketLogger.info("follow item valueType=\(valueType, privacy: .public) keys=\(value.keys.sorted().joined(separator: ","), privacy: .public)")
@@ -812,6 +812,7 @@ extension ConnectionModel {
             timingLog("prompt_ack elapsed_ms=\(Int(Date().timeIntervalSince(sendStarted) * 1000))")
             recordDiagnostic("服务端已确认发送，耗时 \(Int(Date().timeIntervalSince(sendStarted) * 1000)) 毫秒")
             ackedSendRpcIds.insert(requestId)
+            markOutboxAccepted(rpcId: requestId)
             if promptMode == "steer" { activeConversation?.steeredRpcIds.insert(requestId) }
             Task { await activeConversation?.coordinator?.setExpectingActivity(true) }
             conversationError = nil
@@ -849,6 +850,8 @@ extension ConnectionModel {
                     recordDiagnostic("发送核验成功：\(requestId)")
                 case .absent:
                     failedSendRpcIds.insert(requestId)
+                    ackedSendRpcIds.remove(requestId)
+                    markOutboxSendFailed(rpcId: requestId)
                     conversationError = "这条消息服务端没有收到，点消息下方「重新发送」可重试（按 requestId 去重，不会重复）。"
                     recordDiagnostic("发送核验失败（服务端无此消息）：\(requestId)")
                 case .unreachable:
@@ -859,26 +862,44 @@ extension ConnectionModel {
             }
         } catch {
             if Task.isCancelled || (error as? URLError)?.code == .cancelled {
-                removeOutbox(rpcIds: [requestId])
-                messages.removeAll { $0.id == pending.id }
+                // 用户取消：正文退回输入框，再删本机副本；否则留着等重发。
+                if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    draft = pending.text
+                }
+                if OutboxRetentionPolicy.canRemove(cause: .userCancelled) {
+                    removeOutbox(rpcIds: [requestId])
+                    messages.removeAll { $0.id == pending.id }
+                } else {
+                    failedSendRpcIds.insert(requestId)
+                    markOutboxSendFailed(rpcId: requestId)
+                }
                 return
             }
             if let authError = error as? ConnectionError, case .server(401) = authError {
-                removeOutbox(rpcIds: [requestId])
-                messages.removeAll { $0.id == pending.id }
+                // 登录失效不等于这条消息该丢：正文留在发件箱并标失败，重新登录后可重发。
+                if OutboxRetentionPolicy.canRemove(cause: .authExpired) {
+                    removeOutbox(rpcIds: [requestId])
+                    messages.removeAll { $0.id == pending.id }
+                } else {
+                    failedSendRpcIds.insert(requestId)
+                    markOutboxSendFailed(rpcId: requestId)
+                    recordDiagnostic("登录失效，正文保留在发件箱：\(requestId)")
+                }
                 handleAuthExpired()
                 return
             }
-            // 网络不通：不要判失败，留在本地排队，连上后自动发出。
+            // 网络不通：正文已在发件箱，再写上断网标记。不判失败，联网后一并发出。
             if isTransientNetworkError(error), !isStaleTunnelError(error) {
                 queuedSendRpcIds.insert(requestId)
                 failedSendRpcIds.remove(requestId)
+                markOutboxHeldOffline(rpcId: requestId)
                 conversationError = nil
-                recordDiagnostic("网络不可达，消息已排队等自动发送：\(requestId)")
+                recordDiagnostic("网络不可达，已写入断网暂存，联网后一并发送：\(requestId)")
                 return
             }
-            // 其它错误：保留气泡并标记失败，用户可直接重发。
+            // 其它错误：正文留在发件箱，标记失败，用户可直接重发。
             failedSendRpcIds.insert(requestId)
+            markOutboxSendFailed(rpcId: requestId)
             conversationError = "发送失败：\(error.localizedDescription)（点消息气泡下方「重新发送」可重试）"
         }
     }

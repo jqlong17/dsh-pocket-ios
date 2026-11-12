@@ -45,7 +45,7 @@ struct DiagnosticSample {
 
     var line: String {
         let clock = Self.clock.string(from: at)
-        var text = "\(clock)  内存 \(memoryMB)  待确认 \(pending)  排队 \(queued)  失败 \(failed)  网络 \(network)"
+        var text = "\(clock)  内存 \(memoryMB)  待确认 \(pending)  断网 \(queued)  失败 \(failed)  网络 \(network)"
         if let enterMs {
             text += "  进入 \(enterMs) ms"
         }
@@ -248,7 +248,7 @@ final class ConnectionModel {
         get { activeConversation?.failedRpcIds ?? [] }
         set { activeConversation?.failedRpcIds = newValue }
     }
-    /// 断网时排队等待自动发送的 rpcId。
+    /// 当前会话里、断网暂存等待一并发送的 rpcId。权威记录在发件箱的 heldOffline，这里只供打开中的会话显示。
     var queuedSendRpcIds: Set<String> {
         get { activeConversation?.queuedRpcIds ?? [] }
         set { activeConversation?.queuedRpcIds = newValue }
@@ -261,6 +261,8 @@ final class ConnectionModel {
     static let outboxDefaultsKey = "dsh-pocket.send-outbox"
     var outboxEntries: [OutboxEntry] = []
     var outboxLoaded = false
+    /// 避免会话列表刷新和实时流恢复同时补发同一批断网暂存。
+    var offlineFlushInFlight = false
     /// 每次切换会话递增；异步请求返回后用它校验，避免旧会话数据写进新会话。
     var conversationToken: UUID {
         get { activeConversation?.conversationToken ?? UUID() }
