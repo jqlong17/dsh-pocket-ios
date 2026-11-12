@@ -448,19 +448,20 @@ extension ConnectionModel {
         recordDiagnostic("打开会话：\(session.displayTitle)")
         startDiagnosticSampler()
         beginDiagnosticVisit(reusedMessages: isNewConversation ? 0 : conversation.messages.count)
-        // 复用内存里的消息时不再等快照：直接结束「加载中」，避免转圈白等。
-        if !conversation.messages.isEmpty {
-            conversation.isLoadingConversation = false
-            noteLoadFinished(source: "cache", conversation: conversation)
+        // 加载态由策略决定：有缓存就直接显示内容，不再转圈等快照。
+        // 顺序很关键：先把计时起点设好，再按策略收尾，否则 noteLoadFinished 会直接返回（踩过）。
+        let openPlan = ConversationOpenPlan.make(cachedMessageCount: conversation.messages.count)
+        conversation.loadStartedAt = Date()
+        conversation.loadTimingPending = true
+        conversation.isLoadingConversation = !openPlan.skipLoadingState
+        if openPlan.skipLoadingState, let source = openPlan.loadSource {
+            noteLoadFinished(source: source, conversation: conversation)
         }
         trimRetainedConversations(keeping: session.sessionId)
         requestScrollToBottom()
-        conversation.isLoadingConversation = true
-        conversation.loadStartedAt = Date()
-        conversation.loadTimingPending = true
-        startJobRoster(for: conversation, session: session)
         if let client = syncClient {
-            startCoordinator(for: conversation, session: session, client: client)
+            startCoordinator(for: conversation, session: session, client: client,
+                             showsLoading: !openPlan.skipLoadingState)
             // 列表里的 running 可能滞后：4 秒后（且期间没有实时 turn 事件）再核实一次。
             if session.running {
                 Task { [weak self] in

@@ -378,7 +378,8 @@ extension ConnectionModel {
     }
 
     @MainActor
-    func startCoordinator(for conversation: ConversationState, session: PocketSession, client: DSHClient) {
+    func startCoordinator(for conversation: ConversationState, session: PocketSession,
+                          client: DSHClient, showsLoading: Bool) {
         conversation.coordinatorTask?.cancel()
         if let old = conversation.coordinator { Task { await old.stop() } }
         let config = SyncConfig(maxMessages: Self.conversationMessageLimit,
@@ -391,9 +392,12 @@ extension ConnectionModel {
         let coordinator = SessionSyncCoordinator(sessionId: session.sessionId, transport: client, config: config)
         conversation.coordinator = coordinator
         conversation.coordinatorStarted = true
-        conversation.isLoadingConversation = true
-        conversation.loadStartedAt = Date()
-        conversation.loadTimingPending = true
+        // 有缓存时不要再把「加载中」打开，也不要重置计时（那会把 cache 来源覆盖成 snapshot）。
+        if showsLoading {
+            conversation.isLoadingConversation = true
+            conversation.loadStartedAt = Date()
+            conversation.loadTimingPending = true
+        }
         let updates = coordinator.updates
         conversation.coordinatorTask = Task { [weak self] in
             for await update in updates {
