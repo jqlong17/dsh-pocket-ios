@@ -1,6 +1,7 @@
 // OutboxCoordinator
 
 import Foundation
+import DSHKit
 import Observation
 
 /// 发件箱的唯一真相：未确认正文、断网标记、补发进度。
@@ -33,7 +34,8 @@ final class OutboxCoordinator {
             OutboxEntry(id: $0.id.lowercased(), sessionId: $0.sessionId,
                         text: $0.text, createdAt: $0.createdAt,
                         heldOffline: $0.heldOffline, sendFailed: $0.sendFailed,
-                        accepted: $0.accepted, attachments: $0.attachments)
+                        accepted: $0.accepted, attachments: $0.attachments,
+                        autoRetried: $0.autoRetried)
         }
         persist()
     }
@@ -78,9 +80,24 @@ final class OutboxCoordinator {
         return removed
     }
 
-    func heldOfflineEntries() -> [OutboxEntry] {
+    /// 连接恢复后要补发的条目：断网暂存 + 首次失败的。
+    func resendCandidates() -> [OutboxEntry] {
         loadIfNeeded()
-        return entries.filter(\.heldOffline).sorted { $0.createdAt < $1.createdAt }
+        return entries.filter {
+            SendRetryPolicy.shouldAutoResend(heldOffline: $0.heldOffline,
+                                             sendFailed: $0.sendFailed,
+                                             accepted: $0.accepted,
+                                             autoRetried: $0.autoRetried)
+        }.sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// 标记「已经自动重试过」，避免永久失败的消息每轮连接都重试。
+    func markAutoRetried(rpcId: String) {
+        update(rpcId: rpcId) { entry in
+            guard !entry.autoRetried else { return nil }
+            entry.autoRetried = true
+            return entry
+        }
     }
 
     func contains(rpcId: String, where matches: (OutboxEntry) -> Bool) -> Bool {

@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-12T11:56:14+08:00",
-  "commit": "c0734d5",
+  "generated_at": "2026-11-12T11:58:12+08:00",
+  "commit": "48fddf1",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 51,
-      "lines": 3013
+      "files": 52,
+      "lines": 3033
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 72,
-      "lines": 10219
+      "lines": 10247
     },
     {
       "layer": "ui-tests",
@@ -486,6 +486,17 @@
       "types": [
         "PendingCandidate",
         "PendingReconciler"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
+      "file": "DSHKit/Sources/DSHKit/Store/SendRetryPolicy.swift",
+      "layer": "pure-logic",
+      "lines": 20,
+      "types": [
+        "SendRetryPolicy"
       ],
       "imports": [
         "Foundation"
@@ -967,7 +978,7 @@
     {
       "file": "DSHPocket/Model/OutboxEntry.swift",
       "layer": "app",
-      "lines": 64,
+      "lines": 68,
       "types": [
         "OutboxEntry"
       ],
@@ -1344,7 +1355,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Outbox.swift",
       "layer": "app",
-      "lines": 342,
+      "lines": 349,
       "types": [
         "HeldOfflineDelivery"
       ],
@@ -1535,11 +1546,12 @@
     {
       "file": "DSHPocket/Session/OutboxCoordinator.swift",
       "layer": "app",
-      "lines": 96,
+      "lines": 113,
       "types": [
         "OutboxCoordinator"
       ],
       "imports": [
+        "DSHKit",
         "Foundation",
         "Observation"
       ]

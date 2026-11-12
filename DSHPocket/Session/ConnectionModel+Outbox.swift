@@ -200,7 +200,8 @@ extension ConnectionModel {
         if let conversation = activeConversation, let sessionId = selectedSession?.sessionId {
             applyOutboxFlags(to: conversation, sessionId: sessionId)
         }
-        let pending = outboxEntries.filter(\.heldOffline).sorted { $0.createdAt < $1.createdAt }
+        // 候选 = 断网暂存 + 首次失败的（SendRetryPolicy 决定）。
+        let pending = outbox.resendCandidates()
         guard !pending.isEmpty else { return }
         offlineFlushInFlight = true
         let total = pending.count
@@ -211,10 +212,16 @@ extension ConnectionModel {
             guard let self else { return }
             defer { Task { @MainActor [weak self] in self?.offlineFlushInFlight = false } }
             for entry in pending {
-                let stillHeld = await MainActor.run {
-                    self.outboxEntries.contains { $0.id.lowercased() == entry.id.lowercased() && $0.heldOffline }
+                // 发送前先标记「自动重试过」：失败也只会重试这一次。
+                let isFailedEntry = entry.sendFailed
+                if isFailedEntry {
+                    await MainActor.run { self.outbox.markAutoRetried(rpcId: entry.id) }
                 }
-                guard stillHeld else { continue }
+                let stillPending = await MainActor.run {
+                    self.outbox.resendCandidates().contains { $0.id.lowercased() == entry.id.lowercased() }
+                        || self.outbox.contains(rpcId: entry.id) { $0.accepted }
+                }
+                guard stillPending else { continue }
                 let outcome = await self.deliverHeldOffline(entry)
                 // 条与条之间留一点间隔，避开服务端限流。
                 try? await Task.sleep(for: OfflineDeliveryPolicy.interMessageDelay)

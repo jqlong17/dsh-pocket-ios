@@ -31,10 +31,12 @@ struct OutboxEntry: Codable, Identifiable {
     var accepted: Bool
     /// 随消息一起排队的图片。旧数据解码为空数组。
     var attachments: [OutboxAttachment]
+    /// 是否已经自动重试过一次（连接恢复时）。旧数据解码为 false。
+    var autoRetried: Bool
 
     init(id: String, sessionId: String, text: String, createdAt: Double,
          heldOffline: Bool = false, sendFailed: Bool = false, accepted: Bool = false,
-         attachments: [OutboxAttachment] = []) {
+         attachments: [OutboxAttachment] = [], autoRetried: Bool = false) {
         self.id = id
         self.sessionId = sessionId
         self.text = text
@@ -43,10 +45,11 @@ struct OutboxEntry: Codable, Identifiable {
         self.sendFailed = sendFailed
         self.accepted = accepted
         self.attachments = attachments
+        self.autoRetried = autoRetried
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, sessionId, text, createdAt, heldOffline, sendFailed, accepted, attachments
+        case id, sessionId, text, createdAt, heldOffline, sendFailed, accepted, attachments, autoRetried
     }
 
     init(from decoder: Decoder) throws {
@@ -59,5 +62,6 @@ struct OutboxEntry: Codable, Identifiable {
         sendFailed = try container.decodeIfPresent(Bool.self, forKey: .sendFailed) ?? false
         accepted = try container.decodeIfPresent(Bool.self, forKey: .accepted) ?? false
         attachments = try container.decodeIfPresent([OutboxAttachment].self, forKey: .attachments) ?? []
+        autoRetried = try container.decodeIfPresent(Bool.self, forKey: .autoRetried) ?? false
     }
 }
