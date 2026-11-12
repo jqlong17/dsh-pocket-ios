@@ -116,6 +116,28 @@ for mod in modules:
         else:
             window = []
 
+# 视图不得穿过模型的纯转发属性（spec/13 批次 3）
+# 带副作用的访问器（如 draft 写入要持久化）不算违规；只抓「纯粹是 let 对象的转发」。
+PURE_FORWARDING = [
+    "isConnected", "errorMessage", "serverAddress", "pin", "isConnecting", "addressNeedsRescan",
+    "sessions", "archivedSessionIds", "pinnedSessionIds", "isLoadingSessions",
+    "selectedSession", "navigationPath",
+    "outboxEntries", "queuedSendRpcIds", "failedSendRpcIds", "ackedSendRpcIds",
+]
+view_leaks = []
+for mod in modules:
+    if "/Views/" not in mod["file"]:
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for name in PURE_FORWARDING:
+        if re.search(rf"\bmodel\.{name}\b", body):
+            view_leaks.append({"rule": "view-forwards-through-model", "file": mod["file"],
+                               "detail": f"model.{name} 应改为直读状态对象"})
+            break
+
 # 分层阈值
 FILE_LIMITS = {"pure-logic": 400, "app": 600, "ui-tests": 600}
 
@@ -126,7 +148,29 @@ for mod in modules:
     if mod["layer"] == "pure-logic":
         for fw in ui_frameworks & set(mod["imports"]):
             violations.append({"rule": "pure-logic-no-ui", "file": mod["file"], "detail": f"导入了 {fw}"})
-    # 分层阈值：策略层必须短（纯逻辑、可单测），编排层与视图层天然更长。
+    # 视图不得穿过模型的纯转发属性（spec/13 批次 3）
+# 带副作用的访问器（如 draft 写入要持久化）不算违规；只抓「纯粹是 let 对象的转发」。
+PURE_FORWARDING = [
+    "isConnected", "errorMessage", "serverAddress", "pin", "isConnecting", "addressNeedsRescan",
+    "sessions", "archivedSessionIds", "pinnedSessionIds", "isLoadingSessions",
+    "selectedSession", "navigationPath",
+    "outboxEntries", "queuedSendRpcIds", "failedSendRpcIds", "ackedSendRpcIds",
+]
+view_leaks = []
+for mod in modules:
+    if "/Views/" not in mod["file"]:
+        continue
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    for name in PURE_FORWARDING:
+        if re.search(rf"\bmodel\.{name}\b", body):
+            view_leaks.append({"rule": "view-forwards-through-model", "file": mod["file"],
+                               "detail": f"model.{name} 应改为直读状态对象"})
+            break
+
+# 分层阈值：策略层必须短（纯逻辑、可单测），编排层与视图层天然更长。
     # 400 一刀切逼出过 197 行的碎片 extension，改一个功能要跳四个文件，理解成本反而上升。
     # 真正该管的是「一个文件干几件事」，不是行数本身。
     limit = FILE_LIMITS[mod["layer"]]
@@ -168,9 +212,9 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations + banned_hits + duplicate_attr,
+    "violations": violations + banned_hits + duplicate_attr + view_leaks,
 }
-all_violations = violations + banned_hits + duplicate_attr
+all_violations = violations + banned_hits + duplicate_attr + view_leaks
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 

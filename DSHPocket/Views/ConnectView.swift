@@ -18,6 +18,9 @@ import UserNotifications
 
 struct ConnectView: View {
     @Bindable var model: ConnectionModel
+    /// 状态对象单独持有：`@Bindable` 需要一个可写引用才能取 `$connection.pin` 这类绑定。
+    /// 这正是 spec/13 批次 3 想要的方向——视图直接依赖所属场景的状态对象，而不是穿过模型转发。
+    @Bindable var connection: ConnectionState
     @State private var showingScanner = false
     @State private var showingPin = false
     @State private var renamingEndpoint: SavedEndpoint?
@@ -34,7 +37,7 @@ struct ConnectView: View {
         ScrollView {
             VStack(spacing: 12) {
                 header
-                if let error = model.connection.errorMessage { errorBanner(error) }
+                if let error = connection.errorMessage { errorBanner(error) }
                 if let hint = scanHint {
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill").foregroundStyle(brand)
@@ -74,7 +77,7 @@ struct ConnectView: View {
                     if model.useScannedAddress(value) {
                         showingScanner = false
                         // 配对码/认证 URL/PIN 任一命中都直接连接。
-                        if !model.connection.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
+                        if !connection.pin.isEmpty || model.pendingPairToken != nil || model.pendingLoginToken != nil {
                             scanHint = nil
                             Task { await model.connect() }
                         } else {
@@ -88,8 +91,8 @@ struct ConnectView: View {
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(L10n.t("完成")) { showingScanner = false } } }
             }
         }
-        .onAppear { model.errorMessage = nil }
-        .onChange(of: model.serverAddress) { _, _ in model.errorMessage = nil }
+        .onAppear { connection.errorMessage = nil }
+        .onChange(of: connection.serverAddress) { _, _ in connection.errorMessage = nil }
         .alert(L10n.t("命名连接地址"), isPresented: Binding(
             get: { renamingEndpoint != nil },
             set: { if !$0 { renamingEndpoint = nil } }
@@ -148,8 +151,8 @@ struct ConnectView: View {
                     Divider().padding(.leading, 52)
                 }
                 Button {
-                    model.serverAddress = endpoint.address
-                    model.errorMessage = nil
+                    connection.serverAddress = endpoint.address
+                    connection.errorMessage = nil
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
@@ -200,7 +203,7 @@ struct ConnectView: View {
                         .accessibilityLabel(L10n.t("删除连接"))
                         .buttonStyle(.plain)
                         .accessibilityLabel("重命名\(endpoint.kind.label)地址")
-                        if model.connection.serverAddress == endpoint.address {
+                        if connection.serverAddress == endpoint.address {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
                         }
                     }
@@ -246,7 +249,7 @@ struct ConnectView: View {
     private var inputCard: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                TextField("http://192.168.1.10:3081", text: $model.serverAddress)
+                TextField("http://192.168.1.10:3081", text: $connection.serverAddress)
                     .accessibilityLabel(L10n.t("电脑地址"))
                     .accessibilityHint(L10n.t("粘贴 DSH「手机访问」页上的地址，或直接扫码"))
                     .keyboardType(.URL)
@@ -272,11 +275,11 @@ struct ConnectView: View {
             HStack(spacing: 8) {
                 Group {
                     if showingPin {
-                        TextField(L10n.t("访问密码（扫码连接可跳过）"), text: $model.pin)
+                        TextField(L10n.t("访问密码（扫码连接可跳过）"), text: $connection.pin)
                             .accessibilityLabel(L10n.t("访问密码"))
                             .accessibilityHint(L10n.t("8 到 64 位英文字母或数字，在电脑的「手机访问」页上"))
                     } else {
-                        SecureField(L10n.t("访问密码（扫码连接可跳过）"), text: $model.pin)
+                        SecureField(L10n.t("访问密码（扫码连接可跳过）"), text: $connection.pin)
                     }
                 }
                 .textContentType(.password)
@@ -285,7 +288,7 @@ struct ConnectView: View {
                 .font(.subheadline)
                 Button {
                     if let pasted = UIPasteboard.general.string {
-                        model.pin = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+                        connection.pin = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                     }
                 } label: {
@@ -321,14 +324,14 @@ struct ConnectView: View {
     private func errorBanner(_ error: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: model.connection.addressNeedsRescan ? "qrcode.viewfinder" : "exclamationmark.circle.fill")
+                Image(systemName: connection.addressNeedsRescan ? "qrcode.viewfinder" : "exclamationmark.circle.fill")
                     .foregroundStyle(.red)
                 Text(error)
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if model.addressNeedsRescan {
+            if connection.addressNeedsRescan {
                 Button { showingScanner = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "qrcode.viewfinder")
@@ -346,7 +349,7 @@ struct ConnectView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(brand)
                 }
-                .disabled(model.connection.isConnecting)
+                .disabled(connection.isConnecting)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -359,12 +362,12 @@ struct ConnectView: View {
             Task { await model.connect() }
         } label: {
             HStack(spacing: 6) {
-                if model.connection.isConnecting {
+                if connection.isConnecting {
                     ProgressView().tint(.white)
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
                 }
-                Text(model.connection.isConnecting ? L10n.t("正在连接") : L10n.t("连接"))
+                Text(connection.isConnecting ? L10n.t("正在连接") : L10n.t("连接"))
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
@@ -373,8 +376,8 @@ struct ConnectView: View {
             .background(brand, in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(model.connection.isConnecting)
-        .opacity(model.connection.isConnecting ? 0.7 : 1)
+        .disabled(connection.isConnecting)
+        .opacity(connection.isConnecting ? 0.7 : 1)
     }
 
     private var demoButton: some View {

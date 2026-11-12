@@ -19,16 +19,18 @@ import UserNotifications
 struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var model: ConnectionModel
+    /// 导航路径属于会话列表场景：单独持有状态对象才能取可写绑定。
+    @Bindable var sessionStore: SessionStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var languageRevision = 0
     @State private var showingAppSettings = false
     var body: some View {
-        NavigationStack(path: $model.navigationPath) {
+        NavigationStack(path: $sessionStore.navigationPath) {
             Group {
-                if model.isConnected {
+                if model.connection.isConnected {
                     ConnectedView(model: model)
                 } else {
-                    ConnectView(model: model)
+                    ConnectView(model: model, connection: model.connection)
                 }
             }
             .navigationTitle("DSH Pocket")
@@ -71,12 +73,12 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             model.isAppActive = (phase == .active)
             // 回到前台只静默刷新列表，不自动切换网络，避免打断当前会话。
-            guard phase == .active, model.isConnected else { return }
+            guard phase == .active, model.connection.isConnected else { return }
             Task { await model.loadSessions(silently: true) }
         }
-        .task(id: model.isConnected) {
+        .task(id: model.connection.isConnected) {
             // 周期刷新会话列表，识别"其他会话跑完了"（完成提醒的红点/通知）。
-            guard model.isConnected, !model.isDemoMode else { return }
+            guard model.connection.isConnected, !model.isDemoMode else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 if Task.isCancelled { break }

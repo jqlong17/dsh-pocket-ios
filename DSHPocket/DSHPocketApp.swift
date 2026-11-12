@@ -23,7 +23,7 @@ struct DSHPocketApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(model: model)
+            RootView(model: model, sessionStore: model.sessionStore)
                 .preferredColorScheme(.light)
         }
     }

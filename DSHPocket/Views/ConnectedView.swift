@@ -143,7 +143,7 @@ struct ConnectedView: View {
                     }
                 }
             }
-            if let error = model.errorMessage {
+            if let error = model.connection.errorMessage {
                 Section {
                     HStack(alignment: .top, spacing: 8) {
                         Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
@@ -155,12 +155,12 @@ struct ConnectedView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(.tint)
                     }
-                    if model.addressNeedsRescan {
+                    if model.connection.addressNeedsRescan {
                         Button("重新选择连接地址") { model.disconnect() }
                     }
                 }
             }
-            if model.sessions.isEmpty && !model.isLoadingSessions {
+            if model.sessionStore.sessions.isEmpty && !model.sessionStore.isLoadingSessions {
                 ContentUnavailableView(L10n.t("还没有会话"), systemImage: "bubble.left.and.bubble.right", description: Text(L10n.t("创建会话后即可开始对话。")))
                     .listRowSeparator(.hidden)
             } else if filteredGroups.isEmpty && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -198,7 +198,7 @@ struct ConnectedView: View {
                 if !isCollapsed(group.id) {
                 ForEach(group.sessions) { session in
                 let finishedAwaiting = model.finishedAwaitingSessionIds.contains(session.sessionId)
-                let isPinned = model.pinnedSessionIds.contains(session.sessionId)
+                let isPinned = model.sessionStore.pinnedSessionIds.contains(session.sessionId)
                 NavigationLink(value: session) {
                     HStack(spacing: 12) {
                         Image(systemName: session.running ? "ellipsis.bubble.fill" : (finishedAwaiting ? "bell.badge.fill" : "bubble.left"))
@@ -251,8 +251,8 @@ struct ConnectedView: View {
                     Button {
                         Task { await model.togglePin(session) }
                     } label: {
-                        Label(model.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
-                              systemImage: model.pinnedSessionIds.contains(session.sessionId) ? "pin.slash" : "pin")
+                        Label(model.sessionStore.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
+                              systemImage: model.sessionStore.pinnedSessionIds.contains(session.sessionId) ? "pin.slash" : "pin")
                     }
                     Button(role: .destructive) {
                         Task { await model.archive(session) }
@@ -264,7 +264,7 @@ struct ConnectedView: View {
                     Button {
                         Task { await model.togglePin(session) }
                     } label: {
-                        Label(model.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
+                        Label(model.sessionStore.pinnedSessionIds.contains(session.sessionId) ? L10n.t("取消置顶") : L10n.t("置顶"),
                               systemImage: "pin")
                     }
                     .tint(Color(red: 0.08, green: 0.48, blue: 0.37))
@@ -281,7 +281,7 @@ struct ConnectedView: View {
             }
         }
         .listStyle(.plain)
-        .overlay { if model.isLoadingSessions { ProgressView() } }
+        .overlay { if model.sessionStore.isLoadingSessions { ProgressView() } }
         .overlay(alignment: .bottom) {
             if model.lastArchivedSession != nil {
                 archiveUndoBanner
@@ -364,12 +364,12 @@ struct ConnectedView: View {
                 }
         }
         .task {
-            await model.loadSessions(silently: !model.sessions.isEmpty)
+            await model.loadSessions(silently: !model.sessionStore.sessions.isEmpty)
 #if DEBUG
             if !didAutoOpen, let id = DebugLaunch.sessionId,
-               let session = model.sessions.first(where: { $0.sessionId == id }) {
+               let session = model.sessionStore.sessions.first(where: { $0.sessionId == id }) {
                 didAutoOpen = true
-                model.navigationPath = [session]
+                model.sessionStore.navigationPath = [session]
             }
 #endif
         }
