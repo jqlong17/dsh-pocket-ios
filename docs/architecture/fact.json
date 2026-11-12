@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T21:58:53+08:00",
-  "commit": "94ffe54",
+  "generated_at": "2026-11-12T22:10:15+08:00",
+  "commit": "f0e8bdb",
   "layers": [
     {
       "layer": "pure-logic",
@@ -12,7 +12,7 @@
       "layer": "app",
       "role": "App 编排层与视图",
       "files": 75,
-      "lines": 10372
+      "lines": 10540
     },
     {
       "layer": "ui-tests",
@@ -1283,7 +1283,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
       "layer": "app",
-      "lines": 479,
+      "lines": 486,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1327,7 +1327,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Endpoints.swift",
       "layer": "app",
-      "lines": 226,
+      "lines": 238,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1349,7 +1349,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 904,
+      "lines": 907,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1439,7 +1439,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 565,
+      "lines": 568,
       "types": [
         "ConnectionModel"
       ],
@@ -1636,13 +1636,14 @@
     {
       "file": "DSHPocket/Support/AppSupport.swift",
       "layer": "app",
-      "lines": 136,
+      "lines": 260,
       "types": [
         "AccessibilityAnnouncer",
         "ConversationViewLifetime",
         "TextSelectionDismisser",
         "PushDelegate",
-        "PinKeychain"
+        "PinKeychain",
+        "ConnectionVault"
       ],
       "imports": [
         "AVFoundation",
@@ -1690,7 +1691,7 @@
     {
       "file": "DSHPocket/Support/PocketMotion.swift",
       "layer": "app",
-      "lines": 23,
+      "lines": 29,
       "types": [
         "PocketMotion"
       ],
@@ -2131,7 +2132,7 @@
     {
       "file": "DSHPocket/Views/ProcessRow.swift",
       "layer": "app",
-      "lines": 130,
+      "lines": 143,
       "types": [
         "ProcessRow"
       ],
@@ -2312,12 +2313,12 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Connect.swift",
-      "detail": "479 行"
+      "detail": "486 行"
     },
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "904 行"
+      "detail": "907 行"
     },
     {
       "rule": "file-max-400",
@@ -2327,7 +2328,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel.swift",
-      "detail": "565 行"
+      "detail": "568 行"
     },
     {
       "rule": "file-max-400",

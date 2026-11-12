@@ -279,6 +279,7 @@ extension ConnectionModel {
                 errorMessage = nil
                 addressNeedsRescan = false
                 PinKeychain.clear()
+                ConnectionVault.saveAuthCookies(from: url)
                 recordDiagnostic("配对登录成功：会话 \(sessions.count) 个")
                 return
             } catch {
@@ -309,6 +310,7 @@ extension ConnectionModel {
                 addressNeedsRescan = false
                 PinKeychain.save(pin)
                 await syncPushRegistration()
+                ConnectionVault.saveAuthCookies(from: url)
                 recordDiagnostic("token 登录成功：会话 \(sessions.count) 个")
                 return
             } catch {
@@ -382,6 +384,11 @@ extension ConnectionModel {
             isConnected = true
             addressNeedsRescan = false
             UserDefaults.standard.set(serverAddress, forKey: Self.savedServerAddressKey)
+            // 同时写 Keychain：重装后沙盒被清，靠它自动恢复地址与登录态。
+            ConnectionVault.saveAddress(serverAddress)
+            if let url = try? Self.serverURL(from: serverAddress) {
+                ConnectionVault.saveAuthCookies(from: url)
+            }
             recordEndpoint(serverAddress)
             pin = ""
             recordDiagnostic("连接成功：会话 \(sessions.count) 个")

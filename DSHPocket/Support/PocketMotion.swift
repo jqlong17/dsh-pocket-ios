@@ -19,4 +19,10 @@ public enum PocketMotion {
     /// 常用时长，短、不拖沓。
     public static var quick: Animation { .easeInOut(duration: 0.18) }
     public static var standard: Animation { .easeInOut(duration: 0.22) }
+
+    /// 展开/折叠（过程行、问答卡这类原地长高的容器）。
+    ///
+    /// 比 quick 再快一档：用户在点的那一刻已经在看内容了，
+    /// 0.22 秒的等待会被感知成「点了才慢慢出来」。0.16 足够遮住高度跳变。
+    public static var disclosure: Animation { .easeInOut(duration: 0.16) }
 }

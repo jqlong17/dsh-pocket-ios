@@ -28,9 +28,21 @@ struct ProcessRow: View {
         group.steps.last(where: { !$0.finished })
     }
 
+    /// 这一组是不是「当前正在进行的那一组」：轮次还在跑，且是最新一组。
+    private var isCurrentGroupRunning: Bool {
+        guard model.isTurnRunning, let lastStep = model.steps.last else { return false }
+        return group.turn == lastStep.turn
+    }
+
     private var summary: String {
         if let runningStep {
             return "\(runningStep.runningLabel) · \(group.steps.count) 步"
+        }
+        // 工具都已经返回、但整轮还在跑：AI 正在生成回复。这时仍算「进行中」，
+        // 与电脑端一致（电脑端在跑的时候不会切成完成时）。
+        // 不写「正在运行命令…」——那会误导成命令还没结束。
+        if isCurrentGroupRunning {
+            return "正在处理… · \(group.steps.count) 步"
         }
         var seen = Set<String>()
         var labels: [String] = []
@@ -51,8 +63,9 @@ struct ProcessRow: View {
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 16, height: 16)
                     Text(summary).font(.footnote).lineLimit(2)
-                        .foregroundStyle(runningStep == nil ? .secondary : PocketChrome.brandText)
-                    if runningStep != nil {
+                        .foregroundStyle(runningStep == nil && !isCurrentGroupRunning
+                                         ? .secondary : PocketChrome.brandText)
+                    if runningStep != nil || isCurrentGroupRunning {
                         ProgressView().scaleEffect(0.55).frame(width: 12, height: 12)
                     }
                     Spacer(minLength: 0)
@@ -121,7 +134,7 @@ struct ProcessRow: View {
                 .clipped()
             }
         }
-        .animation(PocketMotion.animation(.easeInOut(duration: 0.22)), value: expanded)
+        .animation(PocketMotion.animation(PocketMotion.disclosure), value: expanded)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))

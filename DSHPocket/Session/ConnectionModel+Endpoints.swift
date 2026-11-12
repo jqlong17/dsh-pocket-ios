@@ -143,6 +143,14 @@ extension ConnectionModel {
         if let data = try? JSONEncoder().encode(savedEndpoints) {
             UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
         }
+        // 删掉的正是当前这台电脑：把 Keychain 里的地址与登录 cookie 一起清掉，
+        // 否则下次启动又会凭旧凭证自动连回来——用户会以为「删了还在」。
+        if address == serverAddress {
+            ConnectionVault.clear()
+            UserDefaults.standard.removeObject(forKey: Self.savedServerAddressKey)
+            pin = ""
+            PinKeychain.clear()
+        }
     }
 
     func renameEndpoint(_ address: String, label: String?) {
@@ -187,8 +195,12 @@ extension ConnectionModel {
             return
         }
 #endif
-        guard UserDefaults.standard.string(forKey: Self.savedServerAddressKey) != nil,
-              (try? Self.serverURL(from: serverAddress)) != nil else { return }
+        // 地址可能来自 Keychain（重装后沙盒被清），所以不只看 UserDefaults。
+        let hasAddress = UserDefaults.standard.string(forKey: Self.savedServerAddressKey) != nil
+            || ConnectionVault.loadAddress() != nil
+        guard hasAddress, let base = try? Self.serverURL(from: serverAddress) else { return }
+        // 恢复登录态：沙盒被清后 cookie 会丢，从 Keychain 放回，避免重新扫码。
+        ConnectionVault.restoreAuthCookies(to: base)
         do {
             sessions = try await fetchSessions()
             isConnected = true

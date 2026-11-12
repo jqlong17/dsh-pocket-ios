@@ -283,6 +283,9 @@ extension ConnectionModel {
         isConnected = false
         pin = ""
         PinKeychain.clear()
+        // cookie 已失效：清掉，避免下次启动拿着废凭证反复 401。
+        // 地址保留，用户重新输入密码/扫码即可，不必重新找电脑。
+        ConnectionVault.clearAuthCookies()
         selectedSession = nil
         navigationPath = []
         activeConversation?.liveTask?.cancel()

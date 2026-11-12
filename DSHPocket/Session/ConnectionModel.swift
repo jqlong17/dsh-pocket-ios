@@ -45,7 +45,10 @@ final class ConnectionModel {
     /// 连接配置与状态机（spec/12 第三个对象）。
     /// 字段用计算属性转发，约 140 处调用点暂不改；视图收敛留到批次 3。
     let connection = ConnectionState(
-        serverAddress: UserDefaults.standard.string(forKey: savedServerAddressKey) ?? "http://"
+        // 地址优先从 UserDefaults 读；重装后沙盒被清，再从 Keychain 兜底恢复，避免每次重装都要重新扫码。
+        serverAddress: UserDefaults.standard.string(forKey: savedServerAddressKey)
+            ?? ConnectionVault.loadAddress()
+            ?? "http://"
     )
     var serverAddress: String {
         get { connection.serverAddress }
