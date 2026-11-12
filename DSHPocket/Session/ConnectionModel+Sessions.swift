@@ -438,6 +438,8 @@ extension ConnectionModel {
         }
 
         selectedSession = session
+        // 可见会话归模型维护，视图不再写（通知直达等入口也能覆盖到）。
+        visibleSessionId = session.sessionId
         markFinishedAwaitingRead(session.sessionId)
         liveConnection = .connecting
         // 未确认消息重新挂到该会话（发件箱兜底）；已有 messages 的会话保留历史。
@@ -479,13 +481,6 @@ extension ConnectionModel {
             return
         }
         startCoordinator(for: conversation, session: session, client: client, showsLoading: showsLoading)
-        // 列表里的 running 可能滞后：4 秒后（且期间没有实时 turn 事件）再核实一次。
-        if session.running {
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(4))
-                await self?.refreshRunningState(for: session.sessionId)
-            }
-        }
 #if DEBUG
         let olderLoads = DebugLaunch.loadOlderCount
         if olderLoads > 0 {

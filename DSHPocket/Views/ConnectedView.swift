@@ -353,16 +353,13 @@ struct ConnectedView: View {
                 // onAppear 在部分 iOS 版本上不会对同一目的地类型重复触发，
                 // 用 task(id:) 确保进入/切换会话时一定重新打开对应会话。
                 .task(id: session.sessionId) {
-                    model.visibleSessionId = session.sessionId
+                    // 可见会话由模型的 open() 维护，视图不再直接写。
                     model.open(session)
                 }
                 .onAppear { ConversationViewLifetime.liveCount += 1 }
                 .onDisappear {
                     ConversationViewLifetime.liveCount = max(0, ConversationViewLifetime.liveCount - 1)
                     TextSelectionDismisser.clear()
-                    if model.visibleSessionId == session.sessionId {
-                        model.visibleSessionId = nil
-                    }
                     model.leave(session)
                 }
         }

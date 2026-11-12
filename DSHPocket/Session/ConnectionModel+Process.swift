@@ -231,6 +231,10 @@ extension ConnectionModel {
         if selectedSession?.sessionId == session.sessionId {
             selectedSession = nil
         }
+        // 退出后不再有可见会话；未读/回到底部据此判断。
+        if visibleSessionId == session.sessionId {
+            visibleSessionId = nil
+        }
         recordDiagnostic("离开会话：\(session.displayTitle) 内存 \(String(format: "%.1f", Self.memoryFootprintMB())) MB 会话页 \(ConversationViewLifetime.liveCount)")
     }
 

@@ -60,7 +60,13 @@ struct ConversationView: View {
         let failure: TurnFailureNotice?
     }
 
+    /// 是否已经切到本页要显示的会话。切换完成前不渲染，避免首帧闪出上一条的内容。
+    private var isSwitchedToSession: Bool {
+        model.activeSessionId == session.sessionId
+    }
+
     private var entries: [TimelineEntry] {
+        guard isSwitchedToSession else { return [] }
         var result: [TimelineEntry] = model.messages.map {
             TimelineEntry(id: $0.id, sortKey: model.displaySortKey(for: $0), sequence: $0.sequence, message: $0, group: nil, failure: nil)
         }
@@ -156,7 +162,8 @@ struct ConversationView: View {
                         if model.isLoadingConversation && model.messages.isEmpty && model.steps.isEmpty {
                             ProgressView().padding(.top, 36)
                         }
-                        if entries.isEmpty && !model.isLoadingConversation {
+                        // 切换完成前不要显示空态，否则会闪一下「开始对话」。
+                        if entries.isEmpty && !model.isLoadingConversation, isSwitchedToSession {
                             ContentUnavailableView(L10n.t("开始对话"), systemImage: "text.bubble", description: Text(L10n.t("发送第一条消息。")))
                         }
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in

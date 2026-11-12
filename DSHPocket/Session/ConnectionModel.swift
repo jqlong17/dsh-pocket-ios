@@ -125,6 +125,8 @@ final class ConnectionModel {
 
     var conversations: [String: ConversationState] = [:]
     var activeConversation: ConversationState?
+    /// 当前活动会话的 id。视图用它判断「这份数据是不是我要的那条」，避免进入瞬间渲染上一条。
+    var activeSessionId: String? { activeConversation?.sessionId }
 
     var messages: [PocketMessage] {
         get { activeConversation?.messages ?? [] }
