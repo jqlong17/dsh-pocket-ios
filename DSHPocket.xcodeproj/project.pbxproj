@@ -54,6 +54,7 @@
 		D1CFA11E000000000000002E /* NotificationBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000002D /* NotificationBridge.swift */; };
 		D1CFA11E0000000000000030 /* LiveFrameApplier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000002F /* LiveFrameApplier.swift */; };
 		D1CFA11E0000000000000032 /* LiveStreamRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000031 /* LiveStreamRunner.swift */; };
+		D1CFA11E0000000000000034 /* ConnectionModel+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000033 /* ConnectionModel+Send.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -143,6 +144,7 @@
 		D1CFA11E000000000000002D /* NotificationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationBridge.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000002F /* LiveFrameApplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFrameApplier.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000031 /* LiveStreamRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamRunner.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000033 /* ConnectionModel+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Send.swift"; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -258,6 +260,7 @@
 			isa = PBXGroup;
 			children = (
 				943528201F1F90E206912130 /* ConnectionModel+Connect.swift */,
+				D1CFA11E0000000000000033 /* ConnectionModel+Send.swift */,
 				D1CFA11E000000000000000B /* Diagnostics.swift */,
 				D1CFA11E000000000000000D /* JobRoster.swift */,
 				D1CFA11E000000000000001D /* QuestionInbox.swift */,
@@ -518,6 +521,7 @@
 				3C22BCF78D87D36182DEB380 /* AppSupport.swift in Sources */,
 				E1BFD38C37A933750C39EC92 /* Localization.swift in Sources */,
 				C09222E621DF54D8938C1DBB /* ConnectionModel+Connect.swift in Sources */,
+				D1CFA11E0000000000000034 /* ConnectionModel+Send.swift in Sources */,
 				D1CFA11E000000000000000C /* Diagnostics.swift in Sources */,
 				D1CFA11E000000000000000E /* JobRoster.swift in Sources */,
 				D1CFA11E000000000000001E /* QuestionInbox.swift in Sources */,

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-12T22:30:49+08:00",
-  "commit": "69c2689",
+  "generated_at": "2026-11-12T22:31:58+08:00",
+  "commit": "eb9f365",
   "layers": [
     {
       "layer": "pure-logic",
@@ -11,8 +11,8 @@
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 79,
-      "lines": 10985
+      "files": 80,
+      "lines": 11019
     },
     {
       "layer": "ui-tests",
@@ -1361,7 +1361,7 @@
     {
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
       "layer": "app",
-      "lines": 828,
+      "lines": 532,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -1408,6 +1408,28 @@
       "file": "DSHPocket/Session/ConnectionModel+Process.swift",
       "layer": "app",
       "lines": 291,
+      "types": [],
+      "imports": [
+        "AVFoundation",
+        "AudioToolbox",
+        "DSHKit",
+        "ImageIO",
+        "Observation",
+        "Photos",
+        "PhotosUI",
+        "Security",
+        "SwiftUI",
+        "Textual",
+        "UIKit",
+        "UserNotifications",
+        "VisionKit",
+        "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Session/ConnectionModel+Send.swift",
+      "layer": "app",
+      "lines": 330,
       "types": [],
       "imports": [
         "AVFoundation",
@@ -2379,7 +2401,7 @@
     {
       "rule": "file-max-400",
       "file": "DSHPocket/Session/ConnectionModel+Live.swift",
-      "detail": "828 行"
+      "detail": "532 行"
     },
     {
       "rule": "file-max-400",
@@ -2395,11 +2417,6 @@
       "rule": "file-max-400",
       "file": "DSHPocket/Views/ConversationView.swift",
       "detail": "553 行"
-    },
-    {
-      "rule": "extension-split-smell",
-      "file": "ConnectionModel.swift",
-      "detail": "7 个 +Feature 文件，其中 1 个仍超 600 行"
     }
   ]
 }

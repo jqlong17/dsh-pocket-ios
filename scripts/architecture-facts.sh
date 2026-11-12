@@ -91,6 +91,31 @@ for mod in modules:
                 banned_hits.append({"rule": rule, "file": mod["file"],
                                     "detail": f"第 {line_no} 行含 {needle.strip()}，{advice}"})
 
+# 机械搬迁残留：同一处出现两个 @MainActor（切函数时常见），编译器会报错，
+# 但提前在扫描里报出来能省一次编译往返。
+duplicate_attr = []
+for mod in modules:
+    try:
+        body = open(mod["file"], encoding="utf-8", errors="ignore").read()
+    except OSError:
+        continue
+    window = []
+    for line_no, line in enumerate(body.split("\n"), 1):
+        stripped = line.strip()
+        if stripped.startswith("@"):
+            window.append((line_no, stripped))
+            # 只看最近三行里的注解
+            recent = [w for w in window if line_no - w[0] <= 3]
+            same = [w for w in recent if w[1] == stripped]
+            if len(same) >= 2:
+                duplicate_attr.append({"rule": "duplicate-attribute", "file": mod["file"],
+                                       "detail": f"第 {line_no} 行重复 {stripped}"})
+                window = [(line_no, stripped)]
+        elif stripped.startswith("///") or stripped.startswith("//") or not stripped:
+            continue
+        else:
+            window = []
+
 # 违规检查：纯逻辑层不得依赖 UI 框架
 ui_frameworks = {"SwiftUI", "UIKit", "AppKit"}
 violations = []
@@ -135,9 +160,9 @@ facts = {
     ],
     "dependencies": deps,
     "modules": modules,
-    "violations": violations + banned_hits,
+    "violations": violations + banned_hits + duplicate_attr,
 }
-all_violations = violations + banned_hits
+all_violations = violations + banned_hits + duplicate_attr
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(facts, f, ensure_ascii=False, indent=2)
 
