@@ -637,7 +637,7 @@ struct ConversationView: View {
                                     .frame(width: 64, height: 64)
                                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 Button {
-                                    model.draftImages.removeAll { $0.id == image.id }
+                                    model.removeDraftImage(id: image.id)
                                 } label: {
                                     Image(systemName: "xmark.circle.fill").font(.callout)
                                         .foregroundStyle(.white, .black.opacity(0.55))

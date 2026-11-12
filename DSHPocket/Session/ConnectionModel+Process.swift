@@ -120,20 +120,37 @@ extension ConnectionModel {
     /// 读取电脑端附件库里的图片（带内存缓存）。
     @MainActor
     func loadImage(_ ref: PocketImageRef) async -> UIImage? {
-        if let cached = ImageMemory.shared.image(forKey: ref.attachmentId) { return cached }
+        await loadImage(ref, tier: .thumbnail)
+    }
+
+    /// 全屏与保存到相册用：按需拉高清（2048），别再把 640 的缩略图放大。
+    func loadFullImage(_ ref: PocketImageRef) async -> UIImage? {
+        await loadImage(ref, tier: .full)
+    }
+
+    func loadImage(_ ref: PocketImageRef, tier: ImagePipeline.Tier) async -> UIImage? {
         guard let session = selectedSession else { return nil }
-        do {
-            let value = try await rpc("session/attachment", args: ["request": [
-                "sessionId": session.sessionId,
-                "attachment": ref.requestJSON
-            ]])
-            guard let base64 = value["data"] as? String,
-                  let data = Data(base64Encoded: base64),
-                  let image = ImageMemory.thumbnail(data: data) else { return nil }
-            ImageMemory.shared.store(image, forKey: ref.attachmentId)
-            return image
-        } catch {
-            return nil
+        let maxPixel: CGFloat = tier == .full
+            ? CGFloat(ImageFetchPolicy.fullMaxPixel)
+            : CGFloat(ImageFetchPolicy.thumbnailMaxPixel)
+        let bytes = ref.bytes
+        let sessionId = session.sessionId
+        let request = ref.requestJSON
+        return await ImagePipeline.shared.image(attachmentId: ref.attachmentId,
+                                                tier: tier,
+                                                maxPixel: maxPixel) { [weak self] in
+            guard let self else { return nil }
+            // 尺寸协商：服务端支持就按需缩放，不支持会忽略 maxPixel，行为不变。
+            let payload = ImageFetchPolicy.requestArgs(sessionId: sessionId,
+                                                       attachment: request,
+                                                       maxPixel: Int(maxPixel))
+            let value = try await self.rpc("session/attachment", args: ["request": payload])
+            guard let base64 = value["data"] as? String else {
+                // 附件不存在：清掉本地磁盘副本，避免一直占着 5 MB 预算。
+                if bytes > 0 { ImagePipeline.shared.forget(attachmentId: ref.attachmentId) }
+                return nil
+            }
+            return Data(base64Encoded: base64)
         }
     }
 
@@ -306,5 +323,17 @@ extension ConnectionModel {
     func addDraftImage(_ image: UIImage) {
         guard let prepared = Self.prepareImage(image) else { return }
         draftImages.append(prepared)
+        if let id = selectedSession?.sessionId {
+            DraftImageStore.save(draftImages, sessionId: id)
+        }
+    }
+
+    /// 删除一张草稿图，并把落盘的那份一起更新。
+    @MainActor
+    func removeDraftImage(id: UUID) {
+        draftImages.removeAll { $0.id == id }
+        if let id = selectedSession?.sessionId {
+            DraftImageStore.save(draftImages, sessionId: id)
+        }
     }
 }

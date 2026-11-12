@@ -778,6 +778,7 @@ extension ConnectionModel {
             sendConversation.draftImages = []
         }
         DraftStore.save("", for: session.sessionId)
+        DraftImageStore.clear(sessionId: session.sessionId)
         isSending = true
         defer {
             isSending = false

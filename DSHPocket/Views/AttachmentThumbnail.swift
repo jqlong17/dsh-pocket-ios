@@ -52,7 +52,10 @@ struct AttachmentThumbnail: View {
         .accessibilityLabel(AccessibilityLabels.attachment(index: nil, total: nil))
         .accessibilityAddTraits(.isButton)
         .fullScreenCover(isPresented: $showsPreview) {
-            if let image { FullscreenImageViewer(image: image) }
+            if let image {
+                // 有 ref 就按需拉高清；缩略图只是占位。
+                FullscreenImageViewer(ref: ref, model: model, startingWith: image)
+            }
         }
         .task {
             if image == nil {

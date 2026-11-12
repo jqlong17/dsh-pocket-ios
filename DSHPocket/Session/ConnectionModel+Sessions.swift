@@ -448,6 +448,11 @@ extension ConnectionModel {
             conversation.messages.append(pending)
         }
         applyOutboxFlags(to: conversation, sessionId: session.sessionId)
+        // 草稿图落盘过：空的就补回来（App 被杀后仍能接着发）。
+        if conversation.draftImages.isEmpty {
+            let restored = DraftImageStore.load(sessionId: session.sessionId)
+            if !restored.isEmpty { conversation.draftImages = restored }
+        }
         beginDiagnosticVisit(reusedMessages: isNewConversation ? 0 : conversation.messages.count)
         // 加载态由策略决定：有缓存就直接显示内容，不再转圈等快照。
         // 顺序很关键：先把计时起点设好，再按策略收尾，否则 noteLoadFinished 会直接返回（踩过）。
