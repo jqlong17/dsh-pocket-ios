@@ -167,7 +167,7 @@ struct FullscreenImageViewer: View {
 | --- | --- | --- |
 | 只把 Markdown 图的 640 改成 2048（治标） | 两条链路仍然各自维护缓存与降采样，下次再出问题还要改两处 | 用户明确要求「抽象成一套复用」 |
 | 引入 Kingfisher / SDWebImage | 已有一半实现，缺的只是来源抽象；引入第三方要吃它的 API 与包体积 | 项目已有 `ImagePipeline` + 两层缓存 |
-| 全屏预取相邻 2 张 | 用户明确说「滑动时才请求」；预取在快速划过时浪费流量 | 需求原话 |
+| 全屏预取相邻 2 张 | ~~用户明确说「滑动时才请求」；预取在快速划过时浪费流量~~ **已推翻，见变更记录 #1** | 需求原话（后改判） |
 | 视图消失立即清空 | 快速来回滑会反复重建，体感是「永远在转圈」 | 用户反馈 |
 | 视图消失永不清理 | 一张全屏 2868px 解码后约 15MB，留多了会被系统杀 | 内存实测（148→161MB 已接近告警区） |
 | **什么都不做** | 代价：截图永远糊、看不了相邻图、滑动闪 | 用户反馈 |
@@ -240,9 +240,24 @@ struct FullscreenImageViewer: View {
 | 5. 延迟 5 秒清理 | ✅ `onAppear` 取消 + `Task.isCancelled` 双保险 |
 | 6. Markdown 图接入管线 | ✅ 不再自己 `URLSession` + 硬编码 640 |
 
-**本轮未做（记入未决问题）**：`AttachmentThumbnail`（过程区附件图）仍是单张全屏，
-没有接入翻页。它和 Markdown 图的数据源不同（`PocketImageRef` 列表需要从 `steps` 里收集），
-本轮先做用户实际遇到的 Markdown 图。
+**已补齐（原「本轮未做」项）**：`AttachmentThumbnail` 已接入整组翻页。
+`conversationImageEntries` 同时收 `message.images` + `localImages` + `step.images`，
+`FullscreenEntry` 移到 Model 层由它产出。
 
 **验证状态**：`swift test` 359 绿；架构 0 违规；已装机。
 真机三条待验：Markdown 图全屏清晰、左右翻页、快速滑动不重新转圈。
+
+---
+
+## 变更记录
+
+| # | 日期 | 原判断 | 新判断 | 触发原因 |
+| --- | --- | --- | --- | --- |
+| 1 | 11-13 | 否决「预取相邻页」，只在滑动时请求 | **改为预加载 index±1** | 用户：「建议点开全屏的时候就把相邻的一个图片预加载为高清的，这样体验更好」——他要的是「滑动当下就是高清」，原先的省流量判断让位于体验 |
+| 2 | 11-13 | 保留双指捏合缩放 | **移除**，只留双击缩放 | 实测「第一次左右滑会停在两页中间」。`MagnificationGesture` 是连续手势，与 TabView 分页拖拽在识别层竞争；`simultaneousGesture` 也解决不了 |
+| 3 | 11-13 | 用 `fullScreenCover(isPresented:)` + 两个 `@State` | **改 `fullScreenCover(item:)`** | 实测「附件图第一次点开黑屏，第二次正常」。根因是 bool 与数据数组是两个状态，弹窗读到的可能是上一轮的旧值 |
+| 4 | 11-13 | 页面容器随图片尺寸自适应 | **固定整屏容器（GeometryReader）+ 写入时 disablesAnimations** | 「停在两页中间」的另一半原因：图片 640→2868 后 `.scaledToFit()` 尺寸变化导致父容器重排，TabView 动画被打断 |
+| 5 | 11-13 | 附件图（用户发的）不接入翻页（列为未决） | **接入** | 用户实测「我发送了多个图片，但无法左右滑动」——他发的是附件线，我第一版只做了 Markdown 线 |
+
+**未回填的判断**（属实现细节/bug 修复，按规范不必改 spec 正文）：
+`RemoteMarkdownImage` 的 5 秒延迟清理写法、`ImageSources` 的计时日志、`FullscreenEntry` 文件位置。

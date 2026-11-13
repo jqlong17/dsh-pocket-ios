@@ -1,8 +1,8 @@
-# 新建会话时选择工作区
+# 新建会话时选择工作区 + 工作区拖动排序
 
 > **Status**: In Review
 > **起始日期**：2026-11-13
-> **预估工时**：105 分钟（单元累加）
+> **预估工时**：150 分钟（单元累加，含 11-13 追加的排序需求）
 > **对应提交**：（完成后回填）
 > **文件名**：`spec/2026-11-13-0805-workspace-picker-on-create.md`
 
@@ -25,12 +25,13 @@
 1. 新建会话前可以先选工作区；不选时行为与现在完全一致（落默认工作区）。
 2. 选择器里能看到每个工作区的**标题 + 路径 + 会话数**，据此判断选哪个。
 3. 记住上次选择（同一会话内），下次新建默认停在上次那个而不是永远默认工作区。
+4. **（11-13 追加）** 会话列表里的工作区分组支持长按拖动调整显示顺序。
 
 **非目标**
 - 不做「新建工作区」流程（`workspace/create` 需要目录选择，`directoryPicker` 是 Host 侧弹窗，
   移动端体验另议，留给后续）。
 - 不改会话创建成功后的导航行为（仍直接进对话）。
-- 不做工作区重命名/删除/排序（`workspace/rename` 等已有接口，属另一件事）。
+- 不做工作区重命名/删除（`workspace/rename`、`workspace/delete` 已有接口，属另一件事）。
 
 ## 参考实现（Prior art）
 
@@ -123,6 +124,28 @@ func createSession(in workspaceId: String? = nil) async {
 新增 `DSHPocket/Views/WorkspacePickerSheet.swift`、`DSHPocket/Model/PocketWorkspace.swift`、
 `ConnectedView.swift`（`+` 按钮的入口）、`ConnectionModel+Process.swift`（解析 helper）
 
+### 第 5 步（11-13 追加）：工作区拖动排序
+
+会话列表按工作区分组显示（`workspace/follow` 的 `items` 顺序就是「手动顺序」）。
+长按分组标题拖到新位置后，调用 `workspace/insertBefore` 落库。
+
+```swift
+workspace/insertBefore {
+    request: {
+        workspaceId: "被移动的",
+        beforeWorkspaceId: "插到这个之前" | null   // null = 移到末尾
+    }
+}
+```
+
+**UI**：`.onMove`（SwiftUI `List` 自带长按拖动）+ `EditMode` 常驻，或
+`.draggable/.dropDestination`（iOS 16+）。优先用 `onMove`——系统给的拖动手感最正。
+
+**为什么服务端也要落**：本地排序只是本次会话的视图顺序，DSH 桌面端看到的是同一份顺序。
+不落库的话手机上调完、电脑上还是旧的，用户会觉得「白拖了」。
+
+**风险**：拖完立刻重排本地数组（乐观更新），请求失败要回滚并提示。
+
 ## 被否决的方案
 
 | 方案 | 否决理由 | 否决依据 |
@@ -179,6 +202,8 @@ func createSession(in workspaceId: String? = nil) async {
 | 真机：默认工作区 | 手工 | 首次点 + 选中默认工作区 |
 | 真机：切到另一个 | 手工 | 选另一个 → 创建 → 会话落在该工作区 |
 | 真机：记住上次 | 手工 | 第二次点 + 停在刚用过的那个 |
+| 排序参数正确 | `DSHKit` `WorkspaceParsingTests` | `insertBefore` 的 args 组成正确：移到末尾时 `beforeWorkspaceId` 省略/为 nil；移到中间时为目标 id |
+| 真机：拖动排序 | 手工 | 拖完刷新后顺序仍是新的（服务端已落库） |
 
 ## 预估工时
 
@@ -192,3 +217,12 @@ func createSession(in workspaceId: String? = nil) async {
 | 编译 + 测试 + 架构 | 4 轮 | 每轮约 2 | 8 分钟 |
 | 真机验证三条 | 1 | — | 12 分钟 |
 | **合计** | | | **105 分钟** |
+
+---
+
+## 变更记录
+
+| # | 日期 | 原判断 | 新判断 | 触发原因 |
+| --- | --- | --- | --- | --- |
+| 1 | 11-13 | 范围只有「新建时选工作区」，非目标里明确写「不做排序」 | **范围加「工作区拖动排序」** | 用户：「会话列表的这些工作区行，最好能支持我手动按住后拖动的修改这些工作区之间的显示顺序」 |
+| 2 | 11-13 | 预估 105 分钟 | **150 分钟** | 排序功能需要 Model 调用 `workspace/insertBefore` + List 拖动 UI + 失败回滚，约 45 分钟 |
