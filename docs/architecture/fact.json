@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-11-13T07:36:15+08:00",
-  "commit": "19b8a0c",
+  "generated_at": "2026-11-14T03:42:50+08:00",
+  "commit": "a929629",
   "layers": [
     {
       "layer": "pure-logic",
       "role": "纯逻辑层：策略/解析/传输，禁止依赖 UI",
-      "files": 57,
-      "lines": 3341
+      "files": 58,
+      "lines": 3465
     },
     {
       "layer": "app",
       "role": "App 编排层与视图",
-      "files": 86,
-      "lines": 11447
+      "files": 92,
+      "lines": 12135
     },
     {
       "layer": "ui-tests",
@@ -554,6 +554,18 @@
       ]
     },
     {
+      "file": "DSHKit/Sources/DSHKit/Store/WorkspaceParsing.swift",
+      "layer": "pure-logic",
+      "lines": 110,
+      "types": [
+        "WorkspaceSummary",
+        "WorkspaceParsing"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
       "file": "DSHKit/Sources/DSHKit/Support/DiagnosticsReport.swift",
       "layer": "pure-logic",
       "lines": 154,
@@ -765,7 +777,7 @@
     {
       "file": "DSHKit/Sources/DSHKit/UI/SessionGrouping.swift",
       "layer": "pure-logic",
-      "lines": 68,
+      "lines": 82,
       "types": [
         "SessionGrouping"
       ],
@@ -1282,6 +1294,16 @@
       ]
     },
     {
+      "file": "DSHPocket/Model/PocketWorkspace.swift",
+      "layer": "app",
+      "lines": 8,
+      "types": [],
+      "imports": [
+        "DSHKit",
+        "Foundation"
+      ]
+    },
+    {
       "file": "DSHPocket/Model/SavedEndpoint.swift",
       "layer": "app",
       "lines": 62,
@@ -1577,9 +1599,19 @@
       ]
     },
     {
+      "file": "DSHPocket/Session/ConnectionModel+Workspaces.swift",
+      "layer": "app",
+      "lines": 185,
+      "types": [],
+      "imports": [
+        "DSHKit",
+        "Foundation"
+      ]
+    },
+    {
       "file": "DSHPocket/Session/ConnectionModel.swift",
       "layer": "app",
-      "lines": 511,
+      "lines": 521,
       "types": [
         "ConnectionModel"
       ],
@@ -1783,7 +1815,7 @@
     {
       "file": "DSHPocket/Session/SessionActions.swift",
       "layer": "app",
-      "lines": 214,
+      "lines": 218,
       "types": [],
       "imports": [
         "DSHKit",
@@ -1844,6 +1876,17 @@
       ]
     },
     {
+      "file": "DSHPocket/Support/DiagFileLog.swift",
+      "layer": "app",
+      "lines": 50,
+      "types": [
+        "DiagFileLog"
+      ],
+      "imports": [
+        "Foundation"
+      ]
+    },
+    {
       "file": "DSHPocket/Support/Localization.swift",
       "layer": "app",
       "lines": 329,
@@ -1883,7 +1926,7 @@
     {
       "file": "DSHPocket/Views/AppSettingsSheet.swift",
       "layer": "app",
-      "lines": 87,
+      "lines": 144,
       "types": [
         "AppSettingsSheet"
       ],
@@ -2036,7 +2079,7 @@
     {
       "file": "DSHPocket/Views/ConnectedView.swift",
       "layer": "app",
-      "lines": 378,
+      "lines": 482,
       "types": [
         "ConnectedView"
       ],
@@ -2490,6 +2533,42 @@
         "UserNotifications",
         "VisionKit",
         "os"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/WorkspaceDragModifier.swift",
+      "layer": "app",
+      "lines": 61,
+      "types": [
+        "WorkspaceDragModifier",
+        "WorkspaceDropDelegate"
+      ],
+      "imports": [
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/WorkspacePickerSheet.swift",
+      "layer": "app",
+      "lines": 113,
+      "types": [
+        "WorkspacePickerSheet"
+      ],
+      "imports": [
+        "DSHKit",
+        "SwiftUI"
+      ]
+    },
+    {
+      "file": "DSHPocket/Views/WorkspaceReorderSheet.swift",
+      "layer": "app",
+      "lines": 96,
+      "types": [
+        "WorkspaceReorderSheet"
+      ],
+      "imports": [
+        "DSHKit",
+        "SwiftUI"
       ]
     },
     {
