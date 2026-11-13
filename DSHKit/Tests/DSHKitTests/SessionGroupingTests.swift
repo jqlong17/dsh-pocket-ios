@@ -61,3 +61,40 @@ final class SessionGroupingDuplicateTests: XCTestCase {
         XCTAssertEqual(SessionGrouping.displayOrder(items: items, pinnedIds: ["a"]), ["a"])
     }
 }
+
+final class SessionGroupingDirectoryOrderTests: XCTestCase {
+    private func items() -> [SessionGrouping.Item] {
+        [
+            .init(sessionId: "a", cwd: "/p/alpha"),
+            .init(sessionId: "b", cwd: "/p/beta"),
+            .init(sessionId: "c", cwd: "/p/gamma"),
+            .init(sessionId: "d", cwd: "/p/alpha")
+        ]
+    }
+
+    func testDefaultOrderIsFirstAppearance() {
+        let groups = SessionGrouping.groups(items: items(), pinnedIds: [])
+        XCTAssertEqual(groups.map(\.id), ["/p/alpha", "/p/beta", "/p/gamma"])
+    }
+
+    func testExplicitDirectoryOrderWins() {
+        // 用户拖动后，顺序应完全跟 workspace 列表走，而不是按会话出现先后。
+        let groups = SessionGrouping.groups(items: items(), pinnedIds: [],
+                                            directoryOrder: ["/p/gamma", "/p/alpha", "/p/beta"])
+        XCTAssertEqual(groups.map(\.id), ["/p/gamma", "/p/alpha", "/p/beta"])
+    }
+
+    func testDirectoriesMissingFromOrderGoLastInOriginalOrder() {
+        // workspace 列表可能落后于会话（新目录还没出现在列表里）：这些排后面，不丢。
+        let groups = SessionGrouping.groups(items: items(), pinnedIds: [],
+                                            directoryOrder: ["/p/gamma"])
+        XCTAssertEqual(groups.map(\.id), ["/p/gamma", "/p/alpha", "/p/beta"])
+    }
+
+    func testPinnedGroupStaysFirstRegardlessOfOrder() {
+        let groups = SessionGrouping.groups(items: items(), pinnedIds: ["b"],
+                                            directoryOrder: ["/p/gamma"])
+        XCTAssertEqual(groups.first?.id, SessionGrouping.pinnedGroupId)
+        XCTAssertTrue(groups.first?.isPinned == true)
+    }
+}

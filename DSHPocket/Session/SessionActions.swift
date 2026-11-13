@@ -179,15 +179,19 @@ extension ConnectionModel {
         }
     }
 
+    /// 新建会话。
+    ///
+    /// - Parameter workspaceId: 指定工作区；不传时落默认工作区（与旧行为一致）。
     @MainActor
-    func createSession() async {
-        // 无前置条件
+    func createSession(in workspaceId: String? = nil) async {
         do {
             var request: [String: Any] = [:]
-            if let initialized = try? await rpcClient.rpcAdapted("workspace/initializeDefault", args: [:]),
-               let workspace = initialized["workspace"] as? [String: Any],
-               let workspaceId = workspace["workspaceId"] as? String {
+            if let workspaceId, !workspaceId.isEmpty {
                 request["workspaceId"] = workspaceId
+            } else if let initialized = try? await rpcClient.rpcAdapted("workspace/initializeDefault", args: [:]),
+                      let workspace = initialized["workspace"] as? [String: Any],
+                      let fallbackId = workspace["workspaceId"] as? String {
+                request["workspaceId"] = fallbackId
             }
             let value = try await rpcClient
                 .rpcAdapted("session/create", args: ["request": request])

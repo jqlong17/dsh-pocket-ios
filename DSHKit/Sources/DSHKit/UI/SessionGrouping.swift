@@ -29,7 +29,11 @@ public enum SessionGrouping {
     public static let otherGroupId = "__other__"
     public static let defaultWorkspaceFolder = "default-workspace"
 
-    public static func groups(items: [Item], pinnedIds: [String]) -> [Group] {
+    /// - Parameter directoryOrder: 目录的优先顺序（来自工作区列表的手动顺序）。
+    ///   为空时退回「目录在会话列表里首次出现的顺序」，即旧行为。
+    ///   拖动会话列表的工作区分组后，这个参数让顺序与 DSH 桌面端一致。
+    public static func groups(items: [Item], pinnedIds: [String],
+                              directoryOrder: [String] = []) -> [Group] {
         var result: [Group] = []
         let byId = Dictionary(items.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         let pinned = pinnedIds.compactMap { byId[$0] }
@@ -49,7 +53,17 @@ public enum SessionGrouping {
             }
             buckets[key]?.append(item.sessionId)
         }
-        for key in order {
+        // 有显式顺序时按它排（未在列表里的目录按原出现顺序排在后面）。
+        var finalOrder = order
+        if !directoryOrder.isEmpty {
+            let rank = Dictionary(directoryOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            finalOrder = order.sorted { lhs, rhs in
+                let l = rank[lhs] ?? Int.max
+                let r = rank[rhs] ?? Int.max
+                return l == r ? lhs < rhs : l < r
+            }
+        }
+        for key in finalOrder {
             let folder: String? = key == otherGroupId ? nil : URL(fileURLWithPath: key).lastPathComponent
             result.append(Group(id: key, folder: folder, sessionIds: buckets[key] ?? [], isPinned: false))
         }

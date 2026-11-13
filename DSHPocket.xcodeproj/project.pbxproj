@@ -61,6 +61,10 @@
 		D1CFA11E000000000000003C /* AppInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000003B /* AppInfo.swift */; };
 		D1CFA11E000000000000003E /* ImageSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000003D /* ImageSources.swift */; };
 		D1CFA11E0000000000000040 /* FullscreenEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000003F /* FullscreenEntry.swift */; };
+		D1CFA11E0000000000000042 /* PocketWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000041 /* PocketWorkspace.swift */; };
+		D1CFA11E0000000000000044 /* ConnectionModel+Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000043 /* ConnectionModel+Workspaces.swift */; };
+		D1CFA11E0000000000000046 /* WorkspacePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */; };
+		D1CFA11E0000000000000048 /* WorkspaceDragModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -157,6 +161,10 @@
 		D1CFA11E000000000000003B /* AppInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInfo.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000003D /* ImageSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageSources.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000003F /* FullscreenEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullscreenEntry.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000041 /* PocketWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketWorkspace.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000043 /* ConnectionModel+Workspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Workspaces.swift"; sourceTree = "<group>"; };
+		D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePickerSheet.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDragModifier.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -296,6 +304,7 @@
 				DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */,
 				A6378B96DD5FA996F488CC21 /* ConnectionModel+Outbox.swift */,
 				F20280E2180654BDE8E6EA59 /* ConnectionModel+Process.swift */,
+				D1CFA11E0000000000000043 /* ConnectionModel+Workspaces.swift */,
 				46FE7D1E81312808CF97AB49 /* ConnectionModel+Sessions.swift */,
 				8170ACBA430C0EB0BFDAFA6E /* ConnectionModel.swift */,
 				4A9BB857204D1CD882A478BD /* ConversationState.swift */,
@@ -319,6 +328,7 @@
 				D1CFA11E0000000000000007 /* ImagePipeline.swift */,
 				D1CFA11E000000000000003D /* ImageSources.swift */,
 				D1CFA11E000000000000003F /* FullscreenEntry.swift */,
+				D1CFA11E0000000000000041 /* PocketWorkspace.swift */,
 				D1CFA11E0000000000000009 /* DraftImageStore.swift */,
 				592D0DF0FFC8D05F6A44DAD7 /* PendingUserQuestion.swift */,
 				B309824FAE052075925E9463 /* PocketDraftImage.swift */,
@@ -352,6 +362,8 @@
 				D1CFA11E0000000000000039 /* LaunchPlaceholder.swift */,
 				D1CFA11E000000000000001B /* ConnectHeaderCard.swift */,
 				FAA9BC74A81D648A2199324B /* FullscreenImageViewer.swift */,
+				D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */,
+				D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */,
 				A6A3D7D6842891C3F447702A /* JobRow.swift */,
 				67A5F8C2C7F36BC3A4E7E488 /* JobsSheet.swift */,
 				DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */,
@@ -579,6 +591,10 @@
 				D1CFA11E0000000000000008 /* ImagePipeline.swift in Sources */,
 				D1CFA11E000000000000003E /* ImageSources.swift in Sources */,
 				D1CFA11E0000000000000040 /* FullscreenEntry.swift in Sources */,
+				D1CFA11E0000000000000042 /* PocketWorkspace.swift in Sources */,
+				D1CFA11E0000000000000044 /* ConnectionModel+Workspaces.swift in Sources */,
+				D1CFA11E0000000000000046 /* WorkspacePickerSheet.swift in Sources */,
+				D1CFA11E0000000000000048 /* WorkspaceDragModifier.swift in Sources */,
 				D1CFA11E000000000000000A /* DraftImageStore.swift in Sources */,
 				D1CFA11E0000000000000004 /* PocketMotion.swift in Sources */,
 				AEB8B5356A2153C16FAB014E /* ConversationHeightKey.swift in Sources */,

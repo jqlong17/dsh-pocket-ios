@@ -40,6 +40,13 @@ final class ConnectionModel {
         previous: (UserDefaults.standard.dictionary(forKey: ConnectionModel.runningSnapshotKey) as? [String: Bool]) ?? [:]
     )
 
+    /// 工作区列表（`workspace/follow` 的基线帧）。新建会话时选择、列表分组顺序都用它。
+    var workspaces: [PocketWorkspace] = []
+    /// 工作区目录的手动顺序（cwd 路径）。拖动排序后立即影响会话列表的分组顺序。
+    var workspaceOrder: [String] = []
+    /// 上一次调整工作区顺序的失败提示（成功后清空）。
+    var lastWorkspaceMoveError: String?
+
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     static let conversationMessageLimit = 30
     /// 连接配置与状态机（spec/12 第三个对象）。
@@ -421,7 +428,8 @@ final class ConnectionModel {
         // 分组规则在 DSHKit（可测）；这里只做类型映射与文案。
         let items = sessionStore.sessions.map { SessionGrouping.Item(sessionId: $0.sessionId, cwd: $0.cwd) }
         let byId = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
-        return SessionGrouping.groups(items: items, pinnedIds: sessionStore.pinnedSessionIds).compactMap { group in
+        return SessionGrouping.groups(items: items, pinnedIds: sessionStore.pinnedSessionIds,
+                                      directoryOrder: workspaceOrder).compactMap { group in
             let members = group.sessionIds.compactMap { byId[$0] }
             guard !members.isEmpty else { return nil }
             let title: String

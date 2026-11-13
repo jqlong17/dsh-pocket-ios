@@ -138,8 +138,9 @@ workspace/insertBefore {
 }
 ```
 
-**UI**：`.onMove`（SwiftUI `List` 自带长按拖动）+ `EditMode` 常驻，或
-`.draggable/.dropDestination`（iOS 16+）。优先用 `onMove`——系统给的拖动手感最正。
+**UI**：`.draggable` + `.dropDestination`（iOS 16+），封装成 `WorkspaceDragModifier`。
+
+~~原先打算用 `.onMove`~~ —— 实现时发现不行，见变更记录 #3。
 
 **为什么服务端也要落**：本地排序只是本次会话的视图顺序，DSH 桌面端看到的是同一份顺序。
 不落库的话手机上调完、电脑上还是旧的，用户会觉得「白拖了」。
@@ -226,3 +227,5 @@ workspace/insertBefore {
 | --- | --- | --- | --- | --- |
 | 1 | 11-13 | 范围只有「新建时选工作区」，非目标里明确写「不做排序」 | **范围加「工作区拖动排序」** | 用户：「会话列表的这些工作区行，最好能支持我手动按住后拖动的修改这些工作区之间的显示顺序」 |
 | 2 | 11-13 | 预估 105 分钟 | **150 分钟** | 排序功能需要 Model 调用 `workspace/insertBefore` + List 拖动 UI + 失败回滚，约 45 分钟 |
+| 3 | 11-13 | 排序 UI 用 `ForEach.onMove` | **改 `draggable` + `dropDestination`** | 会话列表是「分组 → 会话」的嵌套 `ForEach`，`onMove` 作用在直接子项上，写上去会变成「组内排会话」而不是「排组」。`draggable/dropDestination` 才能表达「拖这个组头放到那个组头上」 |
+| 4 | 11-13 | 选择器按服务端返回顺序 | **默认工作区固定第一 + 其余按最近活跃降序** | 用户：「默认可以把默认工作区放在第一个位置，并且默认勾选上，另外这些工作区的排序最好是默认按照活跃的时间降序排列」。工作区自身没有活跃时间，按 `path` 从 `session/list` 的 `updatedAt` 取最新一条 |

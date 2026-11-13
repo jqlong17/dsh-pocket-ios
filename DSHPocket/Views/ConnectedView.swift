@@ -25,6 +25,14 @@ struct ConnectedView: View {
     @State private var renameDraft = ""
     @State private var didAutoOpen = false
     @State private var searchText = ""
+    @State private var showsWorkspacePicker = false
+    /// 正在拖动的工作区分组 id（cwd 路径）；nil 表示没在拖。
+    @State private var draggingWorkspaceId: String?
+    @State private var workspaceOptions: [PocketWorkspace] = []
+    @State private var isLoadingWorkspaces = false
+    @State private var defaultWorkspaceId = ""
+    /// 上次用过的工区：跨启动记住，选择器默认停在这里。
+    @AppStorage("dsh-pocket.lastWorkspaceId") private var lastWorkspaceId = ""
     @FocusState private var searchFocused: Bool
 #if DEBUG
     private var hideDemoBanner: Bool { DebugLaunch.hideDemoBanner }
@@ -194,6 +202,13 @@ struct ConnectedView: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    // 长按分组标题拖动调整工作区顺序。置顶组与「其他会话」不是工作区，不参与。
+                    .modifier(WorkspaceDragModifier(
+                        groupId: group.id,
+                        isDraggable: isWorkspaceGroup(group),
+                        dragging: $draggingWorkspaceId,
+                        onDrop: { from, to in handleWorkspaceDrop(from: from, to: to) }
+                    ))
                 }
                 if !isCollapsed(group.id) {
                 ForEach(group.sessions) { session in
@@ -319,13 +334,26 @@ struct ConnectedView: View {
                     Image(systemName: model.completionAlertsEnabled ? "bell" : "bell.slash")
                 }
                 .accessibilityLabel(L10n.t(model.completionAlertsEnabled ? "关闭完成提醒" : "开启完成提醒"))
-                Button { Task { await model.createSession() } } label: {
+                Button { openWorkspacePicker() } label: {
                     Image(systemName: "plus")
                         .font(.headline.weight(.semibold))
                 }
                 .pocketSystemGlassButton()
                 .accessibilityLabel(L10n.t("新建会话"))
             }
+        }
+        .sheet(isPresented: $showsWorkspacePicker) {
+            WorkspacePickerSheet(
+                workspaces: WorkspaceParsing.orderedForPicker(workspaceOptions, defaultId: defaultWorkspaceId),
+                preselectedId: selectedWorkspaceIdForPicker,
+                isLoading: isLoadingWorkspaces,
+                onCancel: { showsWorkspacePicker = false },
+                onCreate: { chosen in
+                    showsWorkspacePicker = false
+                    if let chosen { lastWorkspaceId = chosen }
+                    Task { await model.createSession(in: chosen) }
+                }
+            )
         }
         .navigationTitle(L10n.t("会话"))
         .alert(L10n.t("重命名会话"), isPresented: Binding(
@@ -373,5 +401,54 @@ struct ConnectedView: View {
             }
 #endif
         }
+    }
+
+    /// 点 + ：先读工作区再弹选择器。
+    ///
+    /// 读列表失败不阻断：选择器会显示「没读到工作区」并允许直接创建（落默认工作区）。
+    private func openWorkspacePicker() {
+        showsWorkspacePicker = true
+        isLoadingWorkspaces = true
+        workspaceOptions = []
+        Task {
+            let list = await model.loadWorkspaces()
+            let fallbackDefault = await model.defaultWorkspaceId()
+            await MainActor.run {
+                workspaceOptions = list
+                defaultWorkspaceId = fallbackDefault ?? ""
+                isLoadingWorkspaces = false
+            }
+        }
+    }
+
+    /// 选择器当前应勾选哪个：默认工作区优先（用户要求默认勾它），其次上次用过的。
+    /// 列表已经由 `orderedForPicker` 排过序，默认工作区在第一项。
+    private var selectedWorkspaceIdForPicker: String? {
+        let ordered = WorkspaceParsing.orderedForPicker(workspaceOptions, defaultId: defaultWorkspaceId)
+        guard !ordered.isEmpty else { return nil }
+        if !defaultWorkspaceId.isEmpty, ordered.contains(where: { $0.workspaceId == defaultWorkspaceId }) {
+            return defaultWorkspaceId
+        }
+        if !lastWorkspaceId.isEmpty, ordered.contains(where: { $0.workspaceId == lastWorkspaceId }) {
+            return lastWorkspaceId
+        }
+        return ordered.first?.workspaceId
+    }
+
+    /// 该分组是不是一个真实工作区（置顶组和「其他会话」不是）。
+    private func isWorkspaceGroup(_ group: ConnectionModel.SessionGroup) -> Bool {
+        !group.isPinned
+            && group.id != SessionGrouping.otherGroupId
+            && model.workspaces.contains { $0.path == group.id }
+    }
+
+    /// 把一个工作区拖到另一个工作区之前。
+    ///
+    /// 分组 id 是 cwd 路径，`workspace/insertBefore` 要的是 workspaceId，这里做一次映射。
+    private func handleWorkspaceDrop(from: String, to: String) {
+        guard from != to else { return }
+        guard let fromWorkspace = model.workspaces.first(where: { $0.path == from }),
+              let toWorkspace = model.workspaces.first(where: { $0.path == to }) else { return }
+        Task { await model.moveWorkspace(fromWorkspace.workspaceId, before: toWorkspace.workspaceId) }
     }
 }
