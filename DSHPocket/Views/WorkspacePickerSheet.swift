@@ -67,7 +67,11 @@ struct WorkspacePickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-        .onAppear { if selectedId == nil { selectedId = preselectedId ?? workspaces.first?.workspaceId } }
+        // 数据是异步来的：弹窗时 isLoading 为真、workspaces 为空，
+        // 那时算不出该选谁。所以三个时机都同步一次，而不是只在 onAppear。
+        .onAppear { syncSelection() }
+        .onChange(of: isLoading) { _, loading in if !loading { syncSelection() } }
+        .onChange(of: preselectedId) { _, _ in syncSelection() }
     }
 
     private func row(for workspace: PocketWorkspace) -> some View {
@@ -94,5 +98,15 @@ struct WorkspacePickerSheet: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+
+    /// 选中项同步：优先预选值，其次列表第一项。
+    ///
+    /// 只在「当前选中不在列表里」时改写——用户已经手动选过的不能被覆盖。
+    private func syncSelection() {
+        guard !isLoading, !workspaces.isEmpty else { return }
+        if let selectedId, workspaces.contains(where: { $0.workspaceId == selectedId }) { return }
+        // 兜底也取第一项：宁可勾错也不能没有勾（没有勾时用户以为选不了）。
+        selectedId = preselectedId ?? workspaces.first?.workspaceId
     }
 }

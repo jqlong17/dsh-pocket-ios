@@ -46,6 +46,8 @@ final class ConnectionModel {
     var workspaceOrder: [String] = []
     /// 上一次调整工作区顺序的失败提示（成功后清空）。
     var lastWorkspaceMoveError: String?
+    /// 上一次加载工作区失败的原因（成功时清空）。用于把「为什么空」显示给用户/日志。
+    var lastWorkspaceLoadError: String?
 
     /// 只同步最近的消息：公网隧道对 WebSocket 单帧大小有限制，长会话全量同步会被拒。
     static let conversationMessageLimit = 30

@@ -16,22 +16,45 @@ struct WorkspaceDragModifier: ViewModifier {
     func body(content: Content) -> some View {
         if isDraggable {
             content
-                .draggable(groupId) {
-                    // 拖动时的小预览：只显示一个标题条，不用整行（整行太大挡住落点）。
+                // 用 onDrag/onDrop 而不是 draggable/dropDestination：
+                // 在 List 行里后者常被行自身的手势吃掉，能拖起但放不下（实测）。
+                .onDrag {
+                    dragging = groupId
+                    return NSItemProvider(object: groupId as NSString)
+                } preview: {
                     Text(L10n.t("移动工作区"))
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(.regularMaterial, in: Capsule())
                 }
-                .dropDestination(for: String.self) { items, _ in
-                    guard let from = items.first else { return false }
-                    dragging = nil
-                    onDrop(from, groupId)
-                    return true
-                } isTargeted: { _ in }
-                .onAppear { dragging = nil }
+                .onDrop(of: [.text], delegate: WorkspaceDropDelegate(
+                    targetId: groupId,
+                    dragging: $dragging,
+                    onDrop: onDrop
+                ))
         } else {
             content
         }
     }
+}
+
+/// 把拖动的组头放到目标组头上。
+///
+/// `onDrop` 的 delegate 形态比 `dropDestination` 的闭包更可控：
+/// 能拿到拖动中的 id（存在 `dragging` 里）并在 `performDrop` 时才提交。
+private struct WorkspaceDropDelegate: DropDelegate {
+    let targetId: String
+    @Binding var dragging: String?
+    let onDrop: (String, String) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool { dragging != nil }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let from = dragging, from != targetId else { return false }
+        dragging = nil
+        onDrop(from, targetId)
+        return true
+    }
+
+    func dropExited(info: DropInfo) {}
 }

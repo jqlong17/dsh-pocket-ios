@@ -65,6 +65,8 @@
 		D1CFA11E0000000000000044 /* ConnectionModel+Workspaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000043 /* ConnectionModel+Workspaces.swift */; };
 		D1CFA11E0000000000000046 /* WorkspacePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */; };
 		D1CFA11E0000000000000048 /* WorkspaceDragModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */; };
+		D1CFA11E000000000000004A /* WorkspaceReorderSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000049 /* WorkspaceReorderSheet.swift */; };
+		D1CFA11E000000000000004C /* DiagFileLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000004B /* DiagFileLog.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
 		9417459881C5659629CA6ABE /* ConnectionModel+Live.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */; };
@@ -165,6 +167,8 @@
 		D1CFA11E0000000000000043 /* ConnectionModel+Workspaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Workspaces.swift"; sourceTree = "<group>"; };
 		D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePickerSheet.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDragModifier.swift; sourceTree = "<group>"; };
+		D1CFA11E0000000000000049 /* WorkspaceReorderSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceReorderSheet.swift; sourceTree = "<group>"; };
+		D1CFA11E000000000000004B /* DiagFileLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagFileLog.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
 		DC44131D5A668ACDC44E3CB5 /* ConnectionModel+Live.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Live.swift"; sourceTree = "<group>"; };
@@ -273,6 +277,7 @@
 				97313FE375E37A4D2B14B193 /* Localization.swift */,
 				D1CFA11E0000000000000003 /* PocketMotion.swift */,
 				D1CFA11E000000000000003B /* AppInfo.swift */,
+				D1CFA11E000000000000004B /* DiagFileLog.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -364,6 +369,7 @@
 				FAA9BC74A81D648A2199324B /* FullscreenImageViewer.swift */,
 				D1CFA11E0000000000000045 /* WorkspacePickerSheet.swift */,
 				D1CFA11E0000000000000047 /* WorkspaceDragModifier.swift */,
+				D1CFA11E0000000000000049 /* WorkspaceReorderSheet.swift */,
 				A6A3D7D6842891C3F447702A /* JobRow.swift */,
 				67A5F8C2C7F36BC3A4E7E488 /* JobsSheet.swift */,
 				DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */,
@@ -595,6 +601,8 @@
 				D1CFA11E0000000000000044 /* ConnectionModel+Workspaces.swift in Sources */,
 				D1CFA11E0000000000000046 /* WorkspacePickerSheet.swift in Sources */,
 				D1CFA11E0000000000000048 /* WorkspaceDragModifier.swift in Sources */,
+				D1CFA11E000000000000004A /* WorkspaceReorderSheet.swift in Sources */,
+				D1CFA11E000000000000004C /* DiagFileLog.swift in Sources */,
 				D1CFA11E000000000000000A /* DraftImageStore.swift in Sources */,
 				D1CFA11E0000000000000004 /* PocketMotion.swift in Sources */,
 				AEB8B5356A2153C16FAB014E /* ConversationHeightKey.swift in Sources */,

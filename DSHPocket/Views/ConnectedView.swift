@@ -27,7 +27,8 @@ struct ConnectedView: View {
     @State private var searchText = ""
     @State private var showsWorkspacePicker = false
     /// 正在拖动的工作区分组 id（cwd 路径）；nil 表示没在拖。
-    @State private var draggingWorkspaceId: String?
+    @State private var showsWorkspaceReorder = false
+    @State private var reorderOptions: [PocketWorkspace] = []
     @State private var workspaceOptions: [PocketWorkspace] = []
     @State private var isLoadingWorkspaces = false
     @State private var defaultWorkspaceId = ""
@@ -177,6 +178,8 @@ struct ConnectedView: View {
             }
             ForEach(filteredGroups) { group in
                 if !group.title.isEmpty {
+                    // 必须用 Button：onTapGesture 会吃掉 contextMenu 的长按（实测菜单不弹）。
+                    // 拖动已改为面板方案，不需要再为 drag 让路。
                     Button {
                         toggleGroup(group.id)
                     } label: {
@@ -203,12 +206,16 @@ struct ConnectedView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                     // 长按分组标题拖动调整工作区顺序。置顶组与「其他会话」不是工作区，不参与。
-                    .modifier(WorkspaceDragModifier(
-                        groupId: group.id,
-                        isDraggable: isWorkspaceGroup(group),
-                        dragging: $draggingWorkspaceId,
-                        onDrop: { from, to in handleWorkspaceDrop(from: from, to: to) }
-                    ))
+                    // 长按分组头 → 调整顺序（不用直接拖：List 行内的 drag/drop 与 tap/滚动冲突，实测不可用）。
+                    .contextMenu {
+                        if isWorkspaceGroup(group) {
+                            Button {
+                                openWorkspaceReorder()
+                            } label: {
+                                Label(L10n.t("调整工作区顺序"), systemImage: "arrow.up.arrow.down")
+                            }
+                        }
+                    }
                 }
                 if !isCollapsed(group.id) {
                 ForEach(group.sessions) { session in
@@ -355,6 +362,15 @@ struct ConnectedView: View {
                 }
             )
         }
+        .sheet(isPresented: $showsWorkspaceReorder) {
+            WorkspaceReorderSheet(
+                workspaces: reorderOptions,
+                onMove: { fromId, beforeId in
+                    Task { await model.moveWorkspace(fromId, before: beforeId) }
+                },
+                onClose: { showsWorkspaceReorder = false }
+            )
+        }
         .navigationTitle(L10n.t("会话"))
         .alert(L10n.t("重命名会话"), isPresented: Binding(
             get: { renamingSession != nil },
@@ -393,6 +409,12 @@ struct ConnectedView: View {
         }
         .task {
             await model.loadSessions(silently: !model.sessionStore.sessions.isEmpty)
+            // 预加载工作区：等列表出来后再拉，不挡首屏。
+            // 连接刚就绪时首次握手容易失败，这里赶在用户点开设置/新建之前先试一次，
+            // 失败也无所谓——打开面板时还会再试。
+            if model.workspaces.isEmpty {
+                _ = await model.loadWorkspaces()
+            }
 #if DEBUG
             if !didAutoOpen, let id = DebugLaunch.sessionId,
                let session = model.sessionStore.sessions.first(where: { $0.sessionId == id }) {
@@ -406,6 +428,16 @@ struct ConnectedView: View {
     /// 点 + ：先读工作区再弹选择器。
     ///
     /// 读列表失败不阻断：选择器会显示「没读到工作区」并允许直接创建（落默认工作区）。
+    /// 打开排序面板：按会话列表当前的分组顺序传入，用户看到的就是现在的样子。
+    private func openWorkspaceReorder() {
+        let orderedPaths = filteredGroups.filter { !$0.isPinned }.map(\.id)
+        let byPath = Dictionary(model.workspaces.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        reorderOptions = orderedPaths.compactMap { byPath[$0] } + model.workspaces.filter { w in
+            !orderedPaths.contains(w.path)
+        }
+        showsWorkspaceReorder = true
+    }
+
     private func openWorkspacePicker() {
         showsWorkspacePicker = true
         isLoadingWorkspaces = true
@@ -421,18 +453,13 @@ struct ConnectedView: View {
         }
     }
 
-    /// 选择器当前应勾选哪个：默认工作区优先（用户要求默认勾它），其次上次用过的。
-    /// 列表已经由 `orderedForPicker` 排过序，默认工作区在第一项。
+    /// 选择器默认勾选哪一项。
+    ///
+    /// 直接取排序后的第一项：`orderedForPicker` 保证默认工作区在第一位，
+    /// 所以不需要再依赖 `defaultWorkspaceId` 是否取到（它来自另一个 RPC，可能失败）。
+    /// 曾经因为 `defaultWorkspaceId` 为空而走不到「勾选默认工作区」分支，实测未勾选。
     private var selectedWorkspaceIdForPicker: String? {
-        let ordered = WorkspaceParsing.orderedForPicker(workspaceOptions, defaultId: defaultWorkspaceId)
-        guard !ordered.isEmpty else { return nil }
-        if !defaultWorkspaceId.isEmpty, ordered.contains(where: { $0.workspaceId == defaultWorkspaceId }) {
-            return defaultWorkspaceId
-        }
-        if !lastWorkspaceId.isEmpty, ordered.contains(where: { $0.workspaceId == lastWorkspaceId }) {
-            return lastWorkspaceId
-        }
-        return ordered.first?.workspaceId
+        WorkspaceParsing.orderedForPicker(workspaceOptions, defaultId: defaultWorkspaceId).first?.workspaceId
     }
 
     /// 该分组是不是一个真实工作区（置顶组和「其他会话」不是）。

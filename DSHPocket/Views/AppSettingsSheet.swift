@@ -21,6 +21,16 @@ struct AppSettingsSheet: View {
     @AppStorage("dsh-pocket.session-list-mode") private var sessionListModeRaw = SessionListMode.timeline.rawValue
     @Environment(\.dismiss) private var dismiss
     @State private var languageRevision = 0
+    /// 排序面板的上下文。用 item 而不是「bool + 数据」两个状态：
+    /// 后者弹窗时读到的数据可能还是上一轮的空数组（SwiftUI 同一更新周期批量处理，
+    /// 附件图黑屏那次也是这个原因）。
+    @State private var reorderContext: ReorderContext?
+
+    struct ReorderContext: Identifiable {
+        let id = UUID()
+        let workspaces: [PocketWorkspace]
+        let failure: String?
+    }
 
     private var versionText: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
@@ -54,6 +64,20 @@ struct AppSettingsSheet: View {
                         }
                     }
                 }
+                Section(L10n.t("工作区")) {
+                    Button {
+                        openReorder()
+                    } label: {
+                        HStack {
+                            Text(L10n.t("调整工作区顺序"))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
                 Section(L10n.t("完成提醒")) {
                     Toggle(isOn: Binding(
                         get: { model.completionAlertsEnabled },
@@ -77,10 +101,43 @@ struct AppSettingsSheet: View {
                     Button(L10n.t("完成")) { dismiss() }
                 }
             }
+            .sheet(item: $reorderContext) { context in
+                WorkspaceReorderSheet(
+                    workspaces: context.workspaces,
+                    isDemo: model.isDemoMode,
+                    failureReason: context.failure,
+                    onRetry: { openReorder() },
+                    onMove: { fromId, beforeId in
+                        Task { await model.moveWorkspace(fromId, before: beforeId) }
+                    },
+                    onClose: { reorderContext = nil }
+                )
+            }
         }
         .id(languageRevision)
         .onReceive(NotificationCenter.default.publisher(for: .appLanguageChanged)) { _ in
             languageRevision &+= 1
+        }
+    }
+
+}
+
+extension AppSettingsSheet {
+    /// 打开排序面板。
+    ///
+    /// **优先用已有缓存**（新建会话/连接后预加载时拉到的），不重新拉：
+    /// 这条 WebSocket 请求在设置页的上下文里不稳定，而缓存里的数据是可靠的。
+    /// 只有缓存为空时才尝试加载，失败就给提示和重试按钮。
+    fileprivate func openReorder() {
+        Task {
+            if model.workspaces.isEmpty {
+                _ = await model.loadWorkspaces()
+            }
+            let ordered = WorkspaceParsing.orderedForPicker(model.workspaces, defaultId: nil)
+            await MainActor.run {
+                reorderContext = ReorderContext(workspaces: ordered,
+                                                failure: model.lastWorkspaceLoadError)
+            }
         }
     }
 }
