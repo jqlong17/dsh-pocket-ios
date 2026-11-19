@@ -263,7 +263,7 @@ struct MessageRow: View {
                             .font(.caption2.weight(.semibold))
                     case .queued:
                         Image(systemName: "wifi.slash").font(.caption2)
-                        Text(L10n.t("现在断网，等联网时将一并发送"))
+                        Text(L10n.t("等待联网后一并发送"))
                     }
                 }
                 .font(.caption2)

@@ -238,7 +238,7 @@ extension ConnectionModel {
                         self.outbox.flushNote = "正在补发 \(sent)/\(total)"
                         return false
                     case .stillOffline:
-                        self.outbox.flushNote = "已补发 \(sent)/\(total)，网络又断了，剩余 \(total - sent) 条仍在手机上"
+                        self.outbox.flushNote = "已补发 \(sent)/\(total)，实时同步中断，剩余 \(total - sent) 条仍在手机上"
                         self.recordDiagnostic("补发仍无网络，剩余断网暂存留在本机：\(entry.id)")
                         return true
                     case .auth:

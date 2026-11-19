@@ -1138,6 +1138,30 @@ export function apply(ctx) {
           return
         }
 
+          // App 遥测：App 每 10 秒上报一次连接状态，写 JSONL 供事后排查。
+          //
+          // 为什么需要：手机侧的 liveState / rate / sinceFrameMs / outbox 只存在 App 里，
+          // Mac 侧只能看到「消息到没到」。两边时间对齐后才能分清
+          // 「是网络慢」还是「App 状态机卡住」——之前只能靠用户截图猜。
+          if (urlObject.pathname === `${CHANNEL}/telemetry`) {
+            if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
+            let payload
+            try {
+              payload = await readBody(req)
+            } catch {
+              send(res, 400, { ok: false }); return
+            }
+            try {
+              const telemetryDir = join(homedir(), 'Library', 'Logs', 'DSHPocket')
+              await mkdir(telemetryDir, { recursive: true })
+              const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+              const line = JSON.stringify({ receivedAt: new Date().toISOString(), ...payload })
+              await appendFile(join(telemetryDir, `app-telemetry-${day}.jsonl`), line + '\n', 'utf8')
+            } catch { /* 落盘失败不影响 App 上报 */ }
+            send(res, 200, { ok: true })
+            return
+          }
+
         // CLI 专用：切换连接方式（只允许本机）。
         // 复用 mode.set 的互斥逻辑：切走 cloudflare 前先停隧道，避免两个隧道并存。
         if (urlObject.pathname === `${CHANNEL}/cli.mode`) {

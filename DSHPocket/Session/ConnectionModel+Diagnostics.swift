@@ -248,6 +248,29 @@ extension ConnectionModel {
 
    func captureDiagnosticSample(enterMs: Int? = nil) {
         diagnostics.capture(enterMs: enterMs)
+        // 采样器本身就是 10 秒一次，和 Mac 侧 dsh-net-record 同频，
+        // 顺手把「只有手机知道」的状态报上去，两边时间轴才能对齐。
+        reportTelemetry()
+    }
+
+    /// 把当前连接/发件箱状态报给 Mac（落成 app-telemetry-*.jsonl）。
+    ///
+    /// 只报状态与计数：**不报消息正文、不报 token、不报地址以外的敏感内容**。
+    /// 失败静默（见 TelemetryReporter），不影响任何用户可见行为。
+    func reportTelemetry() {
+        let base = connection.serverAddress.isEmpty ? nil : URL(string: connection.serverAddress)
+        let entries = outboxEntries
+        let payload: [String: Any] = [
+            "phase": "sample",
+            "liveState": diagnosticNetworkLabel(),
+            "connected": connection.isConnected,
+            "pending": entries.count,
+            "queued": entries.filter(\.heldOffline).count,
+            "failed": entries.filter(\.sendFailed).count,
+            "memoryMB": Diagnostics.memoryFootprintMB(),
+            "hasVisibleSession": visibleSessionId != nil,
+        ]
+        TelemetryReporter.report(payload, to: base)
     }
 
 
