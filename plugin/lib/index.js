@@ -979,6 +979,12 @@ function attachStableProxy(ctx, handler) {
         copy.referer = `http://127.0.0.1:${dshPort}${referer.pathname}${referer.search}`
       } catch { /* 非法 Referer 直接丢弃 */ }
     }
+    // 保留**外部真实 Host**再改写 Host 给 DSH 用。
+    //
+    // 为什么必须留：refresh 要用 Host 生成 302 的跳转地址。代理把 Host 改成
+    // 127.0.0.1 之后，插件拼出的是 http://127.0.0.1:.../?token=...，手机跟随过去
+    // 等于访问它自己的 localhost —— 结果是「服务端 refresh ok，App 说没拿到 cookie」。
+    if (typeof headers.host === 'string') copy['x-dsh-original-host'] = headers.host
     delete copy['x-forwarded-for']
     delete copy['x-forwarded-host']
     delete copy['x-forwarded-proto']
@@ -1464,7 +1470,8 @@ function guessProto(req, host) {
             if (lanIp) {
               base = `http://${lanIp}:${PROXY_PORT}`
             } else {
-              const host = String(req.headers.host ?? '')
+              // 优先用代理带过来的外部 Host；直连（无代理）时才退回 req.headers.host。
+            const host = String(req.headers['x-dsh-original-host'] ?? req.headers.host ?? '')
               const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
               const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
               base = `${forwardedProto || (isLoopback ? 'http' : 'https')}://${host}`
