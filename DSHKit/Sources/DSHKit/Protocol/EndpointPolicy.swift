@@ -24,9 +24,13 @@ public struct DSHSavedEndpointRecord: Equatable, Sendable {
 
 /// 端点类型、去重配额，以及是否自动播种开发地址。
 public enum DSHEndpointPolicy {
-    /// 局域网最多 3 个（可分别命名「公司」「家」），公网 1 个，自定义 2 个。
+    /// 局域网最多 3 个（可分别命名「公司」「家」），公网 5 个，自定义 2 个。
+    ///
+    /// 公网从 1 提到 5：一台 Mac 走 Tailscale、一台云服务器走公网、
+    /// 可能还有 Cloudflare / EasyTier 的地址，都是 https。
+    /// 原上限 1 会让它们互相踢掉，用户没法同时保存两条以上。
     public static let lanLimit = 3
-    public static let publicNetworkLimit = 1
+    public static let publicNetworkLimit = 5
     public static let customLimit = 2
 
     public static func kind(of address: String) -> DSHEndpointKind {

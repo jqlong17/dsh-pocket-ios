@@ -16,7 +16,15 @@ final class OutboxCoordinator {
     static let defaultsKey = "dsh-pocket.send-outbox"
 
     /// 未确认条目。服务端历史确认前不得删除（见 `OutboxRetentionPolicy`）。
-    private(set) var entries: [OutboxEntry] = []
+    ///
+    /// `didSet` 里清 `flushNote`：补发提示是**上一次补发的快照**，
+    /// 条目一旦被确认/撤回，那句「剩余 N 条仍在手机上」就已经过期了。
+    /// 不清的话会出现「诊断页 pending=0，但输入框上写着剩余 1 条」的自相矛盾。
+    private(set) var entries: [OutboxEntry] = [] {
+        didSet {
+            if entries.count != oldValue.count { flushNote = nil }
+        }
+    }
     private(set) var loaded = false
     /// 补发进行中。防止列表刷新和实时流恢复同时补发同一批。
     var flushInFlight = false

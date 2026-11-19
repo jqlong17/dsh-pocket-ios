@@ -206,7 +206,7 @@ enum L10n {
         "使用说明": "How to use",
         "已保存的连接": "Saved connections",
         "点按切换": "Tap to switch",
-        "局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。": "Up to 3 LAN addresses (name them Office/Home) and the latest 1 public address. Rescan if the public address changes.",
+        "局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 5 个；公网地址变化后重新扫码更新。": "Up to 3 LAN addresses (name them Office/Home) and the latest 1 public address. Rescan if the public address changes.",
         "连接": "Connect",
         "体验演示模式": "Try demo mode",
         "演示模式使用内置示例数据，不会连接或发送任何内容。": "Demo mode uses sample data. It never connects or sends anything.",

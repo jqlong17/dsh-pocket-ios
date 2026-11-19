@@ -41,7 +41,9 @@ final class EndpointPolicyTests: XCTestCase {
         XCTAssertTrue(addresses.contains("http://192.168.1.12:3081"))
         XCTAssertTrue(addresses.contains("http://192.168.1.11:3081"))
         XCTAssertFalse(addresses.contains("http://192.168.1.14:3081"))
-        XCTAssertEqual(addresses.filter { $0.contains("example.ts.net") }, ["https://a.example.ts.net"])
+        // 公网配额提到 5：a、b 两个 https 地址都应保留
+        XCTAssertEqual(Set(addresses.filter { $0.contains("example.ts.net") }),
+                       Set(["https://a.example.ts.net", "https://b.example.ts.net"]))
         XCTAssertTrue(addresses.contains("http://203.0.113.10:3091"))
         XCTAssertTrue(addresses.contains("http://203.0.113.11:3091"))
         XCTAssertFalse(addresses.contains("http://203.0.113.12:3091"))

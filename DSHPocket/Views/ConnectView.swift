@@ -219,7 +219,7 @@ struct ConnectView: View {
                 .buttonStyle(.plain)
             }
 
-            Text(L10n.t("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 1 个；公网地址变化后重新扫码更新。"))
+            Text(L10n.t("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 5 个；公网地址变化后重新扫码更新。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -1034,6 +1034,20 @@ function attachStableProxy(ctx, handler) {
       proxySocket.pipe(socket)
       socket.pipe(proxySocket)
     })
+    // 上游没有升级时（401 未认证 / 403 / 404）走这条。
+    //
+    // `upgrade` 事件只在服务器返回 101 时触发。DSH 因为 cookie 缺失或过期返回 401 时，
+    // `response` 事件会触发，但没人接的话这个请求就永远挂着 —— 客户端看到「连上了但 0 字节」，
+    // 表现是 App 的 Live 一直 reconnecting、帧率 0.00/s，而普通 HTTP 请求完全正常。
+    proxyReq.on('response', (proxyRes) => {
+      proxyRes.on('error', () => { try { socket.destroy() } catch { /* 已关闭 */ } })
+      const headers = [`HTTP/1.1 ${proxyRes.statusCode} ${proxyRes.statusMessage ?? ''}`]
+      for (const [key, value] of Object.entries(proxyRes.headers)) {
+        if (value !== undefined) headers.push(`${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+      }
+      try { socket.write(headers.join('\r\n') + '\r\n\r\n') } catch { /* 已断开 */ }
+      proxyRes.pipe(socket)
+    })
     proxyReq.on('error', () => socket.destroy())
     proxyReq.end()
   })
