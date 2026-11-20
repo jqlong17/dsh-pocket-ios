@@ -142,6 +142,30 @@ struct AppSettingsSheet: View {
                     }
                 }
 
+                // 当前连接一览：方式 / 状态 / 地址。
+                // 放在「断开连接」上方，因为断开前最该确认的就是「我现在连的是哪条路」。
+                Section {
+                    LabeledContent(L10n.t("连接方式")) {
+                        Text(connectionKindLabel)
+                    }
+                    LabeledContent(L10n.t("状态")) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(connectionStatusColor)
+                                .frame(width: 8, height: 8)
+                            Text(model.liveConnectionState)
+                        }
+                    }
+                    LabeledContent(L10n.t("地址")) {
+                        Text(model.connection.serverAddress)
+                            .font(.footnote)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                } header: {
+                    Text(L10n.t("当前连接"))
+                }
+
                 // 连接操作从会话列表左上角移到这里：那里只留高频动作（新建会话）。
                 Section {
                     Button(role: .destructive) {
@@ -212,6 +236,43 @@ extension AppSettingsSheet {
                 reorderContext = ReorderContext(workspaces: ordered,
                                                 failure: model.lastWorkspaceLoadError)
             }
+        }
+    }
+}
+
+extension AppSettingsSheet {
+    /// 把连接地址翻译成人能一眼认出的方式。
+    ///
+    /// 判据来自 `DSHEndpointPolicy.kind(of:)` 的同一套 host 规则，但这里要更细：
+    /// 用户看到「公网」不知道是 Tailscale 还是 Cloudflare，而这两者的排查方向完全不同。
+    var connectionKindLabel: String {
+        guard let url = URL(string: model.connection.serverAddress),
+              let host = url.host?.lowercased() else {
+            return L10n.t("未知")
+        }
+        if host.hasSuffix(".ts.net") { return "Tailscale" }
+        if host.hasSuffix(".trycloudflare.com") { return "Cloudflare" }
+        if host == "localhost" || host.hasSuffix(".local") { return L10n.t("局域网") }
+        let parts = host.split(separator: ".").compactMap { Int($0) }
+        if parts.count == 4 {
+            let a = parts[0], b = parts[1]
+            if a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && (16...31).contains(b)) {
+                return L10n.t("局域网")
+            }
+            return L10n.t("公网直连")
+        }
+        if url.scheme == "https" { return L10n.t("公网") }
+        return L10n.t("自定义")
+    }
+
+    /// 状态圆点：绿=连上，橙=过渡中，灰=未连。
+    var connectionStatusColor: Color {
+        switch model.liveConnection {
+        case .connected: return .green
+        case .connecting, .reconnecting: return .orange
+        case .disconnected: return .red
+        case .idle: return .secondary
+        case .demo: return .blue
         }
     }
 }

@@ -1104,6 +1104,10 @@ export function apply(ctx) {
           // easytier.conf 免认证：代理客户端下载它时没有 DSH cookie。
           // 内容只有局域网 IP + SOCKS5 端口 + 网段，不含任何凭证。
           || rawPath === `${CHANNEL}/easytier.conf`
+          // telemetry 免 cookie：App 的 URLSession 在 refresh 之后没稳定带上新的
+          // dsh-auth（实测每 10 秒 403），而它只写「状态计数」到本机日志，
+          // 不含消息正文或凭证，放开认证的代价可控。
+          || rawPath === `${CHANNEL}/telemetry`
           // cli.* 免 cookie，但**只允许本机回环**（CLI 在服务器终端里跑，
           // 没法走浏览器登录那套）。IP 校验在每个端点内部做。
           || rawPath === `${CHANNEL}/cli.pair`
@@ -1112,6 +1116,12 @@ export function apply(ctx) {
         if (!isLogin && typeof connection?.requestRejection === 'function') {
           const rejection = connection.requestRejection(req)
           if (rejection !== undefined) {
+            // 只对遥测打日志：它本该每 10 秒来一次，被 401 拦掉时日志里必须有痕迹，
+            // 否则「App 没发」和「发了被拒」两种情况长得一模一样，没法排查。
+            if (rawPath.endsWith('/telemetry')) {
+              const hasCookie = typeof req.headers.cookie === 'string' && req.headers.cookie.length > 0
+              await logLine(`telemetry rejected (${rejection}) host=${String(req.headers.host ?? '')} cookie=${hasCookie ? 'yes' : 'none'}`)
+            }
             send(res, rejection, { ok: false })
             return
           }
@@ -1157,6 +1167,7 @@ export function apply(ctx) {
             } catch {
               send(res, 400, { ok: false }); return
             }
+            await logLine(`telemetry received (${Object.keys(payload ?? {}).length} keys)`)
             try {
               const telemetryDir = join(homedir(), 'Library', 'Logs', 'DSHPocket')
               await mkdir(telemetryDir, { recursive: true })
