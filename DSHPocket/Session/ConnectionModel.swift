@@ -33,6 +33,20 @@ final class ConnectionModel {
     var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
+    /// 当前渲染模式标识（遥测用）。精简已转正，固定为 compact。
+    var renderModeLabel: String { "compact" }
+
+    /// 最近一次消息列表重排（`entries`）的耗时与规模。
+    ///
+    /// `@ObservationIgnored`：这些是纯粹的性能样本，写它不该触发界面刷新，
+    /// 否则会形成「统计 → 刷新 → 再统计」的自激循环。
+    /// 滚动帧率监控（绘制层指标，与数据层的 renderMs 互补）。
+    @ObservationIgnored let frameMonitor = RenderFrameMonitor()
+    @ObservationIgnored var lastRenderMs: Double = 0
+    @ObservationIgnored var lastRenderEntryCount: Int = 0
+    @ObservationIgnored var lastRenderMessageCount: Int = 0
+    @ObservationIgnored var lastRenderStepGroupCount: Int = 0
+
     /// 自动切换连接（局域网优先）。
     ///
     /// **默认开启**（2026-11-21 用户定）：局域网省掉的是 TLS 握手 + 隧道封装这类固定开销，

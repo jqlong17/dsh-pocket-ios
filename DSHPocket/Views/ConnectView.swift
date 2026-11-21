@@ -50,11 +50,18 @@ struct ConnectView: View {
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                 }
-                scanConnectCard
+                // 布局按使用频率排：
+                // - 有历史连接时，「点一下就连」是主路径，扫码退到后面（低频，只在加新电脑时用）
+                // - 没有历史连接时，扫码才是唯一的快路径，必须放最上面
+                if model.savedEndpoints.isEmpty {
+                    scanConnectCard
+                } else {
+                    savedEndpointsCard
+                    scanConnectCard
+                }
                 manualSectionTitle
                 inputCard
                 connectButton
-                if !model.savedEndpoints.isEmpty { savedEndpointsCard }
                 demoButton
                 Text(L10n.t("演示模式使用内置示例数据，不会连接或发送任何内容。"))
                     .font(.caption)

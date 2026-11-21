@@ -77,8 +77,41 @@ struct ConversationView: View {
         model.activeSessionId == session.sessionId
     }
 
+    /// 最近几条消息保持完整渲染，其余只做纯文本摘要。
+    ///
+    /// 这是**正式行为**（2026-11-21 用户拍板，不再作为实验）。
+    /// 依据：他明确只关心最近几条；实测精简后滚动体感明显更顺。
+    private static let fullRenderRecentCount = 3
+
+    /// 这条消息是否属于「更早的历史」（走精简渲染）。
+    ///
+    /// 按**消息**而不是按时间/顺序：工具步骤不占「条数」，避免把最新 3 条
+    /// 全算成 step group 而导致最新回复也被降级。
+    private func isCompactMessage(_ entry: TimelineEntry) -> Bool {
+        guard let messageId = entry.message?.id else { return false }
+        let recentIds = messagesRecentFirst.prefix(Self.fullRenderRecentCount).map(\.id)
+        return !recentIds.contains(messageId)
+    }
+
+    /// 消息按「新的在前」排列的 ID（只算消息，不含 process 行）。
+    private var messagesRecentFirst: [PocketMessage] {
+        model.messages.sorted { left, right in
+            let l = model.displaySortKey(for: left)
+            let r = model.displaySortKey(for: right)
+            if l != r { return l > r }
+            return (left.sequence ?? 0) > (right.sequence ?? 0)
+        }
+    }
+
     private var entries: [TimelineEntry] {
         guard isSwitchedToSession else { return [] }
+        // 计时：把「一次重排要多久」量化出来，否则「卡不卡」只能凭感觉。
+        let renderStarted = CFAbsoluteTimeGetCurrent()
+        defer {
+            model.lastRenderMs = (CFAbsoluteTimeGetCurrent() - renderStarted) * 1000
+            model.lastRenderMessageCount = model.messages.count
+            model.lastRenderStepGroupCount = model.stepGroups.count
+        }
         // 排序规则在 DSHKit（可测）；这里只负责把元素映射成排序键、再映射回来。
         var byID: [String: TimelineEntry] = [:]
         var keys: [TimelineSortKey] = []
@@ -153,9 +186,18 @@ struct ConversationView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    // 用 VStack：消息已在数据层硬裁到 24 条（见 retainedMessageLimit），
-                    // 全量布局的成本可忽略。LazyVStack 反而有害——它会缓存行高，
-                    // 而 Markdown 行是动态高度，滚动时高度重算会导致内容「来回跳」（真机实测）。
+                    // 用 VStack，**不要换 LazyVStack**（2026-11-21 再次实验验证）。
+                    //
+                    // 实验过程与结论：
+                    // - 动机：帧率埋点显示滚动 21-25ms/帧（40-48fps），数据层只 0.1ms，
+                    //   怀疑是「24 条视图全部参与合成」。同赛道 Orbis 用 LazyVStack 跑富文本聊天。
+                    // - 实测：换成 LazyVStack 后**滚动出现明显异常**（行重叠/跳动），
+                    //   与 2026-11 首次踩到的一致；且帧率并未改善到 60fps。
+                    // - 原因推断：`Textual` 的 Markdown 行高度与「容器实际宽度」耦合，
+                    //   LazyVStack 按缓存高度布局，宽度/内容变化时缓存失效导致错位。
+                    //   Orbis 能用是因为它自己算 row 高度（`transcript.rows` 预分组 + 固定行）。
+                    //
+                    // 所以：**要虚拟化就得像 Orbis 那样自己做行高**，不能直接换容器。
                     VStack(spacing: 0) {
                         Color.clear.frame(height: 1).id(Self.topAnchorID)
                         if model.isLoadingOlder {
@@ -176,7 +218,11 @@ struct ConversationView: View {
                         ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                             let topGap = index == 0 ? 0 : Self.messageSpacing(previous: entries[index - 1], current: entry)
                             if let message = entry.message {
-                                MessageRow(message: message, model: model).id(entry.id).padding(.top, topGap)
+                                // 只有「最近 3 条消息」跑完整 Markdown，更早的降级成纯文本。
+                                // 用户明确说不关注更早的（2026-11-21）；实测滚动时每帧 20ms，
+                                // 富文本行数是主要成本，压到常数级就能回到 60fps。
+                                MessageRow(message: message, model: model, isCompact: isCompactMessage(entry))
+                                    .id(entry.id).padding(.top, topGap)
                             } else if let failure = entry.failure {
                                 TurnFailureRow(failure: failure).id(entry.id).padding(.top, topGap)
                             } else if let group = entry.group {
@@ -552,7 +598,12 @@ struct ConversationView: View {
             // 发送方式偏好：设置页和「更多」菜单都读它，进会话时同步一次。
             await model.loadBusyEnterPreference()
         }
+        .onAppear {
+            // 只在这个页面测帧率——它是唯一会大量绘制富文本的地方。
+            model.frameMonitor.start()
+        }
         .onDisappear {
+            model.frameMonitor.stop()
             composerFocused = false
             TextSelectionDismisser.clear()
             // 退出裁剪不在视图层做（onDisappear 在 NavigationStack 返回时不触发），

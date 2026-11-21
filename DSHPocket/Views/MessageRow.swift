@@ -19,6 +19,12 @@ import UserNotifications
 struct MessageRow: View {
     let message: PocketMessage
     @Bindable var model: ConnectionModel
+    /// 精简模式：只渲染纯文本摘要，不跑 Markdown。
+    ///
+    /// 用户明确说「只关心最近 3 条，更早的不关注」（2026-11-21）。
+    /// Markdown 富文本是滚动掉帧的主要成本（实测滚动时 20ms/帧 = 50fps），
+    /// 把更早的消息降级成纯文本能把「同时参与绘制的富文本行数」压到常数级。
+    var isCompact: Bool = false
     @State private var previewItem: PreviewImageItem?
     @State private var copied = false
     /// 只在"复制成功"时递增，避免图标恢复时再触发一次触感。
@@ -57,7 +63,9 @@ struct MessageRow: View {
     /// 气泡内的 Markdown（含原位置插图）。
     @ViewBuilder
     private var markdownContent: some View {
-        if message.isUser, let quoted = leadingQuote {
+        if isCompact {
+            compactContent
+        } else if message.isUser, let quoted = leadingQuote {
             userQuotedContent(quoted)
         } else {
             plainMarkdownContent
@@ -92,6 +100,18 @@ struct MessageRow: View {
             }
         }
         
+    }
+
+    /// 精简模式：纯文本 + 三行截断，不解析 Markdown、不渲染图片。
+    @ViewBuilder
+    private var compactContent: some View {
+        Text(message.text)
+            .font(.body)
+            .foregroundStyle(message.isUser ? .white : .primary)
+            .lineLimit(3)
+            .truncationMode(.tail)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

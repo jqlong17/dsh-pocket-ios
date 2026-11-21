@@ -50,6 +50,15 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 必须遵守：
 
 1. **用 `VStack` 而不是 `LazyVStack`**。MarkdownUI/图片/表格行高是动态的，LazyVStack 会缓存旧高度导致行重叠。会话窗口只有 30 条消息，全量布局开销可忽略。
+   - **2026-11-21 二次实验（结论不变，但原因更清楚）**：滚动帧率埋点显示 `VStack` 滚动时 21-25ms/帧（40-48fps），
+     数据层重排只 0.1ms —— 怀疑是「24 条全部参与合成」，于是换 `LazyVStack` 重试。
+     **结果：滚动出现明显异常（行重叠/跳动），且帧率并未改善到 60fps。已回滚。**
+   - **根因**：`Textual` 的 Markdown 行高与**容器实际宽度**耦合；`LazyVStack` 按缓存高度布局，
+     宽度/内容变化导致缓存失效 → 错位。同赛道的 Orbis（`docs/参考项目/orbis`）能用 `LazyVStack`，
+     是因为它**自己算行高**（`transcript.rows` 预分组），不是让 Textual 现量。
+   - **所以：要虚拟化必须自己做行高，不能只换容器。**
+   - **正确的降本方向**：只让最近 3 条跑完整 Markdown，更早的降级纯文本（2026-11-21 已转正，
+     见 `ConversationView.fullRenderRecentCount`）。用户实测体感明显更顺。
 2. **不要在纵向消息列表里嵌套横向 `ScrollView`**（例如给宽表格做横向滚动）。iOS 26 上会出现"表格被缩放/叠到别的消息上"的错位绘制。宽表格宁可让它自适应换行。
 3. **行高变化时不要用带动画的 scrollTo**：`proxy.scrollTo(id, anchor: .bottom)` 直接调用，不要包 `withAnimation`。
 4. **`.textSelection(.enabled)` 是有意保留的**（为了复制部分文字）：它曾与错位问题一起出现，但真正根因是上面的容器/嵌套滚动。如果以后又出现气泡重叠，再考虑去掉它作为排查手段。

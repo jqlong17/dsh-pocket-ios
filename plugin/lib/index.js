@@ -1819,6 +1819,9 @@ function startPushWatcher() {
           jwt,
           environment: meta?.environment ?? 'production',
           topic: 'com.ruska.dsh-pocket-ios',
+          // 按会话合并：同一会话的通知互相替换，锁屏上不会堆一列。
+          collapseId: sessionId,
+          threadId: sessionId,
         })
         if (result.ok) {
           pushed = true

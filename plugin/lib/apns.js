@@ -102,6 +102,8 @@ export async function sendPush({
   jwt,
   environment = 'production',
   topic,
+  collapseId = '',
+  threadId = '',
   timeoutMs = 10_000,
 }) {
   const host = environment === 'sandbox' ? SANDBOX_HOST : PRODUCTION_HOST
@@ -133,6 +135,9 @@ export async function sendPush({
       'apns-priority': '10',
       'content-type': 'application/json',
     }
+    // 同一会话只留最新一条：不合并的话，一晚上能堆十几条「等你回复」。
+    if (collapseId) headers['apns-collapse-id'] = collapseId.slice(0, 64)
+    if (threadId) headers['thread-id'] = threadId.slice(0, 64)
     const stream = client.request({ ':method': 'POST', ':path': `/3/device/${token}`, ...headers })
     let body = ''
     stream.setEncoding('utf8')
