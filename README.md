@@ -72,6 +72,18 @@
 - **中英文**：跟随系统 / 中文 / English，设置页、会话、连接页全量覆盖；
 - **演示模式**：没有电脑也能体验内置示例，不联网。
 
+## 安装
+
+**App（iOS 18+）**：App Store 搜索「DSH Pocket」，或 <https://apps.apple.com/app/id6832288744>。
+
+**电脑端插件**：
+
+```bash
+dsh plugin add dsh-pocket-ios
+```
+
+安装后重启 DSH 并刷新页面（client 模块在启动时加载）。设置页位置：账号与余额 → 通用设置 → 手机访问 → **手机访问（iOS）** → 模型。
+
 ## 连接方式
 
 四种方式都在 **DSH → 设置 → 手机访问（iOS）** 里切换，二维码会跟着当前方式变。
@@ -124,26 +136,6 @@ npx dsh-pocket-ios status            # 当前连接方式、地址、是否就�
 npx dsh-pocket-ios mode tailscale    # 切换连接方式
 npx dsh-pocket-ios doctor            # 连不上时先跑这个
 ```
-
-## 安装
-
-**App（iOS 18+）**：App Store 搜索「DSH Pocket」，或 <https://apps.apple.com/app/id6832288744>。
-
-**电脑端插件**：
-
-```bash
-dsh plugin add dsh-pocket-ios
-```
-
-安装后重启 DSH 并刷新页面（client 模块在启动时加载）。设置页位置：账号与余额 → 通用设置 → 手机访问 → **手机访问（iOS）** → 模型。
-
-## 功能
-
-- 会话列表：工作区分组 / 时间线两种显示方式；置顶、归档（可撤销）、长按重命名；下拉与回前台自动刷新；
-- 对话：历史分页 + `session/follow` 实时增量；工具调用折叠成「过程 · N 步」；Markdown、表格、图片、引用；
-- 发送：乐观回显、ACK 后保留至消息落库、失败重试、生成中 steer；401 自动回连接页重新扫码；
-- 更多菜单：复制会话地址 / 日志路径 / 诊断信息、选择模型；
-- 演示模式：没有电脑也能体验内置示例，不联网。
 
 ## 工作方式
 
