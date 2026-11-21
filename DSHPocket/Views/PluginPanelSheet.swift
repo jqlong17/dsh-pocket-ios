@@ -136,7 +136,7 @@ struct PluginPanelSheet: View {
     }
 
     /// 移动端接入指引（飞书文档）。作者改完插件后按里面的清单自查。
-    private static let mobilePluginGuideURL = URL(string: "https://my.feishu.cn/docx/U1qrdW22kopU7Ex50vvc9Q8snsf")!
+    private static let mobilePluginGuideURL = URL(string: "https://github.com/jqlong17/dsh-pocket-ios/blob/main/public/插件移动端接入指引.md")!
 
     /// 换 token → 拉列表 → 拼出要加载的地址。
     ///

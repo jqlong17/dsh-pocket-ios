@@ -8,7 +8,7 @@ import SwiftUI
 /// 内容仍是纯展示，只有「使用说明」链接一个外部依赖。
 struct ConnectHeaderCard: View {
     /// 使用说明文档地址。
-    static let usageDocURL = URL(string: "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc")!
+    static let usageDocURL = URL(string: "https://dsh-pocket.docs.notta.uk")!
 
     private var brand: Color { Color(red: 0.08, green: 0.48, blue: 0.37) }
     private var card: Color { Color(uiColor: .secondarySystemGroupedBackground) }

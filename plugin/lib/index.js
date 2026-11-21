@@ -611,6 +611,57 @@ async function tailscale(args) {
   }
 }
 
+/**
+ * 确保 `tailscale serve` 已把本插件的 3091 入口发布到 tailnet。
+ *
+ * 手机要通过 `https://<机器>.xxx.ts.net` 访问，而 `tailscale serve` 就是把
+ * `127.0.0.1:3091` 暴露出去的那一步。以前让用户自己开终端敲，但
+ * 「扫码即连、不折腾」是这个产品的卖点，这一步应该由插件做掉。
+ *
+ * 不需要 sudo：`tailscale serve` 是用户级配置（--bg = 后台常驻）。
+ */
+async function ensureTailscaleServe(port = 3091) {
+  // ① 已配好就不动（避免每次切模式都重写配置）
+  try {
+    const out = await tailscale(['serve', 'status'])
+    const match = out.match(/https:\/\/[^\s)]+/)
+    if (match) {
+      await logLine(`serve 已就绪: ${match[0]}`)
+      return { ok: true, url: match[0].replace(/\/$/, ''), reused: true }
+    }
+  } catch (error) {
+    await logLine(`serve status 读取失败: ${error?.message ?? error}`)
+  }
+
+  // ② 执行 --bg；失败通常是「没登录」或「HTTPS 证书没开」
+  try {
+    await tailscale(['serve', '--bg', String(port)])
+    await logLine(`serve --bg ${port} 已执行`)
+  } catch (error) {
+    const msg = String(error?.stderr ?? error?.message ?? error)
+    await logLine(`serve --bg ${port} 失败: ${msg}`)
+    let hint = msg
+    if (/not logged in|logged out|no state/i.test(msg)) hint = 'Tailscale 未登录：先在电脑上打开 Tailscale 登录账号'
+    else if (/certificate|https/i.test(msg)) hint = 'Tailscale 后台没开 HTTPS Certificates：去 admin 后台 DNS 页开启'
+    return { ok: false, error: hint }
+  }
+
+  // ③ 轮询确认（证书签发通常 1-3 秒）
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 1000))
+    try {
+      const out = await tailscale(['serve', 'status'])
+      const match = out.match(/https:\/\/[^\s)]+/)
+      if (match) {
+        const url = match[0].replace(/\/$/, '')
+        await logLine(`serve 确认就绪: ${url}`)
+        return { ok: true, url }
+      }
+    } catch { /* 下一轮 */ }
+  }
+  return { ok: false, error: 'serve 已执行但没拿到 HTTPS 地址，证书可能还在签发，稍后重试' }
+}
+
 const PIN_FILE = join(LOG_DIR, 'pin')
 
 /** 读取（或首次生成）本插件自己的访问密码，不依赖 dsh-pocket。 */
@@ -1516,6 +1567,11 @@ function guessProto(req, host) {
           currentMode = next
           await saveMode(next)
           await logLine(`mode -> ${next}`)
+          // 切到 Tailscale 时顺手把 serve 打开，用户不用再开终端敲命令。
+          if (next === 'tailscale') {
+            const serve = await ensureTailscaleServe(3091)
+            await logLine(`切到 tailscale 后 ensureServe: ${serve.ok ? serve.url : serve.error}`)
+          }
           // 立刻回一个轻量状态：切到 cloudflare 时隧道要下载/注册，不能阻塞在这里
           const value = { mode: next, label: MODE_LABELS[next], modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })), address: null, qr: null, state: 'starting', error: null, phase: null }
           send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })

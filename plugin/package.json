@@ -1,7 +1,7 @@
 {
   "name": "dsh-pocket-ios",
-  "version": "0.7.0",
-  "description": "给 DSH 设置页加「手机访问（iOS）」：局域网 / Cloudflare / Tailscale / EasyTier 四种连接方式可切换，扫码即连；附带 CLI 供无 GUI 的服务器在终端出二维码",
+  "version": "0.7.1",
+  "description": "给 DSH 设置页加「手机访问（iOS）」：局域网 / Cloudflare / Tailscale / EasyTier 四种连接方式可切换，扫码即连；附带 CLI 供无图形界面的服务器在终端出二维码",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -60,7 +60,7 @@
     "url": "git+https://github.com/jqlong17/dsh-pocket-ios.git",
     "directory": "plugin"
   },
-  "homepage": "https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc",
+  "homepage": "https://dsh-pocket.docs.notta.uk",
   "bugs": {
     "url": "https://github.com/jqlong17/dsh-pocket-ios/issues"
   },

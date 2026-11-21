@@ -233,7 +233,7 @@ git log v1.0.8..v1.0.9 --oneline    # 这版包含哪些提交
 
 - App Store：<https://apps.apple.com/app/id6832288744>
 - DSH 插件：<https://www.npmjs.com/package/dsh-pocket-ios>
-- 使用说明（飞书）：<https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc>
+- 使用说明：<https://dsh-pocket.docs.notta.uk>
 - dsh-pocket（第三方，可选）：<https://github.com/shaobeichen/dsh-pocket>
 
 ## License

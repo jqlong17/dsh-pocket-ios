@@ -17,7 +17,7 @@
 - 长期密码只保存在本机（`~/.dsh/dsh-pocket-ios/pin`，权限 600），用于手动登录；
 - 设置卡片跟随 DSH 界面语言自动中英文切换。
 
-> 完整使用说明（含四种方式的分步截图说明、常见问题）：<https://my.feishu.cn/docx/XyhpdKD2Uo5y1ZxXFbscTpizntc>
+> 完整使用说明（含四种方式的分步说明、常见问题）：<https://dsh-pocket.docs.notta.uk>
 
 ## 安装
 
