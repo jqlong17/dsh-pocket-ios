@@ -33,8 +33,17 @@ final class ConnectionModel {
     var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
-    /// 自动切换连接（局域网优先）。默认关闭：尊重手选，也避免会话中被打断。
-    var autoRouteEnabled: Bool = UserDefaults.standard.bool(forKey: "dsh-pocket.auto-route") {
+    /// 自动切换连接（局域网优先）。
+    ///
+    /// **默认开启**（2026-11-21 用户定）：局域网省掉的是 TLS 握手 + 隧道封装这类固定开销，
+    /// 比几毫秒的 RTT 差异值钱得多；用户不该为此手动点开关。
+    /// 用 `object(forKey:) == nil` 判断「从未设置过」，否则 `bool(forKey:)` 会把未设置读成 false，
+    /// 老用户升级后反而拿不到新默认值。
+    var autoRouteEnabled: Bool = {
+        let key = "dsh-pocket.auto-route"
+        if UserDefaults.standard.object(forKey: key) == nil { return true }
+        return UserDefaults.standard.bool(forKey: key)
+    }() {
         didSet { UserDefaults.standard.set(autoRouteEnabled, forKey: "dsh-pocket.auto-route") }
     }
     /// 当前屏幕上真正可见的会话（返回列表后会清空；不能用 sessionStore.selected 判断，它不会清）。
