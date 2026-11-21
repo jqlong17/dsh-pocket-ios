@@ -50,18 +50,22 @@ struct ConnectView: View {
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .background(brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
                 }
-                // 布局按使用频率排：
-                // - 有历史连接时，「点一下就连」是主路径，扫码退到后面（低频，只在加新电脑时用）
-                // - 没有历史连接时，扫码才是唯一的快路径，必须放最上面
+                // 布局按「交互距离」排（2026-11-21 用户定的顺序）：
+                // 1. 切换连接（主路径）
+                // 2. 连接按钮——紧挨列表，一次点击就到；不用滚到底部找
+                // 3. 扫码（低频，加新电脑时才用）
+                // 4. 手动连接（更低频）折叠起来，默认不占首屏
                 if model.savedEndpoints.isEmpty {
                     scanConnectCard
+                    manualSectionTitle
+                    inputCard
+                    connectButton
                 } else {
                     savedEndpointsCard
+                    connectButton
                     scanConnectCard
+                    manualConnectSection
                 }
-                manualSectionTitle
-                inputCard
-                connectButton
                 demoButton
                 Text(L10n.t("演示模式使用内置示例数据，不会连接或发送任何内容。"))
                     .font(.caption)
@@ -370,6 +374,26 @@ struct ConnectView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(Color.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 折叠的手动连接：有历史连接时，它是最低频的入口，默认收起。
+    @State private var manualConnectExpanded = false
+
+    @ViewBuilder
+    private var manualConnectSection: some View {
+        DisclosureGroup(isExpanded: $manualConnectExpanded) {
+            VStack(spacing: 10) {
+                inputCard
+                connectButton
+            }
+            .padding(.top, 10)
+        } label: {
+            Text(L10n.t("手动输入地址"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var connectButton: some View {
