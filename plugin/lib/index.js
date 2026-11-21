@@ -7,7 +7,11 @@
  * 3) 扫码建连走一次性 token：`?pair=<token>` → POST /dsh-pocket-ios/pair 换 dsh-auth cookie；
  * 4) 通过 webServer 暴露 `/dsh-pocket-ios/*` 给设置页卡片与 App。
  */
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { shouldNotify, lastAssistantSnippet } from './push-scan.js'
+import { ProviderTokenCache, sendPush } from './apns.js'
+import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
+import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } from './connection-tags.js'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { randomInt } from 'node:crypto'
@@ -928,6 +932,58 @@ export async function tailscaleStatus() {
   return { available: Boolean(dnsName) || Boolean(httpsUrl), dnsName, httpsUrl, pin, pinSet: Boolean(pin), qrUrl, qr, serveRaw, source }
 }
 
+/** APNs device token 存储。和设备凭证放同一目录，都不入库。 */
+const PUSH_TOKENS_FILE = join(LOG_DIR, 'push-tokens.json')
+
+async function readPushTokens() {
+  try {
+    const raw = await readFile(PUSH_TOKENS_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+async function savePushTokens(tokens) {
+  await mkdir(LOG_DIR, { recursive: true })
+  await writeFile(PUSH_TOKENS_FILE, JSON.stringify(tokens, null, 2))
+}
+
+/**
+ * 当前可见会话状态（App 上报，30 秒过期）。
+ *
+ * 为什么带过期：App 被杀或锁屏后不会再有上报，
+ * 若不失效会永久压制推送（用户会以为「通知坏了」）。
+ */
+let visibleSessionState = { sessionId: null, appActive: false, at: 0 }
+/** 最近一次 App 上报的连接快照（telemetry 驱动）。 */
+let latestConnectionSnapshot = null
+/** 已写过标签的 rpcId（内存去重，只留最近 200 个，不读全文件）。 */
+const taggedRpcIds = new Set()
+function rememberTagged(rpcId) {
+  taggedRpcIds.add(rpcId)
+  if (taggedRpcIds.size > 200) {
+    const oldest = taggedRpcIds.values().next().value
+    taggedRpcIds.delete(oldest)
+  }
+}
+const VISIBLE_STATE_TTL_MS = 30_000
+
+function noteVisibleSession(payload) {
+  visibleSessionState = {
+    sessionId: typeof payload?.visibleSessionId === 'string' ? payload.visibleSessionId : null,
+    appActive: payload?.appActive === true,
+    at: Date.now(),
+  }
+}
+
+function freshVisibleSession(now = Date.now()) {
+  if (!visibleSessionState.sessionId) return null
+  if (now - visibleSessionState.at > VISIBLE_STATE_TTL_MS) return null
+  return visibleSessionState
+}
+
 function endpointFromPath(pathname) {
   if (typeof pathname !== 'string' || !pathname.startsWith(`${CHANNEL}/`)) return undefined
   const endpoint = pathname.slice(CHANNEL.length + 1)
@@ -1167,6 +1223,10 @@ export function apply(ctx) {
             } catch {
               send(res, 400, { ok: false }); return
             }
+            // 顺手记录「App 现在在看哪个会话」：推送巡检要用它抑制打扰。
+            noteVisibleSession(payload)
+            // 以及「App 现在的连接快照」：给每条消息打来源标签用。
+            latestConnectionSnapshot = snapshotFromTelemetry(payload)
             await logLine(`telemetry received (${Object.keys(payload ?? {}).length} keys)`)
             try {
               const telemetryDir = join(homedir(), 'Library', 'Logs', 'DSHPocket')
@@ -1286,6 +1346,43 @@ function guessProto(req, host) {
 }
 
         // 登录端点：不需要已有浏览器会话，用本插件自己的 PIN 换 DSH 的认证 cookie。
+        // APNs token 注册。App 拿到 token 后调这里，服务端据此推送。
+        if (endpoint === 'push.register' || endpoint === 'push.unregister') {
+          if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
+          let body = {}
+          try { body = JSON.parse(await readRawBody(req)) } catch { body = {} }
+          const token = String(body?.token ?? '').trim()
+          if (!/^[0-9a-fA-F]{32,200}$/.test(token)) { send(res, 400, { ok: false, error: 'bad token' }); return }
+          const tokens = await readPushTokens()
+          if (endpoint === 'push.unregister') {
+            delete tokens[token]
+            await savePushTokens(tokens)
+            await logLine('push unregistered')
+            send(res, 200, { ok: true })
+            return
+          }
+          const environment = String(body?.environment ?? 'production') === 'sandbox' ? 'sandbox' : 'production'
+          tokens[token] = {
+            environment,
+            addedAt: tokens[token]?.addedAt ?? Date.now(),
+            lastSeenAt: Date.now(),
+          }
+          await savePushTokens(tokens)
+          await logLine(`push registered (${environment}, ${Object.keys(tokens).length} device)`)
+          send(res, 200, { ok: true })
+          return
+        }
+
+        // App 上报「我正在看哪个会话」：推送前用它抑制打扰。
+        if (endpoint === 'push.visible') {
+          if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
+          let body = {}
+          try { body = JSON.parse(await readRawBody(req)) } catch { body = {} }
+          noteVisibleSession(body)
+          send(res, 200, { ok: true })
+          return
+        }
+
         if (endpoint === 'pair') {
           if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
           let token = urlObject.searchParams.get('token') ?? urlObject.searchParams.get('pair') ?? ''
@@ -1572,5 +1669,182 @@ function guessProto(req, host) {
     ctx?.logger?.warn?.(`dsh-pocket-ios: 挂载插件聚合失败：${String(error?.message ?? error)}`)
   }
 
+  startPushWatcher()
+
   return attachStableProxy(ctx, route.handler)
+}
+
+/**
+ * 推送巡检：每 10 秒扫一次活跃会话，发现「新的 turn/end 且用户没继续」就推 APNs。
+ *
+ * 为什么不用事件订阅：插件只注入了 connection / webServer，拿不到会话状态；
+ * 而会话日志就在磁盘上，读尾部比接事件更直接（同一个数据源，dsh-net-record 已验证）。
+ *
+ * 失败一律静默：推送是锦上添花，不能因为它拖垮插件。
+ */
+function startPushWatcher() {
+  const APNS_DIR = join(LOG_DIR, 'apns')
+  const SESSIONS_DIR = join(homedir(), '.dsh', 'sessions')
+  const stateFile = join(LOG_DIR, 'push-state.json')
+  const SCAN_INTERVAL_MS = 10_000
+
+  /** sessionId -> { lastTurnEndSeq, lastNotifiedAt } */
+  let state = {}
+  let tokenCache = null
+  let running = false
+
+  async function loadState() {
+    try {
+      state = JSON.parse(await readFile(stateFile, 'utf8')) || {}
+    } catch {
+      state = {}
+    }
+  }
+
+  async function persistState() {
+    try {
+      await mkdir(LOG_DIR, { recursive: true })
+      await writeFile(stateFile, JSON.stringify(state))
+    } catch { /* 状态丢了最多多推一次 */ }
+  }
+
+  /** 找 .p8 并建 token 缓存。凭证缺一个就返回 null（不推）。 */
+  async function ensureTokenCache() {
+    if (tokenCache) return tokenCache
+    try {
+      const entries = await readdir(APNS_DIR)
+      const p8 = entries.find((name) => name.endsWith('.p8'))
+      if (!p8) return null
+      const keyId = p8.replace(/^AuthKey_/, '').replace(/\.p8$/, '')
+      const teamId = process.env.DSH_APNS_TEAM_ID ?? 'T626DDUR47'
+      const pem = await readFile(join(APNS_DIR, p8), 'utf8')
+      tokenCache = new ProviderTokenCache({ keyId, teamId, privateKeyPem: pem })
+      await logLine(`push: credentials loaded (key ${keyId})`)
+      return tokenCache
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 给这次尾部窗口里新出现的用户消息写连接标签。
+   *
+   * 为什么只用内存快照、过期就标 unknown：App 锁屏后 telemetry 会停，
+   * 拿十年前的连接状态去标新消息比「不知道」更糟——会把人引到错误的方向。
+   */
+  async function recordConnectionTags(sessionId, events) {
+    const tags = []
+    for (const event of events) {
+      const descriptor = messageDescriptor(event)
+      if (!descriptor) continue
+      if (taggedRpcIds.has(descriptor.rpcId)) continue
+      const tag = buildTag({ sessionId, descriptor, snapshot: latestConnectionSnapshot })
+      if (tag) tags.push(tag)
+    }
+    if (tags.length === 0) return
+    try {
+      await mkdir(LOG_DIR, { recursive: true })
+      const lines = tags.map((tag) => JSON.stringify(tag)).join('\n') + '\n'
+      await appendFile(join(LOG_DIR, 'connection-tags.jsonl'), lines, 'utf8')
+      for (const tag of tags) rememberTagged(tag.rpcId)
+      await logLine(`connection tags: +${tags.length}`)
+    } catch (error) {
+      await logLine(`connection tags failed: ${error?.message ?? error}`)
+    }
+  }
+
+  async function pushOnce() {
+    // 先扫一遍会话：**连接标签与推送解耦**。
+    // 之前把标签记录写在 token 检查之后，结果「没有 push token 就永远不记标签」
+    // —— 标签和推送是两个独立功能，不该互相阻塞。
+    const sessions = listActiveSessionFiles(SESSIONS_DIR, { sinceMs: 30 * 60 * 1000 })
+    const snapshots = []
+    for (const session of sessions) {
+      const events = readTailEvents(session.file)
+      if (events.length === 0) continue
+      await recordConnectionTags(session.sessionId, events)
+      snapshots.push({ session, events })
+    }
+
+    const tokens = await readPushTokens()
+    const tokenList = Object.entries(tokens)
+    if (tokenList.length === 0) return
+    const cache = await ensureTokenCache()
+    if (!cache) return
+
+    const visible = freshVisibleSession()
+    for (const { session, events } of snapshots) {
+      const sessionId = session.sessionId
+      const entry = state[sessionId] ?? {}
+      const lastSeq = events.filter((e) => e.type === 'turn/end').at(-1)?.seq ?? null
+      if (lastSeq === null || entry.lastTurnEndSeq === lastSeq) continue
+
+      const verdict = shouldNotify({
+        sessionId,
+        events,
+        visibleSessionId: visible?.sessionId ?? null,
+        appActive: visible?.appActive ?? false,
+        visibleAt: visible?.at ?? null,
+        lastNotifiedAt: entry.lastNotifiedAt ?? null,
+      })
+      if (!verdict.notify) {
+        // 用户已经继续对话：记下 seq，避免下次重复判断
+        if (verdict.reason === 'user-already-replied') {
+          state[sessionId] = { ...entry, lastTurnEndSeq: lastSeq }
+        }
+        continue
+      }
+
+      const snippet = lastAssistantSnippet(events, 40)
+      const body = snippet ? `「${snippet}」` : 'AI 回复完成'
+      const payload = {
+        aps: {
+          alert: { title: '等你回复', body },
+          sound: 'default',
+        },
+        sessionId,
+      }
+      const jwt = cache.get()
+      let pushed = false
+      for (const [token, meta] of tokenList) {
+        const result = await sendPush({
+          token,
+          payload,
+          jwt,
+          environment: meta?.environment ?? 'production',
+          topic: 'com.ruska.dsh-pocket-ios',
+        })
+        if (result.ok) {
+          pushed = true
+        } else if (result.reason === 'Unregistered' || result.reason === 'BadDeviceToken') {
+          delete tokens[token]
+          await savePushTokens(tokens)
+          await logLine(`push: dropped stale token (${result.reason})`)
+        } else {
+          await logLine(`push failed: ${result.status ?? ''} ${result.reason ?? ''}`)
+        }
+      }
+      if (pushed) {
+        state[sessionId] = { lastTurnEndSeq: lastSeq, lastNotifiedAt: Date.now() }
+        await persistState()
+        await logLine(`push sent: ${sessionId.slice(0, 12)}`)
+      }
+    }
+  }
+
+  async function loop() {
+    if (running) return
+    running = true
+    await loadState()
+    while (true) {
+      try {
+        await pushOnce()
+      } catch (error) {
+        await logLine(`push watcher error: ${error?.message ?? error}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, SCAN_INTERVAL_MS))
+    }
+  }
+
+  loop().catch(() => { /* 巡检永不阻塞插件 */ })
 }

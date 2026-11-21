@@ -33,6 +33,10 @@ final class ConnectionModel {
     var completionAlertsEnabled: Bool = (UserDefaults.standard.object(forKey: ConnectionModel.completionAlertKey) as? Bool) ?? true
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
+    /// 自动切换连接（局域网优先）。默认关闭：尊重手选，也避免会话中被打断。
+    var autoRouteEnabled: Bool = UserDefaults.standard.bool(forKey: "dsh-pocket.auto-route") {
+        didSet { UserDefaults.standard.set(autoRouteEnabled, forKey: "dsh-pocket.auto-route") }
+    }
     /// 当前屏幕上真正可见的会话（返回列表后会清空；不能用 sessionStore.selected 判断，它不会清）。
     var visibleSessionId: String?
     /// session/list 的 running 状态机，用于识别"运行中 → 已结束"。

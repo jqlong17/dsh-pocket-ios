@@ -278,6 +278,10 @@ extension ConnectionModel {
             "probes": probeSnapshot(),
             "probeNetwork": probeNetworkLabel(),
             "testMode": probeTestMode(),
+            "visibleSessionId": visibleSessionId ?? "",
+            "appActive": isAppActive,
+            "alertsEnabled": completionAlertsEnabled,
+            "pushToken": pushTokenSummary(),
         ]
         TelemetryReporter.report(payload, to: base)
     }
@@ -287,6 +291,12 @@ extension ConnectionModel {
    ///
    /// 形状：[{"address": ..., "ok": true/false, "rttMs": 12, "error": ...}]
    /// 只报地址和结果，不带凭证。
+   /// 推送状态摘要：只有前 8 位，够判断「有没有拿到 token」，不泄露完整值。
+   func pushTokenSummary() -> String {
+        guard let token = pushToken, token.count > 8 else { return "none" }
+        return "ip_\\(token.prefix(8))"
+   }
+
    /// 测试模式是否开启。遥测里带上它，分析时能区分「采样稀疏」和「真没数据」。
    func probeTestMode() -> Bool {
         MainActor.assumeIsolated { probeRunner.testMode }

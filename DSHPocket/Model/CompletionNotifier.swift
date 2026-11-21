@@ -84,7 +84,9 @@ final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .sound]
+        // 前台一律不弹：用户正在用 App，横幅和提示音都是打扰。
+        // 插件侧还有 push.visible 抑制作为第二道闸，两边任一命中都不该打扰。
+        []
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,

@@ -143,6 +143,20 @@ struct AppSettingsSheet: View {
                         }
                     }
                     Toggle(isOn: Binding(
+                        get: { model.autoRouteEnabled },
+                        set: { enabled in
+                            model.autoRouteEnabled = enabled
+                            // 打开时立刻决策一次，不用等下次回前台。
+                            if enabled { Task { await model.autoRouteIfEnabled() } }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("自动切换连接"))
+                            Text(L10n.t("局域网可用时优先用它（更快），不可用时切到最快的一条"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Toggle(isOn: Binding(
                         get: { model.probeRunner.testMode },
                         set: { model.probeRunner.testMode = $0 }
                     )) {

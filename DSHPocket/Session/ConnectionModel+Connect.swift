@@ -370,4 +370,56 @@ extension ConnectionModel {
         }
         recordEndpoint(connection.serverAddress)
     }
+
+    /// 自动选路：探测所有已保存地址，按策略挑一条并切换过去。
+    ///
+    /// 三条约束：
+    /// - **只在「没有未完成请求」时切**：正在等回复时切换会把请求打断；
+    /// - **只在地址真的不同才切**：避免无意义地重连；
+    /// - **失败静默**：选路失败就保持现状，不影响用户当前使用。
+    @MainActor
+    func autoRouteIfEnabled() async {
+        guard autoRouteEnabled, !isDemoMode, connection.isConnected else { return }
+        // 只在「正在补发」时推迟。
+        //
+        // 之前用「发件箱非空」当守卫是错的：pending 里可能有历史遗留条目（服务端已确认
+        // 但本地还没清），那会让自动选路永远不生效（实测：pending=2 卡住整个功能）。
+        // 切换地址本身不丢消息——Outbox 按 rpcId 去重，换路后重发是安全的。
+        guard !outbox.flushInFlight else {
+            recordDiagnostic("自动选路推迟：正在补发")
+            return
+        }
+        let addresses = savedEndpoints.map(\.address)
+        guard addresses.count > 1 else { return }   // 只有一条路没有选择余地
+
+        await probeRunner.probeRound(addresses: addresses)
+        let candidates = savedEndpoints.compactMap { endpoint -> RouteCandidate? in
+            switch probeRunner.results[endpoint.address] {
+            case .reachable(let value):
+                return RouteCandidate(
+                    address: endpoint.address,
+                    kind: DSHEndpointKind(rawValue: Self.endpointKind(of: endpoint.address).rawValue) ?? .custom,
+                    reachable: true,
+                    rttMs: value
+                )
+            case .unreachable:
+                return RouteCandidate(
+                    address: endpoint.address,
+                    kind: DSHEndpointKind(rawValue: Self.endpointKind(of: endpoint.address).rawValue) ?? .custom,
+                    reachable: false,
+                    rttMs: nil
+                )
+            case .none:
+                return nil    // 还没探测过，不参与选择
+            }
+        }
+        guard let target = RoutePolicy.choose(from: candidates, preference: .lanFirst),
+              target != connection.serverAddress else { return }
+
+        recordDiagnostic("自动选路：切换到 \(DSHURL.redactedAddress(target))")
+        connection.serverAddress = target
+        connection.errorMessage = nil
+        await connect()
+    }
+
 }

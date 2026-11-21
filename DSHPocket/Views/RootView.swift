@@ -86,6 +86,8 @@ struct RootView: View {
             // 探测随前后台起停：后台跑定时器和网络请求既费电又没意义。
             if phase == .active {
                 model.probeRunner.start(addresses: model.savedEndpoints.map(\.address))
+                // 回到前台时网络可能已经变了（从公司回到家/离家），重新选一次路。
+                Task { await model.autoRouteIfEnabled() }
             } else {
                 model.probeRunner.stop()
             }
