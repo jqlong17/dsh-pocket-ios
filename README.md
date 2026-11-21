@@ -4,6 +4,29 @@
 
 电脑上继续跑 DSH，手机扫码就能看会话、发指令、接结果；通勤、外出、躺床上都能接着用。
 
+## 快速开始
+
+**已上架 App Store，直接装：**
+
+<p>
+  <a href="https://apps.apple.com/app/id6832288744">
+    <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" height="44" alt="Download on the App Store">
+  </a>
+</p>
+
+> **iPhone / iPad，iOS 18+。** 界面支持简体中文与 English（跟随系统）。
+
+**电脑端（插件）：**
+
+```bash
+dsh plugin add dsh-pocket-ios
+```
+
+装完**重启 DSH**并刷新页面，然后到 **设置 → 手机访问 → 手机访问（iOS）** 点开二维码，手机上扫码即可。
+
+**两步就通了。** 插件会自动处理网络（局域网 / Cloudflare / Tailscale / EasyTier 四种方式都在设置页可切），
+手机端多数情况**什么都不用另外装**。详细说明见下方[连接方式](#连接方式)。
+
 <table align="center">
   <tr>
     <td align="center"><img src="docs/screenshots/list.png" width="210" alt="工作区分组"><br><sub>工作区分组</sub></td>
@@ -72,17 +95,7 @@
 - **中英文**：跟随系统 / 中文 / English，设置页、会话、连接页全量覆盖；
 - **演示模式**：没有电脑也能体验内置示例，不联网。
 
-## 安装
-
-**App（iOS 18+）**：App Store 搜索「DSH Pocket」，或 <https://apps.apple.com/app/id6832288744>。
-
-**电脑端插件**：
-
-```bash
-dsh plugin add dsh-pocket-ios
-```
-
-安装后重启 DSH 并刷新页面（client 模块在启动时加载）。设置页位置：账号与余额 → 通用设置 → 手机访问 → **手机访问（iOS）** → 模型。
+> 设置页位置：账号与余额 → 通用设置 → 手机访问 → **手机访问（iOS）** → 模型。
 
 ## 连接方式
 
