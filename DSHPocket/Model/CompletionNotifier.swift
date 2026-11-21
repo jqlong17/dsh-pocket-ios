@@ -68,18 +68,55 @@ final class CompletionNotifier: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func notify(sessionId: String, title: String) {
+    /// - Parameters:
+    ///   - title: 会话标题
+    ///   - preview: AI 回复的开头几句（空则只显示标题）
+    func notify(sessionId: String, title: String, preview: String = "") {
         // 首次要发通知时才问授权：这时候用户已经用起来了，弹框有上下文。
         requestPermission()
         let content = UNMutableNotificationContent()
-        content.title = "对话已完成"
-        content.body = title.isEmpty ? "等待你的回复" : "「\(title)」等待你的回复"
+        content.title = title.isEmpty ? "对话已完成" : title
+        // 正文优先显示「AI 说了什么」——用户真正想知道的是内容，而不是「完成了」这件事。
+        let trimmedPreview = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPreview.isEmpty {
+            content.body = trimmedPreview
+        } else {
+            content.body = title.isEmpty ? "等待你的回复" : "「\(title)」等待你的回复"
+        }
         content.sound = .default
         content.categoryIdentifier = Self.replyCategoryID
         content.threadIdentifier = sessionId
         content.userInfo = [Self.sessionIdKey: sessionId, "title": title]
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        // **用 sessionId 当 identifier**：同一会话的新通知会替换旧的。
+        // 之前用 UUID，同一会话每完成一次就多一条，实测一小时内堆了 5 条一模一样的。
+        let request = UNNotificationRequest(identifier: sessionId, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// 把 Markdown 正文压成「适合通知栏的一行字」。
+    ///
+    /// 通知栏不渲染 Markdown，保留 `**`/`#`/`|` 这些记号只会显得脏；
+    /// 代码块整段丢弃（读者在锁屏上也不需要看代码）。
+    static func previewText(_ raw: String, limit: Int) -> String {
+        var lines = raw.components(separatedBy: "\n")
+        var inCode = false
+        var kept: [String] = []
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") { inCode.toggle(); continue }
+            if inCode { continue }
+            if trimmed.isEmpty { continue }
+            kept.append(trimmed)
+        }
+        var text = kept.joined(separator: " ")
+        for token in ["**", "__", "`", "##", "# ", "> "] {
+            text = text.replacingOccurrences(of: token, with: "")
+        }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.count > limit {
+            text = String(text.prefix(limit)) + "…"
+        }
+        return text
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,

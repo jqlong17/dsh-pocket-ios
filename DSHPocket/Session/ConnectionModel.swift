@@ -349,20 +349,8 @@ final class ConnectionModel {
     /// 输入框上方显示的"正在引用"状态；发送时转成 DSH 原生 Markdown 引用块。
     var pendingQuote: PendingQuote?
 
-    /// APNs device token：登录成功后注册到插件，用于后台完成推送。
-    var pushToken: String? = UserDefaults.standard.string(forKey: PushDelegate.tokenDefaultsKey)
-    var pushTokenObserver: NSObjectProtocol?
 
     init() {
-        pushTokenObserver = NotificationCenter.default.addObserver(
-            forName: .dshPushTokenUpdated, object: nil, queue: .main
-        ) { [weak self] note in
-            guard let token = note.object as? String else { return }
-            Task { @MainActor in
-                self?.pushToken = token
-                await self?.syncPushRegistration()
-            }
-        }
 #if DEBUG
         if ProcessInfo.processInfo.environment["DSH_RESET"] == "1" {
             // UI 测试用：每次启动清空持久化状态，保证用例可重复。

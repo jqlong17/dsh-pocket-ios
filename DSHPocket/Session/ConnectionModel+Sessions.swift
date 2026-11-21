@@ -19,7 +19,7 @@ extension ConnectionModel {
 
     /// 用最新 session 列表更新 running 状态机，识别"运行中 → 已结束"的会话。
     @MainActor
-    func detectSessionCompletions() {
+    func detectSessionCompletions() async {
         let latest = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0.running) }, uniquingKeysWith: { first, _ in first })
         let completed = completionTracker.update(latest: latest)
         UserDefaults.standard.set(latest, forKey: Self.runningSnapshotKey)
@@ -38,7 +38,7 @@ extension ConnectionModel {
                 finishedAwaitingSessionIds.remove(sessionId)
             } else {
                 finishedAwaitingSessionIds.insert(sessionId)
-                if completionAlertsEnabled { playCompletionFeedback(for: session) }
+                if completionAlertsEnabled { await playCompletionFeedback(for: session) }
             }
         }
         persistFinishedAwaiting()
@@ -58,20 +58,47 @@ extension ConnectionModel {
         if completionAlertsEnabled,
            ProcessInfo.processInfo.environment["DSH_NO_NOTIF_PROMPT"] != "1" {
             CompletionNotifier.shared.requestPermission()
-            Task { await syncPushRegistration() }
-        } else if let token = pushToken {
-            Task { _ = try? await rpcClient.rpcAdapted("push.unregister", args: ["token": token]) }
         }
         recordDiagnostic("完成提醒：\(completionAlertsEnabled ? "开启" : "关闭")")
     }
 
     @MainActor
-    func playCompletionFeedback(for session: PocketSession) {
-        CompletionNotifier.shared.notify(sessionId: session.sessionId, title: session.displayTitle)
+    func playCompletionFeedback(for session: PocketSession) async {
+        // 先拉摘要，再发通知——只发一次。
+        //
+        // 之前是「先发标题、再用异步任务覆盖成摘要」，但后台刷新里
+        // `detectSessionCompletions` 返回后系统立刻收走执行权（`setTaskCompleted`），
+        // 那个异步任务没跑完就被挂起，实测通知正文永远停在「等待你的回复」。
+        // 代价是通知晚 0.5-1 秒，但只闪一次、且内容是对的。
+        let preview = await latestAssistantPreview(sessionId: session.sessionId) ?? ""
+        CompletionNotifier.shared.notify(
+            sessionId: session.sessionId,
+            title: session.displayTitle,
+            preview: preview
+        )
         // 通知被关闭时也有声音兜底。
         AudioServicesPlaySystemSound(1007)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        recordDiagnostic("完成提醒：\(session.displayTitle)")
+        recordDiagnostic("完成提醒：\(session.displayTitle)（摘要 \(preview.count) 字）")
+    }
+
+    /// 取某会话最后一条助手消息的开头，用于通知正文。失败/为空返回 nil（通知保持只有标题）。
+    @MainActor
+    func latestAssistantPreview(sessionId: String, limit: Int = 90) async -> String? {
+        do {
+            let page = try await rpcClient.rpcAdapted("session/page", args: ["request": [
+                "address": ["kind": "session", "sessionId": sessionId],
+                "beforeSeq": Int.max,
+                "maxMessages": 4,
+            ]])
+            let records = page["records"] as? [[String: Any]] ?? []
+            let messages = records.compactMap(PocketMessage.init(record:))
+            guard let last = messages.last(where: { !$0.isUser && !$0.text.isEmpty }) else { return nil }
+            return CompletionNotifier.previewText(last.text, limit: limit)
+        } catch {
+            recordDiagnostic("取回复摘要失败：\(error.localizedDescription)")
+            return nil
+        }
     }
 
     @MainActor
@@ -88,7 +115,7 @@ extension ConnectionModel {
         do {
             sessionStore.sessions = try await fetchSessions()
             syncSelectedSessionMetadata()
-            detectSessionCompletions()
+            await detectSessionCompletions()
             connection.errorMessage = nil
             recordDiagnostic("会话列表刷新：\(sessionStore.sessions.count) 个，隐藏归档 \(sessionStore.archivedSessionIds.count) 个")
             // 能拉到列表说明网络通了：把各会话的断网暂存按写入顺序一并补发。

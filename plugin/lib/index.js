@@ -8,8 +8,6 @@
  * 4) 通过 webServer 暴露 `/dsh-pocket-ios/*` 给设置页卡片与 App。
  */
 import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { shouldNotify, lastAssistantSnippet } from './push-scan.js'
-import { ProviderTokenCache, sendPush } from './apns.js'
 import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
 import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } from './connection-tags.js'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -1352,43 +1350,6 @@ function guessProto(req, host) {
 }
 
         // 登录端点：不需要已有浏览器会话，用本插件自己的 PIN 换 DSH 的认证 cookie。
-        // APNs token 注册。App 拿到 token 后调这里，服务端据此推送。
-        if (endpoint === 'push.register' || endpoint === 'push.unregister') {
-          if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
-          let body = {}
-          try { body = JSON.parse(await readRawBody(req)) } catch { body = {} }
-          const token = String(body?.token ?? '').trim()
-          if (!/^[0-9a-fA-F]{32,200}$/.test(token)) { send(res, 400, { ok: false, error: 'bad token' }); return }
-          const tokens = await readPushTokens()
-          if (endpoint === 'push.unregister') {
-            delete tokens[token]
-            await savePushTokens(tokens)
-            await logLine('push unregistered')
-            send(res, 200, { ok: true })
-            return
-          }
-          const environment = String(body?.environment ?? 'production') === 'sandbox' ? 'sandbox' : 'production'
-          tokens[token] = {
-            environment,
-            addedAt: tokens[token]?.addedAt ?? Date.now(),
-            lastSeenAt: Date.now(),
-          }
-          await savePushTokens(tokens)
-          await logLine(`push registered (${environment}, ${Object.keys(tokens).length} device)`)
-          send(res, 200, { ok: true })
-          return
-        }
-
-        // App 上报「我正在看哪个会话」：推送前用它抑制打扰。
-        if (endpoint === 'push.visible') {
-          if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
-          let body = {}
-          try { body = JSON.parse(await readRawBody(req)) } catch { body = {} }
-          noteVisibleSession(body)
-          send(res, 200, { ok: true })
-          return
-        }
-
         if (endpoint === 'pair') {
           if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
           let token = urlObject.searchParams.get('token') ?? urlObject.searchParams.get('pair') ?? ''
@@ -1760,84 +1721,14 @@ function startPushWatcher() {
   }
 
   async function pushOnce() {
-    // 先扫一遍会话：**连接标签与推送解耦**。
-    // 之前把标签记录写在 token 检查之后，结果「没有 push token 就永远不记标签」
-    // —— 标签和推送是两个独立功能，不该互相阻塞。
+    // 只做一件事：扫会话、给新消息记连接标签。
+    // 推送（APNs）已移除——凭证归属决定了它对普通用户不可用，详见
+    // ~/projects/skill/代码编写规范/ios踩坑记录.md 第 29 条。
     const sessions = listActiveSessionFiles(SESSIONS_DIR, { sinceMs: 30 * 60 * 1000 })
-    const snapshots = []
     for (const session of sessions) {
       const events = readTailEvents(session.file)
       if (events.length === 0) continue
       await recordConnectionTags(session.sessionId, events)
-      snapshots.push({ session, events })
-    }
-
-    const tokens = await readPushTokens()
-    const tokenList = Object.entries(tokens)
-    if (tokenList.length === 0) return
-    const cache = await ensureTokenCache()
-    if (!cache) return
-
-    const visible = freshVisibleSession()
-    for (const { session, events } of snapshots) {
-      const sessionId = session.sessionId
-      const entry = state[sessionId] ?? {}
-      const lastSeq = events.filter((e) => e.type === 'turn/end').at(-1)?.seq ?? null
-      if (lastSeq === null || entry.lastTurnEndSeq === lastSeq) continue
-
-      const verdict = shouldNotify({
-        sessionId,
-        events,
-        visibleSessionId: visible?.sessionId ?? null,
-        appActive: visible?.appActive ?? false,
-        visibleAt: visible?.at ?? null,
-        lastNotifiedAt: entry.lastNotifiedAt ?? null,
-      })
-      if (!verdict.notify) {
-        // 用户已经继续对话：记下 seq，避免下次重复判断
-        if (verdict.reason === 'user-already-replied') {
-          state[sessionId] = { ...entry, lastTurnEndSeq: lastSeq }
-        }
-        continue
-      }
-
-      const snippet = lastAssistantSnippet(events, 40)
-      const body = snippet ? `「${snippet}」` : 'AI 回复完成'
-      const payload = {
-        aps: {
-          alert: { title: '等你回复', body },
-          sound: 'default',
-        },
-        sessionId,
-      }
-      const jwt = cache.get()
-      let pushed = false
-      for (const [token, meta] of tokenList) {
-        const result = await sendPush({
-          token,
-          payload,
-          jwt,
-          environment: meta?.environment ?? 'production',
-          topic: 'com.ruska.dsh-pocket-ios',
-          // 按会话合并：同一会话的通知互相替换，锁屏上不会堆一列。
-          collapseId: sessionId,
-          threadId: sessionId,
-        })
-        if (result.ok) {
-          pushed = true
-        } else if (result.reason === 'Unregistered' || result.reason === 'BadDeviceToken') {
-          delete tokens[token]
-          await savePushTokens(tokens)
-          await logLine(`push: dropped stale token (${result.reason})`)
-        } else {
-          await logLine(`push failed: ${result.status ?? ''} ${result.reason ?? ''}`)
-        }
-      }
-      if (pushed) {
-        state[sessionId] = { lastTurnEndSeq: lastSeq, lastNotifiedAt: Date.now() }
-        await persistState()
-        await logLine(`push sent: ${sessionId.slice(0, 12)}`)
-      }
     }
   }
 

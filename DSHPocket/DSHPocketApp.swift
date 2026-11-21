@@ -18,10 +18,11 @@ import UserNotifications
 
 @main
 struct DSHPocketApp: App {
-    @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @State private var model = ConnectionModel()
 
     init() {
+        // 必须在 didFinishLaunching 之前注册，否则首次唤醒会失败。
+        BackgroundRefresh.register()
         // 记录启动瞬间的内存，用来判断「空载高」是框架开销还是我们自己的问题。
         // 写到文件而不是 os.Logger：真机上只有文件能用 devicectl 直接拷出来。
         DiagFileLog.reset()

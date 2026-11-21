@@ -76,39 +76,9 @@ enum TextSelectionDismisser {
 
 
 extension Notification.Name {
-    static let dshPushTokenUpdated = Notification.Name("dsh-pocket.push-token-updated")
 }
 
 
-/// APNs device token 回调（SwiftUI 生命周期下用 delegate adaptor 接收）。
-final class PushDelegate: NSObject, UIApplicationDelegate {
-    static let tokenDefaultsKey = "dsh-pocket.apns-token"
-    /// 注册失败原因。`didFail` 只在这里能拿到，必须落盘让遥测带出去——
-    /// NSLog 走 os_log，`devicectl --console` 抓不到，只能靠 App 自己上报。
-    static let errorDefaultsKey = "dsh-pocket.apns-error"
-    /// 最近一次「发起注册」的时刻。用来判断「函数根本没被调用」还是「被系统拒绝」。
-    static let attemptDefaultsKey = "dsh-pocket.apns-attempt-at"
-
-    func application(_ application: UIApplication,
-                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        UserDefaults.standard.set(token, forKey: Self.tokenDefaultsKey)
-        UserDefaults.standard.removeObject(forKey: Self.errorDefaultsKey)
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.attemptDefaultsKey)
-        NotificationCenter.default.post(name: .dshPushTokenUpdated, object: token)
-    }
-
-    func application(_ application: UIApplication,
-                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        let ns = error as NSError
-        UserDefaults.standard.set(
-            "\(ns.domain) \(ns.code): \(ns.localizedDescription)",
-            forKey: Self.errorDefaultsKey
-        )
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.attemptDefaultsKey)
-        NSLog("DSH_PUSH register failed: %@", error.localizedDescription)
-    }
-}
 
 
 /// 访问密码存 Keychain：通知回复在后台/冷启动时需要自动重连。

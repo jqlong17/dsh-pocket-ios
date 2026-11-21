@@ -87,7 +87,6 @@ extension ConnectionModel {
                 connection.isConnected = true
                 connection.errorMessage = nil
                 recordDiagnostic("设备凭证换票恢复：\(DSHURL.redactedAddress(address))")
-                await syncPushRegistration()
                 return true
             } catch {
                 return false
@@ -187,7 +186,6 @@ extension ConnectionModel {
             connection.errorMessage = nil
             connection.addressNeedsRescan = false
             PinKeychain.save(connection.pin)
-            await syncPushRegistration()
             ConnectionVault.saveAuthCookies(from: url, address: connection.serverAddress)
             recordDiagnostic("token 登录成功：会话 \(sessionStore.sessions.count) 个")
             return

@@ -281,10 +281,6 @@ extension ConnectionModel {
             "visibleSessionId": visibleSessionId ?? "",
             "appActive": isAppActive,
             "alertsEnabled": completionAlertsEnabled,
-            "pushToken": pushTokenSummary(),
-            "apnsError": pushRegistrationError(),
-            "apnsAttemptAt": pushRegistrationAttemptAt(),
-            "pushRegisterError": UserDefaults.standard.string(forKey: "dsh-pocket.push-register-error") ?? "",
             "renderMs": (lastRenderMs * 10).rounded() / 10,
             "renderMsgCount": lastRenderMessageCount,
             "renderStepGroups": lastRenderStepGroupCount,
@@ -300,15 +296,7 @@ extension ConnectionModel {
    ///
    /// 形状：[{"address": ..., "ok": true/false, "rttMs": 12, "error": ...}]
    /// 只报地址和结果，不带凭证。
-   /// APNs 注册失败原因（nil 表示没失败过，或已成功）。
-   func pushRegistrationError() -> String {
-        UserDefaults.standard.string(forKey: "dsh-pocket.apns-error") ?? ""
-   }
 
-   /// 最近一次发起注册的时刻（epoch 秒）。为 0 说明**从来没调用过**注册。
-   func pushRegistrationAttemptAt() -> Int {
-        Int(UserDefaults.standard.double(forKey: "dsh-pocket.apns-attempt-at"))
-   }
 
    /// 帧率统计快照（MainActor 隔离，避免跨隔离域读 @Observable 属性）。
    func frameStats() -> (ratio: Double, intervalMs: Double) {
@@ -318,11 +306,6 @@ extension ConnectionModel {
         }
    }
 
-   /// 推送状态摘要：只有前 8 位，够判断「有没有拿到 token」，不泄露完整值。
-   func pushTokenSummary() -> String {
-        guard let token = pushToken, token.count > 8 else { return "none" }
-        return "ip_" + token.prefix(8)
-   }
 
    /// 测试模式是否开启。遥测里带上它，分析时能区分「采样稀疏」和「真没数据」。
    func probeTestMode() -> Bool {

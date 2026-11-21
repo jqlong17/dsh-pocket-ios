@@ -323,3 +323,15 @@ xcrun devicectl device process launch --device <UDID> com.ruska.dsh-pocket-ios
 | [wireapp/wire-ios](https://github.com/wireapp/wire-ios) / [nextcloud/talk-ios](https://github.com/nextcloud/talk-ios) / [RocketChat/Rocket.Chat.iOS](https://github.com/RocketChat/Rocket.Chat.iOS) | 其他开源 Swift 聊天客户端 |
 | [artcc/openclient-llm](https://github.com/ArtCC/openclient-llm) / [Ichigo3766/Open-Relay](https://github.com/Ichigo3766/Open-Relay) | 原生 SwiftUI LLM 客户端（多 provider / Open WebUI），AI 对话 UI 参考 |
 | [EnesKaraosman/SwiftyChat](https://github.com/EnesKaraosman/SwiftyChat) / [GetStream/stream-chat-swiftui](https://github.com/GetStream/stream-chat-swiftui) | SwiftUI 聊天气泡/消息列表组件 |
+
+## 系统推送（APNs）的归属陷阱
+
+**做「锁屏提醒」之前先回答一个问题：这个 App 只给自己用，还是要发给所有人？**
+
+- **只给自己** → 可以走「自己的 APNs Key」，用户 Mac 直接发
+- **发给所有人** → **APNs Key 属于开发者，不属于用户**；把 Key 打包进客户端是严重违规，
+  App Store 必拒。此时只有两条路：**中心推送服务**（要运维）或 **本地通知 + `BGAppRefreshTask`**（延迟不可控）
+
+**曾犯过的错**（2026-11-21）：想当然认为「每个用户有自己的 Mac 和 DSH」就能各自发推送，
+花两小时做完 APNs 全链路才发现凭证归属问题——用户没 Key，方案对公众用户是死的。
+详细记录见 `~/projects/skill/代码编写规范/ios踩坑记录.md` 第 29 条。
