@@ -18,7 +18,15 @@ _promo-shots/
 # 本地参考记录：同类项目调研，不对外发布（不进 GitHub，也不进 npm 包）
 # 文档与素材：只在本地保留，不随仓库发布
 # （截图/宣传图/ADR/架构快照/检查点记录都属于过程材料）
-docs/
+# docs 只忽略大体积的素材，而不是整个目录：
+# 之前写 `docs/` 把 README 引用的截图也挡住了 → GitHub 上六张图全是坏图。
+# 用 `docs/*` + 例外（`docs/` 这种整体忽略会让子目录的 `!` 失效）。
+docs/*
+# 例外：README 截图、App Store 审核文案、架构文档
+!docs/screenshots/
+!docs/appstore/
+!docs/architecture/
+!docs/adr/
 
 # 实现 spec：属于开发过程，只在本地保留
 # （公开的是 public/ 下的方法论模板，不是这些带项目细节的 spec）
