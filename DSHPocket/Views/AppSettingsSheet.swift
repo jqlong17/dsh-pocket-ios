@@ -30,6 +30,8 @@ struct AppSettingsSheet: View {
     /// 后者弹窗时读到的数据可能还是上一轮的空数组（SwiftUI 同一更新周期批量处理，
     /// 附件图黑屏那次也是这个原因）。
     @State private var reorderContext: ReorderContext?
+    /// 连接健康探测：哪条地址现在能用、多快。
+    @State private var probeRunner = EndpointProbeRunner()
 
     struct ReorderContext: Identifiable {
         let id = UUID()
@@ -142,6 +144,44 @@ struct AppSettingsSheet: View {
                     }
                 }
 
+                // 一键切换：列出这台设备连过的地址，点一下直接连。
+                //
+                // 复用 ConnectionVault 按地址隔离的设备凭证，所以切回以前连过的
+                // 电脑通常不需要再输密码——「点一下就回去」才是历史连接的意义。
+                if !model.savedEndpoints.isEmpty {
+                    Section {
+                        ForEach(model.savedEndpoints) { endpoint in
+                            Button {
+                                model.connection.serverAddress = endpoint.address
+                                model.connection.errorMessage = nil
+                                Task { await model.connect() }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(endpoint.displayName)
+                                            .foregroundStyle(.primary)
+                                        Text(endpoint.address)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                    Spacer(minLength: 8)
+                                    healthBadge(for: endpoint.address)
+                                    if endpoint.address == model.connection.serverAddress {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text(L10n.t("切换连接"))
+                    } footer: {
+                        Text(L10n.t("点一下直接切换；连过的地址已记住凭证，不用再输密码。"))
+                    }
+                }
+
                 // 当前连接一览：方式 / 状态 / 地址。
                 // 放在「断开连接」上方，因为断开前最该确认的就是「我现在连的是哪条路」。
                 Section {
@@ -153,7 +193,10 @@ struct AppSettingsSheet: View {
                             Circle()
                                 .fill(connectionStatusColor)
                                 .frame(width: 8, height: 8)
-                            Text(model.liveConnectionState)
+                            // 用 isConnected（HTTP 已连）而不是 liveConnection（实时流）：
+                            // 后者要等用户点进某个会话才开始，停在设置页时会一直显示「未连接」，
+                            // 明明会话列表都已经拉到了（实测：点切换后 HTTP 通，UI 仍显示未连接）。
+                            Text(model.connection.isConnected ? L10n.t("已连接") : model.liveConnectionState)
                         }
                     }
                     LabeledContent(L10n.t("地址")) {
@@ -161,6 +204,14 @@ struct AppSettingsSheet: View {
                             .font(.footnote)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    }
+                    LabeledContent(L10n.t("稳定性")) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(stability.color)
+                                .frame(width: 8, height: 8)
+                            Text(stability.label)
+                        }
                     }
                 } header: {
                     Text(L10n.t("当前连接"))
@@ -192,6 +243,12 @@ struct AppSettingsSheet: View {
                 }
                 Button(L10n.t("取消"), role: .cancel) {}
             }
+            .onAppear {
+                let addresses = model.savedEndpoints.map(\.address)
+                probeRunner.start(addresses: addresses)
+                Task { await probeRunner.probeRound(addresses: addresses) }
+            }
+            .onDisappear { probeRunner.stop() }
             .navigationTitle(L10n.t("设置"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -265,14 +322,55 @@ extension AppSettingsSheet {
         return L10n.t("自定义")
     }
 
-    /// 状态圆点：绿=连上，橙=过渡中，灰=未连。
+    /// 状态圆点：绿=HTTP 已连，橙=过渡中，红=断开，灰=未连。
+    ///
+    /// 优先看 `isConnected`：点「切换」后 HTTP 立刻通，但实时流要等进入会话才起，
+    /// 只盯 liveConnection 会让已连上的连接显示成灰点。
     var connectionStatusColor: Color {
+        if model.connection.isConnected { return .green }
         switch model.liveConnection {
         case .connected: return .green
         case .connecting, .reconnecting: return .orange
         case .disconnected: return .red
         case .idle: return .secondary
         case .demo: return .blue
+        }
+    }
+
+    /// 当前地址的稳定性：用探测历史，**按地址分开统计**。
+    var stability: (label: String, color: Color) {
+        let s = probeRunner.stability.stability(for: model.connection.serverAddress)
+        switch s.grade {
+        case .unknown: return (L10n.t("采集中"), Color.secondary)
+        case .stable: return (L10n.t("稳定"), Color.green)
+        case .occasional: return (L10n.t("偶尔抖动"), Color.yellow)
+        case .unstable: return (L10n.t("较不稳定"), Color.orange)
+        case .poor: return (L10n.t("频繁断连"), Color.red)
+        }
+    }
+
+    /// 切换列表右侧的健康标记：可达显示 RTT，不可达明确写出原因。
+    @ViewBuilder
+    func healthBadge(for address: String) -> some View {
+        switch probeRunner.results[address] {
+        case .none:
+            Text(L10n.t("检测中"))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        case .unreachable:
+            HStack(spacing: 3) {
+                Image(systemName: "xmark.circle.fill")
+                Text(L10n.t("不可达"))
+            }
+            .font(.caption2)
+            .foregroundStyle(.red)
+        case .reachable(let rtt):
+            HStack(spacing: 3) {
+                Image(systemName: "circle.fill").font(.system(size: 5))
+                Text(rtt.map { "\($0) ms" } ?? L10n.t("可达"))
+            }
+            .font(.caption2)
+            .foregroundStyle(.green)
         }
     }
 }

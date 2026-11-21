@@ -81,6 +81,7 @@
 		737076F014E4D48D363DBF26 /* ConversationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A9BB857204D1CD882A478BD /* ConversationState.swift */; };
 		3C22BCF78D87D36182DEB380 /* AppSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99116BD77194DF3FA35B0EE8 /* AppSupport.swift */; };
 		D922F9FB9A2F4B3F956522DF /* TelemetryReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B24E20851924BFCB4BF7469 /* TelemetryReporter.swift */; };
+		36481BCA04A647D1B752979B /* EndpointProbeRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA706FF2C9524EC5BC64E1A2 /* EndpointProbeRunner.swift */; };
 		E1BFD38C37A933750C39EC92 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97313FE375E37A4D2B14B193 /* Localization.swift */; };
 		6483BC565C3B0062050B8008 /* AppSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5ACA9EC358DB8FEBD95C72 /* AppSettingsSheet.swift */; };
 		3D7339D6EDB6C92CFCC6D9AE /* AttachmentThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B78B4F581F4025F6DCD0CE /* AttachmentThumbnail.swift */; };
@@ -190,6 +191,7 @@
 		4A9BB857204D1CD882A478BD /* ConversationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationState.swift; sourceTree = "<group>"; };
 		99116BD77194DF3FA35B0EE8 /* AppSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSupport.swift; sourceTree = "<group>"; };
 		1B24E20851924BFCB4BF7469 /* TelemetryReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryReporter.swift; sourceTree = "<group>"; };
+		DA706FF2C9524EC5BC64E1A2 /* EndpointProbeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EndpointProbeRunner.swift; sourceTree = "<group>"; };
 		97313FE375E37A4D2B14B193 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		6B5ACA9EC358DB8FEBD95C72 /* AppSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsSheet.swift; sourceTree = "<group>"; };
 		91B78B4F581F4025F6DCD0CE /* AttachmentThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentThumbnail.swift; sourceTree = "<group>"; };
@@ -307,6 +309,7 @@
 				D1CFA11E0000000000000035 /* ConnectionModel+Diagnostics.swift */,
 				D1CFA11E0000000000000037 /* ConnectionModel+History.swift */,
 				D1CFA11E000000000000000B /* Diagnostics.swift */,
+				DA706FF2C9524EC5BC64E1A2 /* EndpointProbeRunner.swift */,
 				D1CFA11E000000000000000D /* JobRoster.swift */,
 				D1CFA11E000000000000001D /* QuestionInbox.swift */,
 				D1CFA11E000000000000001F /* ConnectionValueTypes.swift */,
@@ -580,6 +583,7 @@
 				52984328C331F10CC61F708D /* DSHPocketApp.swift in Sources */,
 				3C22BCF78D87D36182DEB380 /* AppSupport.swift in Sources */,
 				D922F9FB9A2F4B3F956522DF /* TelemetryReporter.swift in Sources */,
+				36481BCA04A647D1B752979B /* EndpointProbeRunner.swift in Sources */,
 				E1BFD38C37A933750C39EC92 /* Localization.swift in Sources */,
 				C09222E621DF54D8938C1DBB /* ConnectionModel+Connect.swift in Sources */,
 				D1CFA11E0000000000000034 /* ConnectionModel+Send.swift in Sources */,
