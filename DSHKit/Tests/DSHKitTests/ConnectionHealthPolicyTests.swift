@@ -15,9 +15,11 @@ final class ConnectionHealthPolicyTests: XCTestCase {
         XCTAssertEqual(ConnectionHealthPolicy.strategy(for: .cellular), .tcp)
     }
 
-    func testOtherNetworkSkipsProbe() {
-        // 完全离线时探测没有意义，只会堆积失败日志。
-        XCTAssertEqual(ConnectionHealthPolicy.strategy(for: .other), .none)
+    func testUnknownNetworkFallsBackToTCP() {
+        // 不能返回 .none：NWPathMonitor 首次回调前 networkClass 就是 .other，
+        // 那时跳过探测会让所有地址恒被标成不可达（实测踩过）。
+        // 离线时 TCP 自己也会失败，结论仍正确，代价只有 0.2 KB。
+        XCTAssertEqual(ConnectionHealthPolicy.strategy(for: .other), .tcp)
     }
 
     // MARK: - 该不该探

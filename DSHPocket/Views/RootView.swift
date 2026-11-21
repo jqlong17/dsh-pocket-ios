@@ -83,6 +83,12 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             model.isAppActive = (phase == .active)
+            // 探测随前后台起停：后台跑定时器和网络请求既费电又没意义。
+            if phase == .active {
+                model.probeRunner.start(addresses: model.savedEndpoints.map(\.address))
+            } else {
+                model.probeRunner.stop()
+            }
             // 回到前台只静默刷新列表，不自动切换网络，避免打断当前会话。
             guard phase == .active, model.connection.isConnected else { return }
             Task { await model.loadSessions(silently: true) }
@@ -90,6 +96,10 @@ struct RootView: View {
         .task(id: model.connection.isConnected) {
             // 周期刷新会话列表，识别"其他会话跑完了"（完成提醒的红点/通知）。
             guard model.connection.isConnected, !model.isDemoMode else { return }
+            // 已连接即启动健康探测。
+            // 不能只靠 onChange(of: scenePhase)：App 冷启动时 phase 本来就是 active，
+            // onChange 不触发，探测会一直 pending（实测踩过）。
+            model.probeRunner.start(addresses: model.savedEndpoints.map(\.address))
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 if Task.isCancelled { break }

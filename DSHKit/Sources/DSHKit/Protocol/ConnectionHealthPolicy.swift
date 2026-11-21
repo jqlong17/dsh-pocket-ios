@@ -32,8 +32,11 @@ public enum ConnectionHealthPolicy {
     public static func strategy(for network: NetworkClass) -> ProbeStrategy {
         switch network {
         case .wifi: return .http
-        case .cellular: return .tcp
-        case .other: return .none
+        // 蜂窝与「未知」都只做 TCP。
+        // 未知用 TCP 而不是直接跳过：NWPathMonitor 首次回调前 `networkClass` 还是
+        // `.other`，若返回 none 会让所有地址恒被标成不可达（实测踩过）。
+        // 离线时 TCP 自己也会失败，结论仍然正确，代价只有 0.2 KB。
+        case .cellular, .other: return .tcp
         }
     }
 

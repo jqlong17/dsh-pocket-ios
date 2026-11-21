@@ -17,15 +17,42 @@ final class EndpointProbeRunner {
     private(set) var results: [String: HealthState] = [:]
     /// 当前网络类型。Wi-Fi / 蜂窝决定探测方式。
     private(set) var networkClass: NetworkClass = .other
+    /// 地址 → 最近一次失败原因。UI 在「不可达」下面显示，便于判断是超时还是拒绝。
+    private(set) var lastErrors: [String: String] = [:]
     /// 按地址累积探测历史，供设置页显示「这条稳不稳」。
     private(set) var stability = AddressStabilityWindow()
+    /// 按地址累积时延序列，供设置页画迷你曲线（能看出刚才有没有抖）。
+    private(set) var latencyHistory: [String: LatencySeries] = [:]
 
-    /// 探测周期。60 秒是「够及时」和「流量可忽略」的折中。
-    static let interval: Duration = .seconds(60)
+    /// 正常探测周期。60 秒是「够及时」和「流量可忽略」的折中。
+    static let normalInterval: Duration = .seconds(60)
+    /// 测试模式周期：和遥测同频（10 秒），让「采集中」在 30 秒内变成结论。
+    /// 只在用户手动打开测试模式时生效——它会让流量放大 6 倍。
+    static let testInterval: Duration = .seconds(10)
     /// TCP 探测超时：超过 3 秒视为不可达。
     static let tcpTimeout: TimeInterval = 3
     /// HTTP 探测超时：5 秒（要覆盖 Tailscale 打洞较慢的情况）。
     static let httpTimeout: TimeInterval = 5
+
+    /// 显式 nonisolated：`ConnectionModel` 在非隔离上下文里用 `lazy` 构造它，
+    /// 默认的 @MainActor init 会让那句初始化直接编译失败。
+    nonisolated init() {}
+
+    /// 测试模式：更高频探测，用于验证与排查。默认关闭。
+    var testMode = false {
+        didSet {
+            guard testMode != oldValue else { return }
+            // 间隔变了要重建循环，否则要等满一个旧周期才生效。
+            let addresses = targets
+            loop?.cancel()
+            loop = nil
+            start(addresses: addresses)
+        }
+    }
+
+    private var interval: Duration {
+        testMode ? Self.testInterval : Self.normalInterval
+    }
 
     private let monitor = NWPathMonitor()
     private var loop: Task<Void, Never>?
@@ -48,7 +75,8 @@ final class EndpointProbeRunner {
                 if let targets = self?.targets {
                     await self?.probeRound(addresses: targets)
                 }
-                try? await Task.sleep(for: Self.interval)
+                let sleepFor = await self?.interval ?? Self.normalInterval
+                try? await Task.sleep(for: sleepFor)
             }
         }
     }
@@ -74,21 +102,27 @@ final class EndpointProbeRunner {
             return
         }
         stability.retain(addresses: Set(addresses))
+        latencyHistory = latencyHistory.filter { addresses.contains($0.key) }
         let saved = addresses
-        await withTaskGroup(of: (String, HealthState).self) { group in
+        await withTaskGroup(of: (String, (HealthState, String?)).self) { group in
             for address in addresses where ConnectionHealthPolicy.shouldProbe(address: address, saved: saved) {
                 group.addTask { [strategy] in
-                    let state = await Self.probe(address: address, strategy: strategy)
-                    return (address, state)
+                    let packed = await Self.probe(address: address, strategy: strategy)
+                    return (address, packed)
                 }
             }
-            for await (address, state) in group {
+            for await (address, packed) in group {
+                let (state, err) = packed
                 results[address] = state
+                if let err { lastErrors[address] = err } else { lastErrors[address] = nil }
                 // 稳定性按地址分别积累：切换地址后不能再混算（2026-11-21 用户反馈）。
-                if case .reachable = state {
+                if case .reachable(let rtt) = state {
                     stability.record(address: address, connected: true)
+                    latencyHistory[address, default: LatencySeries()].record(ms: rtt)
                 } else {
                     stability.record(address: address, connected: false)
+                    // 失败点也要记（nil），曲线才能断出缺口。
+                    latencyHistory[address, default: LatencySeries()].record(ms: nil)
                 }
             }
         }
@@ -121,9 +155,9 @@ final class EndpointProbeRunner {
 
     /// 按策略探测一条地址。失败一律返回 `.unreachable`，不抛错——
     /// 这是展示用数据，不该让调用方处理异常分支。
-    private static func probe(address: String, strategy: ProbeStrategy) async -> HealthState {
+    private static func probe(address: String, strategy: ProbeStrategy) async -> (HealthState, String?) {
         guard let url = URL(string: address), let host = url.host else {
-            return .unreachable
+            return (.unreachable, "地址解析失败")
         }
         switch strategy {
         case .http:
@@ -131,14 +165,15 @@ final class EndpointProbeRunner {
         case .tcp:
             let port = UInt16(url.port ?? (url.scheme == "https" ? 443 : 80))
             let reachable = await probeTCP(host: host, port: port)
-            return ConnectionHealthPolicy.summarize(reachable: reachable, rttMs: nil)
+            return (ConnectionHealthPolicy.summarize(reachable: reachable, rttMs: nil),
+                    reachable ? nil : "TCP \(host):\(port) 连接失败")
         case .none:
-            return .unreachable
+            return (.unreachable, "离线")
         }
     }
 
     /// HEAD 请求测往返时延。用 HEAD 而不是 GET：不下载正文，流量最小。
-    private static func probeHTTP(url: URL) async -> HealthState {
+    private static func probeHTTP(url: URL) async -> (HealthState, String?) {
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
         request.timeoutInterval = httpTimeout
@@ -147,9 +182,13 @@ final class EndpointProbeRunner {
         do {
             _ = try await URLSession.shared.data(for: request)
             let ms = Int(Date().timeIntervalSince(started) * 1000)
-            return ConnectionHealthPolicy.summarize(reachable: true, rttMs: ms)
+            return (ConnectionHealthPolicy.summarize(reachable: true, rttMs: ms), nil)
         } catch {
-            return .unreachable
+            // 把 NSError 的 code 带出来：-1001 超时 / -1004 连不上 / -1022 ATS，
+            // 这三者修法完全不同，只显示「不可达」没法判断。
+            let ns = error as NSError
+            NSLog("DSH_PROBE %@ -> %@ \(ns.domain) \(ns.code): \(ns.localizedDescription)", url.absoluteString)
+            return (.unreachable, "\(ns.domain) \(ns.code)")
         }
     }
 

@@ -236,6 +236,20 @@ final class ConnectionModel {
     /// 单条会话操作（spec/12）。
     /// 网络恢复监听：从断网恢复时立刻补发，不等列表轮询或 WS 重连。
     let networkWatcher = NetworkWatcher()
+    /// 连接健康探测（哪条地址能用、多快）。放在模型上而不是视图里，
+    /// 是为了让遥测上报也能带上它——否则「不可达」只能靠用户截图。
+    ///
+    /// 用 `lazy` 而不是 `let x = EndpointProbeRunner()`：后者会在 `ConnectionModel`
+    /// 的非隔离初始化上下文里调用 @MainActor 的 init，Swift 6 直接报错。
+    @ObservationIgnored
+    lazy var probeRunner = EndpointProbeRunner()
+
+    /// 探测结果镜像。放在这里而不是只放在 `probeRunner` 里：
+    /// `@ObservationIgnored` 的嵌套对象改动不会触发设置页刷新（实测：遥测有 26ms，
+    /// 界面却一直写「检测中」）。由 probeRound 回来时同步一份，UI 直接读它。
+    var probeResults: [String: HealthState] = [:]
+    /// 每个地址的时延曲线（最近若干次探测）。UI 直接读它画 sparkline。
+    var probeLatency: [String: LatencySeries] = [:]
     /// 监听只启动一次。
     var networkWatcherStarted = false
     /// 本轮启动是否已尝试用设备凭证换票，避免 401 循环。

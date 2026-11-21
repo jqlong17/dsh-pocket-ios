@@ -248,6 +248,12 @@ extension ConnectionModel {
 
    func captureDiagnosticSample(enterMs: Int? = nil) {
         diagnostics.capture(enterMs: enterMs)
+        // 把探测器结果镜像到模型上：`probeRunner` 是 @ObservationIgnored 的嵌套对象，
+        // 它的内部改动不会让设置页刷新（实测：遥测有 26ms，界面一直写「检测中」）。
+        MainActor.assumeIsolated {
+            probeResults = probeRunner.results
+            probeLatency = probeRunner.latencyHistory
+        }
         // 采样器本身就是 10 秒一次，和 Mac 侧 dsh-net-record 同频，
         // 顺手把「只有手机知道」的状态报上去，两边时间轴才能对齐。
         reportTelemetry()
@@ -269,10 +275,60 @@ extension ConnectionModel {
             "failed": entries.filter(\.sendFailed).count,
             "memoryMB": Diagnostics.memoryFootprintMB(),
             "hasVisibleSession": visibleSessionId != nil,
+            "probes": probeSnapshot(),
+            "probeNetwork": probeNetworkLabel(),
+            "testMode": probeTestMode(),
         ]
         TelemetryReporter.report(payload, to: base)
     }
 
+
+   /// 探测结果快照，供遥测上报。
+   ///
+   /// 形状：[{"address": ..., "ok": true/false, "rttMs": 12, "error": ...}]
+   /// 只报地址和结果，不带凭证。
+   /// 测试模式是否开启。遥测里带上它，分析时能区分「采样稀疏」和「真没数据」。
+   func probeTestMode() -> Bool {
+        MainActor.assumeIsolated { probeRunner.testMode }
+   }
+
+   /// 探测时认为的网络类型。诊断用：能直接看出「为什么走的是 TCP 而不是 HTTP」。
+   func probeNetworkLabel() -> String {
+        MainActor.assumeIsolated {
+            switch probeRunner.networkClass {
+            case .wifi: return "wifi"
+            case .cellular: return "cellular"
+            case .other: return "other"
+            }
+        }
+   }
+
+   func probeSnapshot() -> [[String: Any]] {
+        // `ConnectionModel` 没标 @MainActor，但这些方法实际都在主线程调用
+        // （采样器走 `MainActor.run`）。`assumeIsolated` 把这个事实告诉编译器，
+        // 比给整条调用链加 @MainActor 干净（那样会连锁报错）。
+        MainActor.assumeIsolated {
+        let runner = probeRunner
+        return savedEndpoints.map { endpoint in
+            var row: [String: Any] = [
+                "address": endpoint.address,
+                "isCurrent": endpoint.address == connection.serverAddress,
+            ]
+            switch runner.results[endpoint.address] {
+            case .reachable(let rtt):
+                row["ok"] = true
+                if let rtt { row["rttMs"] = rtt }
+            case .unreachable:
+                row["ok"] = false
+            case .none:
+                row["ok"] = false
+                row["pending"] = true
+            }
+            if let err = runner.lastErrors[endpoint.address] { row["error"] = err }
+            return row
+        }
+        }
+   }
 
    func noteNetworkEdgeForDiagnostics() {
         switch liveConnection {

@@ -142,6 +142,16 @@ struct AppSettingsSheet: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    Toggle(isOn: Binding(
+                        get: { model.probeRunner.testMode },
+                        set: { model.probeRunner.testMode = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("连接探测测试模式"))
+                            Text(L10n.t("每 10 秒探测一次（默认 60 秒），用于排查连接问题"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 // 一键切换：列出这台设备连过的地址，点一下直接连。
@@ -167,6 +177,8 @@ struct AppSettingsSheet: View {
                                             .truncationMode(.middle)
                                     }
                                     Spacer(minLength: 8)
+                                    Sparkline(series: model.probeLatency[endpoint.address])
+                                        .frame(width: 52, height: 14)
                                     healthBadge(for: endpoint.address)
                                     if endpoint.address == model.connection.serverAddress {
                                         Image(systemName: "checkmark.circle.fill")
@@ -207,6 +219,8 @@ struct AppSettingsSheet: View {
                     }
                     LabeledContent(L10n.t("稳定性")) {
                         HStack(spacing: 6) {
+                            Sparkline(series: model.probeLatency[model.connection.serverAddress])
+                                .frame(width: 46, height: 14)
                             Circle()
                                 .fill(stability.color)
                                 .frame(width: 8, height: 8)
@@ -244,11 +258,14 @@ struct AppSettingsSheet: View {
                 Button(L10n.t("取消"), role: .cancel) {}
             }
             .onAppear {
-                let addresses = model.savedEndpoints.map(\.address)
-                probeRunner.start(addresses: addresses)
-                Task { await probeRunner.probeRound(addresses: addresses) }
+                // 探测已由 RootView 按前后台常驻，这里只补一次立即探测，
+                // 让用户打开设置页就能看到最新结果，而不是等下一个周期。
+                Task {
+                    await model.probeRunner.probeRound(addresses: model.savedEndpoints.map(\.address))
+                    syncProbeSnapshot()
+                }
             }
-            .onDisappear { probeRunner.stop() }
+
             .navigationTitle(L10n.t("设置"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -338,10 +355,17 @@ extension AppSettingsSheet {
     }
 
     /// 当前地址的稳定性：用探测历史，**按地址分开统计**。
+    ///
+    /// 样本不足时不写「采集中」这种没信息量的词，而是给出进度（2/3）——
+    /// 用户能看出「快好了」，而不是「是不是卡住了」。
     var stability: (label: String, color: Color) {
-        let s = probeRunner.stability.stability(for: model.connection.serverAddress)
+        let address = model.connection.serverAddress
+        let s = model.probeRunner.stability.stability(for: address)
         switch s.grade {
-        case .unknown: return (L10n.t("采集中"), Color.secondary)
+        case .unknown:
+            let need = 3
+            if s.samples == 0 { return (L10n.t("等待首次探测"), Color.secondary) }
+            return (L10n.tf("采样中 %d/%d", s.samples, need), Color.secondary)
         case .stable: return (L10n.t("稳定"), Color.green)
         case .occasional: return (L10n.t("偶尔抖动"), Color.yellow)
         case .unstable: return (L10n.t("较不稳定"), Color.orange)
@@ -349,21 +373,35 @@ extension AppSettingsSheet {
         }
     }
 
+    /// 把探测器的结果同步到 model（供 UI 刷新）。
+    func syncProbeSnapshot() {
+        model.probeResults = model.probeRunner.results
+    }
+
     /// 切换列表右侧的健康标记：可达显示 RTT，不可达明确写出原因。
     @ViewBuilder
     func healthBadge(for address: String) -> some View {
-        switch probeRunner.results[address] {
+        switch model.probeResults[address] {
         case .none:
             Text(L10n.t("检测中"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         case .unreachable:
-            HStack(spacing: 3) {
-                Image(systemName: "xmark.circle.fill")
-                Text(L10n.t("不可达"))
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(spacing: 3) {
+                    Image(systemName: "xmark.circle.fill")
+                    Text(L10n.t("不可达"))
+                }
+                .font(.caption2)
+                .foregroundStyle(.red)
+                // 把错误码也显示出来：-1001 超时 / -1004 连不上 / -1022 ATS，
+                // 三者修法完全不同，只显示「不可达」判断不了。
+                if let err = model.probeRunner.lastErrors[address] {
+                    Text(err)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
             }
-            .font(.caption2)
-            .foregroundStyle(.red)
         case .reachable(let rtt):
             HStack(spacing: 3) {
                 Image(systemName: "circle.fill").font(.system(size: 5))
@@ -372,5 +410,69 @@ extension AppSettingsSheet {
             .font(.caption2)
             .foregroundStyle(.green)
         }
+    }
+}
+
+/// 最近若干次探测时延的迷你曲线。
+///
+/// 三条优化（2026-11-21 用户反馈「像折线碎片」）：
+/// 1. **均匀铺满宽度**：不受失败点占位影响，2 个点也画满整条，不再缩在右边；
+/// 2. **单点画圆**：刚启动只有一次探测时给一个点，而不是什么都不画；
+/// 3. **失败点标红**：曲线断开处补一个红点，一眼看出「这里断了」。
+struct Sparkline: View {
+    let series: LatencySeries?
+    var height: CGFloat = 14
+
+    var body: some View {
+        Canvas { context, size in
+            guard let series, let range = series.plotRange else { return }
+            let values = series.samples
+            guard !values.isEmpty else { return }
+
+            let span = range.upperBound - range.lowerBound
+            let stepX = values.count > 1 ? size.width / CGFloat(values.count - 1) : 0
+            let midY = size.height / 2
+
+            // 按失败点切段：成功点连线，失败点断开
+            var segments: [[CGPoint]] = []
+            var current: [CGPoint] = []
+            var failures: [CGPoint] = []
+            for (index, value) in values.enumerated() {
+                let x = values.count > 1 ? CGFloat(index) * stepX : size.width / 2
+                guard let value else {
+                    if !current.isEmpty { segments.append(current); current = [] }
+                    failures.append(CGPoint(x: x, y: size.height - 2))
+                    continue
+                }
+                let normalized = (Double(value) - range.lowerBound) / span
+                let y = size.height - CGFloat(normalized) * (size.height - 4) - 2
+                current.append(CGPoint(x: x, y: y))
+            }
+            if !current.isEmpty { segments.append(current) }
+
+            let tint = Color.green
+            for segment in segments {
+                if segment.count == 1, let only = segment.first {
+                    // 只有一个成功点时画实心圆，否则看不出变化
+                    let r: CGFloat = 1.8
+                    let rect = CGRect(x: only.x - r, y: only.y - r, width: r * 2, height: r * 2)
+                    context.fill(Path(ellipseIn: rect), with: .color(tint))
+                } else {
+                    var path = Path()
+                    path.move(to: segment[0])
+                    for point in segment.dropFirst() { path.addLine(to: point) }
+                    context.stroke(path, with: .color(tint),
+                                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                }
+            }
+
+            for point in failures {
+                let r: CGFloat = 1.4
+                let rect = CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)
+                context.fill(Path(ellipseIn: rect), with: .color(.red))
+            }
+        }
+        .frame(height: height)
+        .accessibilityLabel(L10n.t("最近时延曲线"))
     }
 }

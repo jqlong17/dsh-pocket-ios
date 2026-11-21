@@ -263,6 +263,9 @@ extension ConnectionModel {
             persistConnectedState()
             connection.pin = ""
             recordDiagnostic("连接成功：会话 \(sessionStore.sessions.count) 个")
+            // 连上就开探测：设置页只是「查看」，不该是探测的前置条件。
+            // 否则用户不开设置页时遥测里的 probes 永远是 pending，服务端也没法分析。
+            probeRunner.start(addresses: savedEndpoints.map(\.address))
         } catch {
             // 密码登录分支：invalidPin 是密码问题，URLError 是网络问题，由分型决定说什么。
             applyConnectError(error, context: .password)
