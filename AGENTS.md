@@ -53,6 +53,10 @@
 
 ## 2. 本仓库的约定
 
+- **`docs/` 一律不入库**（2026-11-21 用户明确）：里面的调研、宣传素材、审核文案、参考项目源码
+  全部只留在本地，`.gitignore` 里是整体忽略 `docs/`。
+  **不要再问「要不要把某个 docs 文件提交」**——答案永远是不要。
+  README 需要展示的界面图放在 `assets/screenshots/`（不在 docs 下），改图时同步该目录。
 - **spec 目录**：`spec/NN-主题.md`（已有 01–10，编号递增）。
 - **测试**：`cd DSHKit && swift test`；App 编译走模拟器（真机锁屏常不可达）：
   `xcodebuild build -scheme DSHPocket -destination 'platform=iOS Simulator,id=2BD221E6-CFAA-4E90-8BEB-E7392ACCCB19'`
