@@ -29,21 +29,21 @@ dsh plugin add dsh-pocket-ios
 
 <table align="center">
   <tr>
-    <td align="center"><img src="docs/screenshots/list.png" width="210" alt="工作区分组"><br><sub>工作区分组</sub></td>
-    <td align="center"><img src="docs/screenshots/timeline.png" width="210" alt="时间线模式"><br><sub>时间线模式</sub></td>
-    <td align="center"><img src="docs/screenshots/chat.png" width="210" alt="对话与过程"><br><sub>对话与过程</sub></td>
+    <td align="center"><img src="assets/screenshots/list.png" width="210" alt="工作区分组"><br><sub>工作区分组</sub></td>
+    <td align="center"><img src="assets/screenshots/timeline.png" width="210" alt="时间线模式"><br><sub>时间线模式</sub></td>
+    <td align="center"><img src="assets/screenshots/chat.png" width="210" alt="对话与过程"><br><sub>对话与过程</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/quote.png" width="210" alt="引用消息"><br><sub>引用消息</sub></td>
-    <td align="center"><img src="docs/screenshots/settings.png" width="210" alt="设置与语言"><br><sub>设置与语言</sub></td>
-    <td align="center"><img src="docs/screenshots/connect.png" width="210" alt="扫码连接"><br><sub>扫码连接</sub></td>
+    <td align="center"><img src="assets/screenshots/quote.png" width="210" alt="引用消息"><br><sub>引用消息</sub></td>
+    <td align="center"><img src="assets/screenshots/settings.png" width="210" alt="设置与语言"><br><sub>设置与语言</sub></td>
+    <td align="center"><img src="assets/screenshots/connect.png" width="210" alt="扫码连接"><br><sub>扫码连接</sub></td>
   </tr>
 </table>
 
 <table align="center">
   <tr>
-    <td align="center"><img src="docs/screenshots/ipad-list.png" width="300" alt="iPad 会话列表"><br><sub>iPad 会话列表</sub></td>
-    <td align="center"><img src="docs/screenshots/ipad-chat.png" width="300" alt="iPad 对话"><br><sub>iPad 对话</sub></td>
+    <td align="center"><img src="assets/screenshots/ipad-list.png" width="300" alt="iPad 会话列表"><br><sub>iPad 会话列表</sub></td>
+    <td align="center"><img src="assets/screenshots/ipad-chat.png" width="300" alt="iPad 对话"><br><sub>iPad 对话</sub></td>
   </tr>
 </table>
 
