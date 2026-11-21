@@ -208,6 +208,8 @@ extension ConnectionModel {
             sessionStore.sessions = try await fetchSessions()
             connection.isConnected = true
             connection.errorMessage = nil
+            // 普通恢复也要注册 APNs——App 正常启动走的就是这条。
+            await syncPushRegistration()
         } catch {
             // cookie 失效（DSH 重启、或重装后沙盒里的 cookie 被清）：
             // 只要 Keychain 里还留着长期设备凭证，就先静默换一张新票再试。
@@ -219,6 +221,7 @@ extension ConnectionModel {
                     connection.isConnected = true
                     connection.errorMessage = nil
                     recordDiagnostic("恢复连接：设备凭证换票成功，免扫码")
+                    await syncPushRegistration()
                     return
                 } catch {
                     // 换票成功但拉会话仍失败，继续走下面的错误上报

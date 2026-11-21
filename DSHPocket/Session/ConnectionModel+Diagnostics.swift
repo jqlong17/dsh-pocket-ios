@@ -282,6 +282,9 @@ extension ConnectionModel {
             "appActive": isAppActive,
             "alertsEnabled": completionAlertsEnabled,
             "pushToken": pushTokenSummary(),
+            "apnsError": pushRegistrationError(),
+            "apnsAttemptAt": pushRegistrationAttemptAt(),
+            "pushRegisterError": UserDefaults.standard.string(forKey: "dsh-pocket.push-register-error") ?? "",
         ]
         TelemetryReporter.report(payload, to: base)
     }
@@ -291,6 +294,16 @@ extension ConnectionModel {
    ///
    /// 形状：[{"address": ..., "ok": true/false, "rttMs": 12, "error": ...}]
    /// 只报地址和结果，不带凭证。
+   /// APNs 注册失败原因（nil 表示没失败过，或已成功）。
+   func pushRegistrationError() -> String {
+        UserDefaults.standard.string(forKey: "dsh-pocket.apns-error") ?? ""
+   }
+
+   /// 最近一次发起注册的时刻（epoch 秒）。为 0 说明**从来没调用过**注册。
+   func pushRegistrationAttemptAt() -> Int {
+        Int(UserDefaults.standard.double(forKey: "dsh-pocket.apns-attempt-at"))
+   }
+
    /// 推送状态摘要：只有前 8 位，够判断「有没有拿到 token」，不泄露完整值。
    func pushTokenSummary() -> String {
         guard let token = pushToken, token.count > 8 else { return "none" }

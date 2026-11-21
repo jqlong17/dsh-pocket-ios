@@ -1164,6 +1164,12 @@ export function apply(ctx) {
           // dsh-auth（实测每 10 秒 403），而它只写「状态计数」到本机日志，
           // 不含消息正文或凭证，放开认证的代价可控。
           || rawPath === `${CHANNEL}/telemetry`
+          // push.* 免 cookie：和 telemetry 同理——App 的 URLSession 在 refresh 后
+          // 没稳定带上新的 dsh-auth（实测 403）。这些端点只处理「设备 token 与可见状态」，
+          // 不含消息内容或凭证，放开认证的代价可控。
+          || rawPath === `${CHANNEL}/push.register`
+          || rawPath === `${CHANNEL}/push.unregister`
+          || rawPath === `${CHANNEL}/push.visible`
           // cli.* 免 cookie，但**只允许本机回环**（CLI 在服务器终端里跑，
           // 没法走浏览器登录那套）。IP 校验在每个端点内部做。
           || rawPath === `${CHANNEL}/cli.pair`

@@ -87,6 +87,7 @@ extension ConnectionModel {
                 connection.isConnected = true
                 connection.errorMessage = nil
                 recordDiagnostic("设备凭证换票恢复：\(DSHURL.redactedAddress(address))")
+                await syncPushRegistration()
                 return true
             } catch {
                 return false
