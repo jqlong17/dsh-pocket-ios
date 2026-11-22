@@ -35,14 +35,21 @@ struct WorkspacePickerSheet: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(workspaces) { workspace in
-                        Button { selectedId = workspace.workspaceId } label: {
-                            row(for: workspace)
+                    // 不用 List：List 的每一行会先吃掉一次点击（行高亮/选中态），
+                    // 表现就是「第一次点没反应、第二次才勾上」，换 buttonStyle 也压不住。
+                    // 这个列表最多十几项，不需要 List 的复用，用 LazyVStack 就够了。
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(workspaces) { workspace in
+                                row(for: workspace)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 10)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { selectedId = workspace.workspaceId }
+                                Divider().padding(.leading, 56)
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .listRowBackground(Color.clear)
                     }
-                    .listStyle(.plain)
                 }
             }
             .navigationTitle(L10n.t("新建会话"))
@@ -54,7 +61,7 @@ struct WorkspacePickerSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         creating = true
-                        onCreate(selectedId)
+                        onCreate(effectiveSelection)
                     } label: {
                         if creating {
                             ProgressView()
@@ -76,9 +83,9 @@ struct WorkspacePickerSheet: View {
 
     private func row(for workspace: PocketWorkspace) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: selectedId == workspace.workspaceId ? "checkmark.circle.fill" : "circle")
+            Image(systemName: effectiveSelection == workspace.workspaceId ? "checkmark.circle.fill" : "circle")
                 .font(.title3)
-                .foregroundStyle(selectedId == workspace.workspaceId ? Color.accentColor : Color.secondary.opacity(0.4))
+                .foregroundStyle(effectiveSelection == workspace.workspaceId ? Color.accentColor : Color.secondary.opacity(0.4))
             VStack(alignment: .leading, spacing: 2) {
                 Text(workspace.title)
                     .font(.body.weight(.medium))
@@ -100,13 +107,29 @@ struct WorkspacePickerSheet: View {
         .contentShape(Rectangle())
     }
 
+    /// 真正生效的选中项：**算出来的，不依赖 sync 是否跑过**。
+    ///
+    /// 之前只靠 `syncSelection()` 写 `selectedId`，一旦预选 id 是个「已不在列表里的旧值」，
+    /// 所有行都匹配不上，界面上就是「一个都没勾」——用户以为选不了，实际是选中了一个幽灵项。
+    private var effectiveSelection: String? {
+        if let selectedId, workspaces.contains(where: { $0.workspaceId == selectedId }) {
+            return selectedId
+        }
+        return workspaces.first?.workspaceId
+    }
+
     /// 选中项同步：优先预选值，其次列表第一项。
     ///
     /// 只在「当前选中不在列表里」时改写——用户已经手动选过的不能被覆盖。
     private func syncSelection() {
         guard !isLoading, !workspaces.isEmpty else { return }
         if let selectedId, workspaces.contains(where: { $0.workspaceId == selectedId }) { return }
-        // 兜底也取第一项：宁可勾错也不能没有勾（没有勾时用户以为选不了）。
-        selectedId = preselectedId ?? workspaces.first?.workspaceId
+        // 预选值必须在列表里才采用；否则退回第一项。
+        // 「宁可勾错也不能没有勾」——没有勾时用户以为选不了。
+        if let preselectedId, workspaces.contains(where: { $0.workspaceId == preselectedId }) {
+            selectedId = preselectedId
+        } else {
+            selectedId = workspaces.first?.workspaceId
+        }
     }
 }
