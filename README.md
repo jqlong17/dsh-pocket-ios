@@ -203,6 +203,24 @@ plugin/                        # DSH 插件（dsh-pocket-ios）：设置页、�
 docs/qa-conversation-regression.md
 ```
 
+## 技术索引
+
+**改功能或排查问题前，先看 [TECH_INDEX.md](TECH_INDEX.md)。**
+
+它按「能力」列出每件事落在哪个文件、哪个符号（连接 / 发送 / 渲染 / 图片 / 历史分页 /
+通知 / 插件面板 / 设置 / 诊断），并标出容易误判的边界——比如「markdown 里的本地图片」
+走的是 `/api/file?path=`，未登录返回 401 而不是 404。
+
+**为什么需要它**：2026-11-22 有一次判断失误，只读了 `markdownImageURL` 的前半段就
+断言「本地图不能显示」，差点为此加一套多余的路由。**先查索引、再读完整实现**，
+比凭经验猜要快也稳。
+
+**自检**（符号改名或文件搬走后会报失效）：
+
+```bash
+./scripts/check-tech-index.sh
+```
+
 ## 发布
 
 ```bash
