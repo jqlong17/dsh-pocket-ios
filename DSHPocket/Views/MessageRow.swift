@@ -110,6 +110,10 @@ struct MessageRow: View {
     enum CompactBlock: Equatable {
         case text(String)
         case table(header: [String], rows: [[String]])
+        /// 代码块：保留原文（等宽显示），不再像以前那样整段丢弃。
+        case code(String)
+        /// 独占一行的图片：保留位置，渲染成缩略图而不是 `![x](url)` 原文。
+        case image(destination: String, alt: String)
     }
 
     /// 精简模式：按块渲染（文本 + 极简表格），不解析完整 Markdown、不渲染图片。
@@ -128,6 +132,19 @@ struct MessageRow: View {
                 case .table(let header, let rows):
                     CompactTable(header: header, rows: rows,
                                  tint: message.isUser ? .white : .primary)
+                case .code(let code):
+                    CompactCode(code: code, tint: message.isUser ? .white : .primary)
+                case .image(let destination, let alt):
+                    if let url = model.markdownImageURL(for: destination) {
+                        RemoteMarkdownImage(url: url,
+                                            caption: alt.isEmpty ? nil : alt,
+                                            allImageURLs: model.conversationMarkdownImageURLs)
+                            .frame(maxWidth: 300, alignment: .leading)
+                    } else {
+                        Text(alt.isEmpty ? "[图片]" : "[图片] \(alt)")
+                            .font(.footnote)
+                            .foregroundStyle(message.isUser ? .white.opacity(0.8) : .secondary)
+                    }
                 }
             }
         }
@@ -141,6 +158,7 @@ struct MessageRow: View {
         var blocks: [CompactBlock] = []
         var textLines: [String] = []
         var tableLines: [[String]] = []
+        var codeLines: [String] = []
         var inCode = false
 
         func flushText() {
@@ -159,8 +177,28 @@ struct MessageRow: View {
 
         for line in raw.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") { inCode.toggle(); continue }
-            if inCode { continue }
+            if trimmed.hasPrefix("```") {
+                if inCode {
+                    // 代码块结束：保留原文（等宽纯文本），不再整段丢弃
+                    if !codeLines.isEmpty {
+                        flushTable()
+                        flushText()
+                        blocks.append(.code(codeLines.joined(separator: "\n")))
+                        codeLines.removeAll()
+                    }
+                }
+                inCode.toggle()
+                continue
+            }
+            if inCode { codeLines.append(line); continue }
+
+            // 独占一行的图片：保留位置，交给渲染层取图
+            if let image = Self.imageLine(trimmed) {
+                flushTable()
+                flushText()
+                blocks.append(.image(destination: image.destination, alt: image.alt))
+                continue
+            }
 
             // 表格行：以 | 开头（或首尾都有 |）
             if trimmed.hasPrefix("|") || (trimmed.hasSuffix("|") && trimmed.contains("|")) {
@@ -195,9 +233,27 @@ struct MessageRow: View {
             }
             textLines.append(body)
         }
+        // 代码块没闭合（消息被截断或流式中）：已收集的内容也要保留
+        if !codeLines.isEmpty {
+            blocks.append(.code(codeLines.joined(separator: "\n")))
+        }
         flushTable()
         flushText()
         return blocks
+    }
+
+    /// 整行只有一张图片时返回 (destination, alt)，否则 nil。
+    ///
+    /// 只认「独占一行」的图片：行内混排的图如果也抽出来，会把所在的句子切断，
+    /// 而精简模式本来就不排版，句子被切开只会更难读。
+    static func imageLine(_ line: String) -> (destination: String, alt: String)? {
+        guard line.hasPrefix("!["), line.hasSuffix(")") else { return nil }
+        guard let close = line.range(of: "](") else { return nil }
+        let altStart = line.index(line.startIndex, offsetBy: 2)
+        let alt = String(line[altStart..<close.lowerBound])
+        let dest = String(line[close.upperBound..<line.index(before: line.endIndex)])
+        guard !dest.isEmpty else { return nil }
+        return (dest, alt)
     }
 
     /// 把多行合并成一段，去掉最常见的行内记号。
@@ -469,5 +525,26 @@ private struct CompactTable: View {
                     .padding(.vertical, 6)
             }
         }
+    }
+}
+
+/// 精简模式下的代码块：等宽 + 淡背景 + 可横向滚动，不做语法高亮。
+///
+/// 以前精简模式把代码块整段丢弃，用户往上翻历史时「代码直接没了」——
+/// 那是信息丢失，不是排版简化。这里用纯 Text 渲染，成本仍远低于 Textual。
+private struct CompactCode: View {
+    let code: String
+    var tint: Color
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(code)
+                .font(.footnote.monospaced())
+                .foregroundStyle(tint.opacity(0.92))
+                .textSelection(.enabled)
+                .padding(10)
+        }
+        .background(Color.primary.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

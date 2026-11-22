@@ -43,7 +43,7 @@
 | 按 turn 合并 | `DSHPocket/Session/ConnectionModel+History.swift` · `mergeByTurn` | 相邻同 `turn` 的助手消息合成一条，`text` 用 `\n\n` 拼 |
 | `turn` 从哪来 | `DSHKit/Sources/DSHKit/Protocol/Decoding.swift` · `fromEvent` | 读 `data.turn`；`DSHMessage` 之前漏了这个字段 |
 | 精简模式判定 | `DSHPocket/Views/ConversationTimeline.swift` · `isCompactMessage` | 最近 10 条完整渲染，其余纯文本 |
-| 精简文本解析 | `DSHPocket/Views/MessageRow.swift` · `compactBlocks` | 空行 = 段落分隔；表格单独成块 |
+| 精简文本解析 | `DSHPocket/Views/MessageRow.swift` · `compactBlocks` | 空行 = 段落分隔；表格、代码块、整行图片各自成块（代码块不再丢弃） |
 | 极简表格 | `DSHPocket/Views/MessageRow.swift` · `CompactTable` | VStack + HStack + Text，不走 Textual |
 | 完整 Markdown | `DSHPocket/Views/MarkdownBody.swift` · `MarkdownBody` | Textual `StructuredText` |
 | Markdown 样式 | `DSHPocket/Views/ChatHeadingStyle.swift` · `ChatStructuredStyle` | 段落用 `GitHubParagraphStyle.gitHub` |

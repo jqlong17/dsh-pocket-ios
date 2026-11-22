@@ -26,3 +26,6 @@ docs/
 # 实现 spec：属于开发过程，只在本地保留
 # （公开的是 public/ 下的方法论模板，不是这些带项目细节的 spec）
 spec/
+
+# Archify 生成物（图 + candidate JSON，本地留档即可）
+.archify/
