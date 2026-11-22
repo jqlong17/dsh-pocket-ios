@@ -179,7 +179,13 @@ struct MessageRow: View {
 
             // 非表格行：结束当前表格
             flushTable()
-            if trimmed.isEmpty { continue }
+            if trimmed.isEmpty {
+                // 空行 = 段落分隔。
+                // 之前这里直接 continue，把所有行用空格拼成一整段，
+                // 合并后的回复（多段拼接）读起来就是一大坨（2026-11-22 反馈「换行都没了」）。
+                flushText()
+                continue
+            }
             var body = trimmed
             while body.hasPrefix("#") { body.removeFirst() }
             while body.hasPrefix(">") { body.removeFirst() }
