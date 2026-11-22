@@ -34,7 +34,11 @@ final class ConnectionModel {
     /// App 是否在前台；后台期间的完成只在回前台时提醒。
     var isAppActive = true
     /// 当前渲染模式标识（遥测用）。精简已转正，固定为 compact。
-    var renderModeLabel: String { "compact" }
+    /// 遥测里的渲染模式标识。
+    ///
+    /// 之前写死 "compact"：精简模式转正后没回来改，导致遥测里永远看不出
+    /// 用户到底用的哪种模式（排查「卡不卡」时这条本来该是最有用的信号）。
+    var renderModeLabel: String { showToolProcess ? "full" : "compact" }
 
     /// 最近一次消息列表重排（`entries`）的耗时与规模。
     ///

@@ -98,6 +98,7 @@
 		E6732FA8E413309D51A28762 /* JobsToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */; };
 		D7EF773183C225646B24F241 /* MarkdownBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0832D571327AD53E414826A8 /* MarkdownBody.swift */; };
 		4A6AA3335B6E69E63966CFC5 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */; };
+		C0FFEEEE5DD64A9DE68999F9 /* ConversationTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */; };
 		FD2A9A265E7378A226522B5A /* ModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */; };
 		71AE157ACDBA5E36D9D80C78 /* PocketCodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEC0EA5DD2D218509214308 /* PocketCodeScanner.swift */; };
 		4D58686D6734B4562A2F2236 /* PreviewImageItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EF44671062A6DA22D407343 /* PreviewImageItem.swift */; };
@@ -210,6 +211,7 @@
 		DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsToolbarButton.swift; sourceTree = "<group>"; };
 		0832D571327AD53E414826A8 /* MarkdownBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBody.swift; sourceTree = "<group>"; };
 		7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRow.swift; sourceTree = "<group>"; };
+		C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTimeline.swift; sourceTree = "<group>"; };
 		9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
 		8BEC0EA5DD2D218509214308 /* PocketCodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketCodeScanner.swift; sourceTree = "<group>"; };
 		7EF44671062A6DA22D407343 /* PreviewImageItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewImageItem.swift; sourceTree = "<group>"; };
@@ -405,6 +407,7 @@
 				DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */,
 				0832D571327AD53E414826A8 /* MarkdownBody.swift */,
 				7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */,
+				C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */,
 				9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */,
 				8BEC0EA5DD2D218509214308 /* PocketCodeScanner.swift */,
 				7EF44671062A6DA22D407343 /* PreviewImageItem.swift */,
@@ -675,6 +678,7 @@
 				E6732FA8E413309D51A28762 /* JobsToolbarButton.swift in Sources */,
 				D7EF773183C225646B24F241 /* MarkdownBody.swift in Sources */,
 				4A6AA3335B6E69E63966CFC5 /* MessageRow.swift in Sources */,
+				C0FFEEEE5DD64A9DE68999F9 /* ConversationTimeline.swift in Sources */,
 				FD2A9A265E7378A226522B5A /* ModelPickerSheet.swift in Sources */,
 				71AE157ACDBA5E36D9D80C78 /* PocketCodeScanner.swift in Sources */,
 				4D58686D6734B4562A2F2236 /* PreviewImageItem.swift in Sources */,

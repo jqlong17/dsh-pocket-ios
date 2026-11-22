@@ -288,13 +288,6 @@ for mod in modules:
                                "detail": f"model.{name} 应改为直读状态对象"})
             break
 
-# 分层阈值：策略层必须短（纯逻辑、可单测），编排层与视图层天然更长。
-    # 400 一刀切逼出过 197 行的碎片 extension，改一个功能要跳四个文件，理解成本反而上升。
-    # 真正该管的是「一个文件干几件事」，不是行数本身。
-    limit = FILE_LIMITS[mod["layer"]]
-    if mod["lines"] > limit:
-        violations.append({"rule": f"file-max-{limit}", "file": mod["file"],
-                           "detail": f"{mod['lines']} 行（{mod['layer']} 阈值 {limit}）"})
 
 # extension 堆叠检查（≥3 个同前缀 extension 视为假拆分）
 by_prefix = collections.defaultdict(list)
@@ -313,6 +306,14 @@ for prefix, paths in sorted(by_prefix.items()):
     if oversized:
         violations.append({"rule": "extension-split-smell", "file": prefix + ".swift",
                            "detail": f"{len(paths)} 个 +Feature 文件，其中 {len(oversized)} 个仍超 600 行"})
+
+# 分层阈值：对所有文件生效（之前这段写在「只处理 /Views/」的循环里，
+# 导致 Session/ 下的文件从未被检查 —— ConnectionModel 663 行一直没被报出来）。
+for mod in modules:
+    limit = FILE_LIMITS.get(mod["layer"])
+    if limit is not None and mod["lines"] > limit:
+        violations.append({"rule": f"file-max-{limit}", "file": mod["file"],
+                           "detail": f"{mod['lines']} 行（{mod['layer']} 阈值 {limit}）"})
 
 try:
     commit = subprocess.check_output(["git", "rev-parse", "--short=7", "HEAD"], text=True).strip()

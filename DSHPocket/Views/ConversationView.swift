@@ -50,7 +50,6 @@ struct ConversationView: View {
     /// 分页加载冷却，避免滚动到顶部时连续翻页。
     @State private var olderCooldownUntil = Date.distantPast
     /// 触发加载时是否已经贴在最顶部：此时加载完直接展示新一页，不做位置锚定。
-    @State private var olderLoadWasAtTop = false
     @State private var showingJobs = false
     /// DEBUG 自动化：`DSH_DEV_OPEN=plugins` 时启动就弹出插件面板，
     /// 让截图/端到端验证不必人工点。正式包里恒为 false（见 ConnectionModel.debugOpenPlugins）。
@@ -63,106 +62,6 @@ struct ConversationView: View {
     @State private var copiedToast: String?
     @State private var showingModelPicker = false
 
-    private struct TimelineEntry: Identifiable {
-        let id: String
-        let sortKey: Int      // 展示排序键（排队消息会被推迟到 turn 结束之后）
-        let sequence: Int     // 原始 seq，二级排序保证同一 turn 内排队消息的先后顺序
-        let message: PocketMessage?
-        let group: PocketStepGroup?
-        let failure: TurnFailureNotice?
-    }
-
-    /// 是否已经切到本页要显示的会话。切换完成前不渲染，避免首帧闪出上一条的内容。
-    private var isSwitchedToSession: Bool {
-        model.activeSessionId == session.sessionId
-    }
-
-    /// 最近几条消息保持完整渲染，其余只做纯文本摘要。
-    ///
-    /// 这是**正式行为**（2026-11-21 用户拍板，不再作为实验）。
-    ///
-    /// 2026-11-22 从 3 提到 10：3 条导致往上翻两屏就全是摘要，
-    /// 用户反馈「消息看着不完整」。10 条≈两屏完整 Markdown，
-    /// 按之前实测（24 条 = 21-25ms/帧，3 条 ≈16.7ms）推算 10 条约 17-19ms，仍可接受。
-    private static let fullRenderRecentCount = 10
-
-    /// 这条消息是否属于「更早的历史」（走精简渲染）。
-    ///
-    /// 按**消息**而不是按时间/顺序：工具步骤不占「条数」，避免把最新 3 条
-    /// 全算成 step group 而导致最新回复也被降级。
-    private func isCompactMessage(_ entry: TimelineEntry) -> Bool {
-        // 完整模式：不做 Markdown 精简，全部完整渲染。
-        guard !model.showToolProcess else { return false }
-        guard let messageId = entry.message?.id else { return false }
-        let recentIds = messagesRecentFirst.prefix(Self.fullRenderRecentCount).map(\.id)
-        return !recentIds.contains(messageId)
-    }
-
-    /// 消息按「新的在前」排列的 ID（只算消息，不含 process 行）。
-    private var messagesRecentFirst: [PocketMessage] {
-        model.messages.sorted { left, right in
-            let l = model.displaySortKey(for: left)
-            let r = model.displaySortKey(for: right)
-            if l != r { return l > r }
-            return (left.sequence ?? 0) > (right.sequence ?? 0)
-        }
-    }
-
-    private var entries: [TimelineEntry] {
-        guard isSwitchedToSession else { return [] }
-        // 计时：把「一次重排要多久」量化出来，否则「卡不卡」只能凭感觉。
-        let renderStarted = CFAbsoluteTimeGetCurrent()
-        defer {
-            model.lastRenderMs = (CFAbsoluteTimeGetCurrent() - renderStarted) * 1000
-            model.lastRenderMessageCount = model.messages.count
-            model.lastRenderStepGroupCount = model.stepGroups.count
-        }
-        // 排序规则在 DSHKit（可测）；这里只负责把元素映射成排序键、再映射回来。
-        var byID: [String: TimelineEntry] = [:]
-        var keys: [TimelineSortKey] = []
-        // 同一个 turn 的连续助手消息合并成一条（2026-11-22 用户要求，与桌面端一致）。
-        // 做法是「合成一条 PocketMessage」：text 用空行拼接，id/sequence 取第一条，
-        // 这样 MessageRow 完全不用改，风险最小。
-        // 精简模式（默认）：不显示过程、按 turn 合并成一个回复块。
-        // 完整模式：显示过程、逐条展示（合并会把过程打乱，所以模式二不合并）。
-        let compact = !model.showToolProcess
-        let mergedMessages = compact ? ConnectionModel.mergeByTurn(model.messages) : model.messages
-        model.lastRawMessageCount = model.messages.count
-        model.lastMergedMessageCount = mergedMessages.count
-        model.lastTurnParsedCount = model.messages.filter { $0.turn != nil }.count
-        for message in mergedMessages {
-            let entry = TimelineEntry(id: message.id,
-                                      sortKey: model.displaySortKey(for: message),
-                                      sequence: message.sequence,
-                                      message: message, group: nil, failure: nil)
-            byID[entry.id] = entry
-            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey, sequence: entry.sequence,
-                                        isMessage: true, isPending: message.isPending,
-                                        localOrder: message.localOrder))
-        }
-        // 过程（工具调用折叠行）只在完整模式显示；精简模式下用户明确「不关心过程」。
-        if !compact {
-            for group in model.stepGroups {
-                let entry = TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence,
-                                          message: nil, group: group, failure: nil)
-                byID[entry.id] = entry
-                keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
-                                            sequence: entry.sequence, isMessage: false))
-            }
-        }
-        for failure in model.turnFailures {
-            let entry = TimelineEntry(id: failure.id, sortKey: failure.sequence, sequence: failure.sequence,
-                                      message: nil, group: nil, failure: failure)
-            byID[entry.id] = entry
-            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
-                                        sequence: entry.sequence, isMessage: false))
-        }
-        return TimelineAssembly.ordered(keys).compactMap { byID[$0.id] }
-    }
-
-
-
-    /// 离开底部之后到达的助手回复条数（用户自己的消息不算）。
     private var unreadReplies: Int {
         guard let mark = unreadSinceSequence else { return 0 }
         // 计数规则在 DSHKit（可测）：用户消息与待发都不算。
@@ -172,26 +71,6 @@ struct ConversationView: View {
     }
 
     /// 消息列表的垂直节奏：同人连续 8、换角色 18、过程行相邻 10、turn 切换 24。
-    private static func messageSpacing(previous: TimelineEntry, current: TimelineEntry) -> CGFloat {
-        // 节奏规则在 DSHKit（可测）：同人 8、换角色 18、过程行/失败卡 10。
-        CGFloat(TimelineSpacing.between(
-            previousIsGroup: previous.group != nil || previous.failure != nil,
-            currentIsGroup: current.group != nil || current.failure != nil,
-            previousIsUser: previous.message?.isUser,
-            currentIsUser: current.message?.isUser
-        ))
-    }
-
-    private var canSend: Bool {
-        // 发送中必须禁止再点：`sendMessage` 在上一条未完成时是**直接丢弃**新消息的
-        // （压测实测连发 8 条只成功 1 条）。置灰让用户明确知道要等，
-        // 而不是以为发了其实没发。
-        guard !model.isSending else { return false }
-        return !model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !model.draftImages.isEmpty
-    }
-
-    /// 复制成功：一次轻震动 + 一条「已复制」。
     private func showCopied() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(PocketMotion.animation(.easeOut(duration: 0.2))) {
@@ -424,7 +303,6 @@ struct ConversationView: View {
                     // 加载完一律把「加载前看到的那条」锚回顶部。
                     // 以前在「已经在顶部」时直接 return，新内容会把视口往下推，
                     // 用户看到画面突然一跳（2026-11-22 反馈：焦点位置应该不变）。
-                    olderLoadWasAtTop = false
                     guard let anchor = model.olderAnchorID else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         proxy.scrollTo(anchor, anchor: .top)
@@ -455,7 +333,6 @@ struct ConversationView: View {
                           !model.messages.isEmpty,
                           Date() >= olderCooldownUntil else { return }
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
-                    olderLoadWasAtTop = topOffset <= 2
                     model.loadOlderMessages()
                 }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
