@@ -68,16 +68,23 @@ public actor SessionSyncCoordinator {
         connection = nil
     }
 
+    /// 一次上滑取多少条消息（含用户消息与助手回复）。
+    public static let olderPageSize = 10
+
     public func loadOlder() async {
         guard let oldest = messages.map(\.sequence).min() else { return }
         olderPageRequests += 1
+        let before = messages.count
         do {
             let page = try await transport.olderPage(sessionId: sessionId,
                                                     beforeSeq: oldest,
-                                                    maxMessages: config.maxMessages)
-            hasMoreOlder = page.hasMore
+                                                    maxMessages: Self.olderPageSize)
             applyPage(page, emitSnapshot: false)
-            emit(.hasMore(page.hasMore))
+            // 判据只认「有没有真的变多」：服务端 hasMore 不可靠、
+            // 「是否满页」也不可靠（请求 24 条可能只回 13 条）。
+            // 取到东西就还能继续往上翻；取不到才算真到底。
+            hasMoreOlder = messages.count > before
+            emit(.hasMore(hasMoreOlder))
         } catch {
             // 分页失败不改变连接状态，等待下一次触发。
             emit(.hasMore(true))

@@ -322,7 +322,9 @@ final class SyncCoordinatorTests: XCTestCase {
         let messages = await coordinator.currentMessages()
         XCTAssertEqual(messages.map(\.sequence), [50, 100])
         let hasMore = await coordinator.currentHasMoreOlder()
-        XCTAssertFalse(hasMore)
+        // 新语义：判据是「这一页有没有真的取到更早的消息」，不是服务端 hasMore。
+        // 取到了 ⇒ 还能继续往上翻（服务端字段实测不可靠，见 loadOlder 注释）。
+        XCTAssertTrue(hasMore)
         await coordinator.stop()
     }
 

@@ -143,6 +143,16 @@ struct AppSettingsSheet: View {
                         }
                     }
                     Toggle(isOn: Binding(
+                        get: { model.showToolProcess },
+                        set: { model.showToolProcess = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("显示工具过程"))
+                            Text(L10n.t("关闭时为精简模式：不显示过程、最近的回复完整排版、更早的纯文本；开启后显示每轮的工具调用并全部完整排版"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Toggle(isOn: Binding(
                         get: { model.autoRouteEnabled },
                         set: { enabled in
                             model.autoRouteEnabled = enabled

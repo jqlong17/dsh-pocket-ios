@@ -181,10 +181,16 @@ extension ConnectionModel {
             recordLiveFrameArrival()
             mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
             for step in dshSteps { applyDSHStep(step, historical: true) }
-            // 产品决策：只保留最近 30 条（约 15 轮），**不提供往上翻更早历史**。
-            // 所以服务端说 hasMore 也一律关掉——分页触发条件里 hasMoreOlder 是硬门槛，
-            // 关掉后上滑不会再请求，也就不会出现「加载了又被裁」的来回拉扯。
-            hasMoreOlder = false
+            // 快照到达时总是允许上滑试一次。
+            //
+            // 三个坑叠在一起，导致这个开关一直是 false、上滑永远不触发（2026-11-22）：
+            //   1. 这里曾写死 false（旧决策「不做上滑历史」）；
+            //   2. 服务端 hasMore 实测不可靠（10357 条的会话回 false）；
+            //   3. 「不满页就判定到底」也不成立（请求 24 条只回 13 条）。
+            // 结论：不要用任何服务端字段决定「能不能翻」，改成
+            // 「这一页有没有真的取到更早的消息」——没有才算到底（见 loadOlder）。
+            _ = hasMore
+            hasMoreOlder = true
             isLoadingConversation = false
             activeConversation?.trimMessages(to: Self.inSessionMessageLimit)
             noteLoadFinished(source: "snapshot", conversation: conversation)
@@ -297,10 +303,9 @@ extension ConnectionModel {
         return PendingUserQuestion(payload: payload)
     }
 
-    /// 回答 `ask_user_question`（userQuestions/answer）。
     @MainActor
      static func pocketMessage(from message: DSHMessage) -> PocketMessage {
-        PocketMessage(sequence: message.sequence,
+        return PocketMessage(sequence: message.sequence,
                       kind: message.kind,
                       text: message.text,
                       isUser: message.isUser,
@@ -312,7 +317,8 @@ extension ConnectionModel {
                                          width: $0.width,
                                          height: $0.height,
                                          name: $0.name)
-                      })
+                      },
+                      turn: message.turn)
     }
 
     static func appConnectionState(from state: SyncConnectionState) -> LiveConnectionState {

@@ -300,10 +300,61 @@ extension ConnectionModel {
         if let conversation = activeConversation {
             conversation.turnFailures = conversation.turnFailures.filter { $0.sequence >= oldestKept }
         }
-        // **不要**在这里动 `hasMoreOlder`。
-        // 本地裁剪只是「把旧消息从内存卸载」，不代表服务端没有更早的历史。
-        // 之前错误地在这里关了它，结果：裁到 24 条后上滑永远不再请求，历史彻底看不到。
-        // 这个开关只该由服务端的 `hasMore` 决定（见 applyCoordinatorUpdate 的 .hasMore 分支）。
-        recordDiagnostic("消息裁剪：丢弃 \(removed) 条，保留 \(remaining.count) 条（limit=\(limit)，hasMore 保持 \(hasMoreOlder)）")
+        // 裁剪发生时把 hasMoreOlder 置为 true：
+        // 本地还有没卸载的更早消息 ⇒ 上滑应该能请求。
+        // 服务端只在请求分页后才回 hasMore，而请求又被这个开关挡着——
+        // 旧写法形成死循环：初始 false → 不请求 → 永远 false（2026-11-22 用户反馈）。
+        // 服务端若回 hasMore=false，.hasMore 分支会改回来，不会无限请求。
+        hasMoreOlder = true
+        recordDiagnostic("消息裁剪：丢弃 \(removed) 条，保留 \(remaining.count) 条（limit=\(limit)，hasMore 置 true）")
+    }
+}
+
+extension ConnectionModel {
+    /// 把同一个 turn 里连续的助手消息合并成一条。
+    ///
+    /// 边界规则（方案 A）：只看 turn 是否相同，不看中间有没有工具过程——
+    /// 因为过程行已经不再展示，turn 就是唯一的「一轮问答」边界。
+    /// 用户消息、待发消息永远不参与合并。
+    static func mergeByTurn(_ messages: [PocketMessage]) -> [PocketMessage] {
+        var result: [PocketMessage] = []
+        var buffer: [PocketMessage] = []
+        var bufferTurn: Int?
+
+        func flush() {
+            guard let first = buffer.first else { return }
+            if buffer.count == 1 {
+                result.append(first)
+            } else {
+                let merged = PocketMessage(sequence: first.sequence,
+                                           kind: first.kind,
+                                           text: buffer.map(\.text).filter { !$0.isEmpty }
+                                               .joined(separator: "\n\n"),
+                                           isUser: false,
+                                           rpcId: nil,
+                                           images: buffer.flatMap(\.images),
+                                           turn: bufferTurn)
+                result.append(merged)
+            }
+            buffer.removeAll()
+            bufferTurn = nil
+        }
+
+        for message in messages {
+            guard !message.isUser, !message.isPending, let turn = message.turn else {
+                flush()
+                result.append(message)
+                continue
+            }
+            if bufferTurn == turn {
+                buffer.append(message)
+            } else {
+                flush()
+                buffer = [message]
+                bufferTurn = turn
+            }
+        }
+        flush()
+        return result
     }
 }

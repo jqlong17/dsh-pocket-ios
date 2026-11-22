@@ -153,6 +153,6 @@ public final class DSHClient: @unchecked Sendable {
         if let beforeSeq { request["beforeSeq"] = beforeSeq }
         if let throughSeq { request["throughSeq"] = throughSeq }
         let value = try await rpc(method: "session/page", args: ["request": request])
-        return DSHDecoding.page(fromValue: value)
+        return DSHDecoding.page(fromValue: value, requestedMax: maxMessages)
     }
 }

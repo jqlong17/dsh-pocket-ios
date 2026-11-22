@@ -80,14 +80,19 @@ struct ConversationView: View {
     /// 最近几条消息保持完整渲染，其余只做纯文本摘要。
     ///
     /// 这是**正式行为**（2026-11-21 用户拍板，不再作为实验）。
-    /// 依据：他明确只关心最近几条；实测精简后滚动体感明显更顺。
-    private static let fullRenderRecentCount = 3
+    ///
+    /// 2026-11-22 从 3 提到 10：3 条导致往上翻两屏就全是摘要，
+    /// 用户反馈「消息看着不完整」。10 条≈两屏完整 Markdown，
+    /// 按之前实测（24 条 = 21-25ms/帧，3 条 ≈16.7ms）推算 10 条约 17-19ms，仍可接受。
+    private static let fullRenderRecentCount = 10
 
     /// 这条消息是否属于「更早的历史」（走精简渲染）。
     ///
     /// 按**消息**而不是按时间/顺序：工具步骤不占「条数」，避免把最新 3 条
     /// 全算成 step group 而导致最新回复也被降级。
     private func isCompactMessage(_ entry: TimelineEntry) -> Bool {
+        // 完整模式：不做 Markdown 精简，全部完整渲染。
+        guard !model.showToolProcess else { return false }
         guard let messageId = entry.message?.id else { return false }
         let recentIds = messagesRecentFirst.prefix(Self.fullRenderRecentCount).map(\.id)
         return !recentIds.contains(messageId)
@@ -115,7 +120,17 @@ struct ConversationView: View {
         // 排序规则在 DSHKit（可测）；这里只负责把元素映射成排序键、再映射回来。
         var byID: [String: TimelineEntry] = [:]
         var keys: [TimelineSortKey] = []
-        for message in model.messages {
+        // 同一个 turn 的连续助手消息合并成一条（2026-11-22 用户要求，与桌面端一致）。
+        // 做法是「合成一条 PocketMessage」：text 用空行拼接，id/sequence 取第一条，
+        // 这样 MessageRow 完全不用改，风险最小。
+        // 精简模式（默认）：不显示过程、按 turn 合并成一个回复块。
+        // 完整模式：显示过程、逐条展示（合并会把过程打乱，所以模式二不合并）。
+        let compact = !model.showToolProcess
+        let mergedMessages = compact ? ConnectionModel.mergeByTurn(model.messages) : model.messages
+        model.lastRawMessageCount = model.messages.count
+        model.lastMergedMessageCount = mergedMessages.count
+        model.lastTurnParsedCount = model.messages.filter { $0.turn != nil }.count
+        for message in mergedMessages {
             let entry = TimelineEntry(id: message.id,
                                       sortKey: model.displaySortKey(for: message),
                                       sequence: message.sequence,
@@ -125,12 +140,15 @@ struct ConversationView: View {
                                         isMessage: true, isPending: message.isPending,
                                         localOrder: message.localOrder))
         }
-        for group in model.stepGroups {
-            let entry = TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence,
-                                      message: nil, group: group, failure: nil)
-            byID[entry.id] = entry
-            keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
-                                        sequence: entry.sequence, isMessage: false))
+        // 过程（工具调用折叠行）只在完整模式显示；精简模式下用户明确「不关心过程」。
+        if !compact {
+            for group in model.stepGroups {
+                let entry = TimelineEntry(id: group.id, sortKey: group.sequence, sequence: group.sequence,
+                                          message: nil, group: group, failure: nil)
+                byID[entry.id] = entry
+                keys.append(TimelineSortKey(id: entry.id, sortKey: entry.sortKey,
+                                            sequence: entry.sequence, isMessage: false))
+            }
         }
         for failure in model.turnFailures {
             let entry = TimelineEntry(id: failure.id, sortKey: failure.sequence, sequence: failure.sequence,
@@ -141,6 +159,8 @@ struct ConversationView: View {
         }
         return TimelineAssembly.ordered(keys).compactMap { byID[$0.id] }
     }
+
+
 
     /// 离开底部之后到达的助手回复条数（用户自己的消息不算）。
     private var unreadReplies: Int {
@@ -401,12 +421,10 @@ struct ConversationView: View {
                 }
                 .onChange(of: model.olderLoadTick) { _, _ in
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
-                    // 已经在最顶部时：让新加载的一页直接出现在顶部（用户继续上滑即可看到更早内容）。
-                    // 只有用户停在中间时，才把原来的首条消息锚回顶部，避免内容跳动。
-                    if olderLoadWasAtTop {
-                        olderLoadWasAtTop = false
-                        return
-                    }
+                    // 加载完一律把「加载前看到的那条」锚回顶部。
+                    // 以前在「已经在顶部」时直接 return，新内容会把视口往下推，
+                    // 用户看到画面突然一跳（2026-11-22 反馈：焦点位置应该不变）。
+                    olderLoadWasAtTop = false
                     guard let anchor = model.olderAnchorID else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         proxy.scrollTo(anchor, anchor: .top)

@@ -22,6 +22,20 @@ public enum DSHDecoding {
 
     // MARK: Event → Message
 
+    /// 宽松地把 JSON 里的数字转成 Int（NSNumber / Int / Double / String 都接受）。
+    ///
+    /// 只写 `as? NSNumber` 会在某些桥接路径下拿不到值（实测 turn 恒为 nil），
+    /// 所以这里把常见类型都试一遍。
+    public static func intValue(_ raw: Any?) -> Int? {
+        switch raw {
+        case let value as Int: return value
+        case let value as NSNumber: return value.intValue
+        case let value as Double: return Int(value)
+        case let value as String: return Int(value)
+        default: return nil
+        }
+    }
+
     public static func message(fromEvent event: [String: Any]) -> DSHMessage? {
         guard let kind = event["type"] as? String,
               kind == "user/message" || kind == "assistant/message",
@@ -48,7 +62,8 @@ public enum DSHDecoding {
             text: text,
             isUser: kind == "user/message",
             rpcId: RPCId.normalized(source?["rpcId"] as? String),
-            images: images
+            images: images,
+            turn: DSHDecoding.intValue(data["turn"])
         )
     }
 
@@ -135,9 +150,27 @@ public enum DSHDecoding {
 
     // MARK: Page
 
-    public static func page(fromValue value: [String: Any]) -> DSHSessionPage {
+    /// - Parameter requestedMax: 本次请求的 maxMessages。传了才做「满页推断」；
+    ///   不传就只看服务端字段（保持旧行为）。
+    public static func page(fromValue value: [String: Any], requestedMax: Int? = nil) -> DSHSessionPage {
         let records = value["records"] as? [[String: Any]] ?? []
-        let hasMore = value["hasMore"] as? Bool ?? false
+        // 服务端字段优先；**取不到时**用「满页」推断是否还有更早。
+        //
+        // 为什么需要推断：实测一个 10357 条消息的会话，客户端只拿到 13 条，
+        // 但这里的 hasMore 读出来是 false（服务端字段缺失或字段名不同），
+        // 直接导致上滑永远不触发（2026-11-22）。而「返回条数 == 请求上限」
+        // 在物理上就意味着「可能还截断过」，宁可多请求一次也不能把历史藏起来。
+        // 只认「这一页有没有内容」。
+        //
+        // 不信任服务端 hasMore：实测 10357 条消息的会话拿到 13 条、hasMore 却是 false，
+        // 而客户端拿不到这个字段的原因始终没定位到（WS snapshot 与 HTTP page 两条路都可能丢）。
+        // 判据改成「本页非空 ⇒ 可能还有」，下一页真取空时自然停——
+        // 最多多一次空请求，代价远低于「历史永远看不到」。
+        // 判据：本页装满了请求上限 ⇒ 很可能还有更早的；没装满 ⇒ 已经到底。
+        // （用「非空」会在「最早那批恰好一页」时反复请求同一页，所以必须看是否满页。
+        //  服务端字段若存在则以它为准——只是实测它常缺失。）
+        let fullPage = requestedMax.map { records.count >= $0 } ?? !records.isEmpty
+        let hasMore = value["hasMore"] as? Bool ?? fullPage
         // 与实时流共用同一份 record 分发（message/step/title/unknown），避免两处漂移。
         let decoded: [DSHRecord] = DSHDecoding.records(fromRecords: records)
         return DSHSessionPage(records: decoded, hasMore: hasMore)

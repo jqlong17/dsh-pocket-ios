@@ -64,6 +64,10 @@ public struct DSHImageRef: Hashable, Sendable {
 public struct DSHMessage: Identifiable, Equatable, Sendable {
     public let id: String
     public let sequence: Int
+    /// 所属回合号（DSH 的 `data.turn`）。
+    /// 同一个 turn 的多条助手消息在界面上合并成一个回复块，与桌面端一致；
+    /// App 端做合并，所以这里必须从解码层带出来，否则实时消息永远拿不到 turn。
+    public let turn: Int?
     public let kind: String
     public let text: String
     public let isUser: Bool
@@ -71,9 +75,11 @@ public struct DSHMessage: Identifiable, Equatable, Sendable {
     public let images: [DSHImageRef]
 
     public init(id: String, sequence: Int, kind: String, text: String,
-                isUser: Bool, rpcId: String? = nil, images: [DSHImageRef] = []) {
+                isUser: Bool, rpcId: String? = nil, images: [DSHImageRef] = [],
+                turn: Int? = nil) {
         self.id = id
         self.sequence = sequence
+        self.turn = turn
         self.kind = kind
         self.text = text
         self.isUser = isUser

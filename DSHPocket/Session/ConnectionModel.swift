@@ -44,6 +44,20 @@ final class ConnectionModel {
     @ObservationIgnored let frameMonitor = RenderFrameMonitor()
     @ObservationIgnored var lastRenderMs: Double = 0
     @ObservationIgnored var lastRenderEntryCount: Int = 0
+    /// 合并前 / 合并后的消息条数（诊断「按 turn 合并」是否生效）。
+    @ObservationIgnored var lastRawMessageCount: Int = 0
+    @ObservationIgnored var lastMergedMessageCount: Int = 0
+    /// 是否显示工具过程（「过程 · N 步」）。
+    ///
+    /// 关（默认）= 精简模式：不显示过程、最近 10 条完整 Markdown、更早的纯文本、
+    /// 同一个 turn 的助手消息合并成一个回复块。
+    /// 开 = 完整模式：显示过程、全部完整 Markdown、不合并。
+    var showToolProcess: Bool = UserDefaults.standard.bool(forKey: "dsh-pocket.show-tool-process") {
+        didSet { UserDefaults.standard.set(showToolProcess, forKey: "dsh-pocket.show-tool-process") }
+    }
+
+    /// 有几条消息解析出了 turn（诊断 turn 解析是否成功）。
+    @ObservationIgnored var lastTurnParsedCount: Int = 0
     @ObservationIgnored var lastRenderMessageCount: Int = 0
     @ObservationIgnored var lastRenderStepGroupCount: Int = 0
 
@@ -92,7 +106,12 @@ final class ConnectionModel {
     ///
     /// 从 100 → 50 → 30：真机实测约 6.9 MB/条，30 条（约 15 轮）把峰值压到 200 MB 左右，
     /// 同时保留「临时往上翻一两轮」的体验。用户确认这个取舍可接受。
-    static let inSessionMessageLimit = 30
+    /// 会话内允许保留的消息上限（切走时仍回到 24 条，省内存）。
+    ///
+    /// 原值 30：上滑能加载，但加载到 30 就裁回 30，用户最多只能翻 30 条（2026-11-22 反馈）。
+    /// 提到 200：约「一个下午的对话」量级。纯文本的布局成本低，200 条不会明显拖慢滚动；
+    /// 而一旦切走/退出，仍然只留 24 条，空闲内存不受影响。
+    static let inSessionMessageLimit = 200
     /// 连接配置与状态机（spec/12 第三个对象）。
     /// 字段用计算属性转发，约 140 处调用点暂不改；视图收敛留到批次 3。
     let connection = ConnectionState(

@@ -45,7 +45,11 @@ extension SessionStore {
         // 打开时先用列表里的 running 状态：快照窗口可能不包含 turn/start 边界。
         conversation.isTurnRunning = session.running
         conversation.turnStartedAt = session.running ? Self.updatedAt(session.updatedAt) : nil
-        conversation.hasMoreOlder = false
+        // 打开会话时先假定「可能还有更早的」：
+        // 原先写死 false，而设置它的唯一地方是「分页请求之后」——
+        // 请求又被这个开关挡着，形成死循环，上滑永远不触发（2026-11-22）。
+        // 置 true 后上滑会真的请求一次；服务端回 hasMore=false 自然停。
+        conversation.hasMoreOlder = true
         conversation.isLoadingOlder = false
         conversation.olderAnchorID = nil
         conversation.liveTurnEventsSeen = false

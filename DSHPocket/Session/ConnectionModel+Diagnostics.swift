@@ -283,6 +283,15 @@ extension ConnectionModel {
             "alertsEnabled": completionAlertsEnabled,
             "renderMs": (lastRenderMs * 10).rounded() / 10,
             "renderMsgCount": lastRenderMessageCount,
+            // 合并诊断：raw = 内存里的条数，merged = 按 turn 合并后的条数。
+            // 两个数相等只说明这批消息没有同 turn 的，不代表合并坏了。
+            "rawMsgCount": lastRawMessageCount,
+            "mergedMsgCount": lastMergedMessageCount,
+            // 上滑历史：开关是否为真、请求过几次、上次结果。
+            "hasMoreOlder": hasMoreOlder,
+            "olderLoadAttempts": activeConversation?.olderLoadAttempts ?? 0,
+            "olderLoadResult": activeConversation?.olderLoadLastResult ?? "",
+            "msgCount": messages.count,
             "renderStepGroups": lastRenderStepGroupCount,
             "renderMode": renderModeLabel,
             "slowFrameRatio": frameStats().ratio,

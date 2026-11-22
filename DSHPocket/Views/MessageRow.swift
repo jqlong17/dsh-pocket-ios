@@ -102,16 +102,134 @@ struct MessageRow: View {
         
     }
 
-    /// 精简模式：纯文本 + 三行截断，不解析 Markdown、不渲染图片。
+    /// 精简模式的内容块。
+    ///
+    /// 为什么按块而不是一整段纯文本：表格压成纯文本后变成满屏 `|` 和 `---`，
+    /// 完全读不了（2026-11-22 截图反馈）。所以保留「表格」这个结构，
+    /// 但用一个**极简渲染器**（VStack + HStack + Text），不走 `Textual`。
+    enum CompactBlock: Equatable {
+        case text(String)
+        case table(header: [String], rows: [[String]])
+    }
+
+    /// 精简模式：按块渲染（文本 + 极简表格），不解析完整 Markdown、不渲染图片。
     @ViewBuilder
     private var compactContent: some View {
-        Text(message.text)
-            .font(.body)
-            .foregroundStyle(message.isUser ? .white : .primary)
-            .lineLimit(3)
-            .truncationMode(.tail)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        let blocks = Self.compactBlocks(message.text)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .text(let text):
+                    Text(text)
+                        .font(.body)
+                        .foregroundStyle(message.isUser ? .white : .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .table(let header, let rows):
+                    CompactTable(header: header, rows: rows,
+                                 tint: message.isUser ? .white : .primary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 解析成块：连续的表格行合成一个表格块，其余按段落合并成文本块。
+    ///
+    /// 只做「行级」判断，不解析语法树——这是精简模式省成本的关键。
+    static func compactBlocks(_ raw: String) -> [CompactBlock] {
+        var blocks: [CompactBlock] = []
+        var textLines: [String] = []
+        var tableLines: [[String]] = []
+        var inCode = false
+
+        func flushText() {
+            guard !textLines.isEmpty else { return }
+            let text = flatten(textLines)
+            if !text.isEmpty { blocks.append(.text(text)) }
+            textLines.removeAll()
+        }
+        func flushTable() {
+            guard !tableLines.isEmpty else { return }
+            let header = tableLines.first ?? []
+            let rows = Array(tableLines.dropFirst())
+            if !header.isEmpty { blocks.append(.table(header: header, rows: rows)) }
+            tableLines.removeAll()
+        }
+
+        for line in raw.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") { inCode.toggle(); continue }
+            if inCode { continue }
+
+            // 表格行：以 | 开头（或首尾都有 |）
+            if trimmed.hasPrefix("|") || (trimmed.hasSuffix("|") && trimmed.contains("|")) {
+                let cells = trimmed
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                    .components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                // 分隔行（--- / :--:）不是数据
+                if cells.allSatisfy({ $0.allSatisfy { ch in ch == "-" || ch == ":" } && !$0.isEmpty }) {
+                    continue
+                }
+                flushText()
+                tableLines.append(cells)
+                continue
+            }
+
+            // 非表格行：结束当前表格
+            flushTable()
+            if trimmed.isEmpty { continue }
+            var body = trimmed
+            while body.hasPrefix("#") { body.removeFirst() }
+            while body.hasPrefix(">") { body.removeFirst() }
+            body = body.trimmingCharacters(in: .whitespaces)
+            if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
+                body = "· " + String(body.dropFirst(2))
+            }
+            textLines.append(body)
+        }
+        flushTable()
+        flushText()
+        return blocks
+    }
+
+    /// 把多行合并成一段，去掉最常见的行内记号。
+    private static func flatten(_ lines: [String]) -> String {
+        var text = lines.joined(separator: " ")
+        for token in ["**", "__", "`", "~~"] {
+            text = text.replacingOccurrences(of: token, with: "")
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 把 Markdown 压成适合「一行行读」的纯文本。
+    ///
+    /// 只处理**最常见**的记号（粗体、行内代码、标题、引用、列表）。
+    /// 不走完整 Markdown 解析：那是我们要省掉的开销，精简模式的意义就在这里。
+    static func plainPreview(_ raw: String) -> String {
+        var inCode = false
+        var kept: [String] = []
+        for line in raw.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") { inCode.toggle(); continue }
+            if inCode { continue }
+            if trimmed.isEmpty { continue }
+            // 去掉行首结构记号：标题 #、引用 >、有序/无序列表
+            var body = trimmed
+            while body.hasPrefix("#") { body.removeFirst() }
+            while body.hasPrefix(">") { body.removeFirst() }
+            body = body.trimmingCharacters(in: .whitespaces)
+            if body.hasPrefix("- ") || body.hasPrefix("* ") || body.hasPrefix("+ ") {
+                body = "· " + String(body.dropFirst(2))
+            }
+            kept.append(body)
+        }
+        var text = kept.joined(separator: " ")
+        for token in ["**", "__", "`", "~~"] {
+            text = text.replacingOccurrences(of: token, with: "")
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @ViewBuilder
@@ -293,6 +411,57 @@ struct MessageRow: View {
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
         .fullScreenCover(item: $previewItem) { item in
             FullscreenImageViewer(image: item.image)
+        }
+    }
+}
+
+
+/// 精简模式下的极简表格：等宽字体 + 细边框，纯 Text 拼装。
+///
+/// 刻意不依赖 `Textual`：历史消息只需要「看清表格内容」，
+/// 不需要富文本排版、也不需要它的解析开销（这是精简模式存在的理由）。
+private struct CompactTable: View {
+    let header: [String]
+    let rows: [[String]]
+    var tint: Color
+
+    /// 列数取所有行里最宽的那行，避免缺格导致错位。
+    private var columnCount: Int {
+        max(header.count, rows.map(\.count).max() ?? 0)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !header.isEmpty {
+                row(cells: header, isHeader: true)
+                Divider().opacity(0.35)
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, cells in
+                row(cells: cells, isHeader: false)
+                if index < rows.count - 1 {
+                    Divider().opacity(0.15)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func row(cells: [String], isHeader: Bool) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(0..<columnCount, id: \.self) { index in
+                Text(index < cells.count ? cells[index] : "")
+                    .font(.footnote)
+                    .fontWeight(isHeader ? .semibold : .regular)
+                    .foregroundStyle(isHeader ? tint : tint.opacity(0.85))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+            }
         }
     }
 }

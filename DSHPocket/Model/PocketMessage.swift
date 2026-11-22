@@ -19,6 +19,9 @@ import UserNotifications
 struct PocketMessage: Identifiable {
     let id: String
     let sequence: Int
+    /// 所属回合号。同一个 turn 的连续 assistant 消息在界面上合并成一个回复块
+    /// （与 DSH 桌面端一致；手机端之前每条单独成气泡，用户反馈「被拆成多条」）。
+    let turn: Int?
     let kind: String
     let text: String
     let isUser: Bool
@@ -37,6 +40,7 @@ struct PocketMessage: Identifiable {
     init(demoText: String, isUser: Bool, sequence: Int, localImages: [UIImage] = []) {
         self.id = "demo-\(sequence)"
         self.sequence = sequence
+        self.turn = nil
         self.kind = isUser ? "user/message" : "assistant/message"
         self.text = demoText
         self.isUser = isUser
@@ -49,6 +53,7 @@ struct PocketMessage: Identifiable {
     init(pendingText: String, localImages: [UIImage] = [], rpcId: String? = nil, sortSequence: Int? = nil) {
         self.id = "pending-\(UUID().uuidString)"
         self.sequence = Int.max
+        self.turn = nil
         self.localSortKey = sortSequence
         self.localOrder = Int(Date().timeIntervalSince1970 * 1000)
         self.kind = "user/message"
@@ -61,9 +66,10 @@ struct PocketMessage: Identifiable {
     }
 
     init(sequence: Int, kind: String, text: String, isUser: Bool,
-         rpcId: String?, images: [PocketImageRef]) {
+         rpcId: String?, images: [PocketImageRef], turn: Int? = nil) {
         self.id = "event-\(sequence)"
         self.sequence = sequence
+        self.turn = turn
         self.kind = kind
         self.text = text
         self.isUser = isUser
@@ -78,11 +84,27 @@ struct PocketMessage: Identifiable {
         self.init(event: event)
     }
 
+    /// 宽松地把 JSON 里的数字转成 Int（NSNumber / Int / Double / String 都接受）。
+    static func intValue(_ raw: Any?) -> Int? {
+        switch raw {
+        case let value as Int: return value
+        case let value as NSNumber: return value.intValue
+        case let value as Double: return Int(value)
+        case let value as String: return Int(value)
+        default: return nil
+        }
+    }
+
     init?(event: [String: Any]) {
         guard let kind = event["type"] as? String,
               ["user/message", "assistant/message"].contains(kind),
               let sequence = (event["seq"] as? NSNumber)?.intValue,
               let data = event["data"] as? [String: Any] else { return nil }
+        // JSONSerialization 出来的数字一般是 NSNumber，但也可能是 Int/Double，
+        // 这里都试一遍——之前只写 NSNumber 导致 turn 恒为 nil、按 turn 合并完全失效
+        // （实测 turnParsed=0，2026-11-22）。
+        self.turn = Self.intValue(data["turn"]) ?? Self.intValue(event["turn"])
+
         let message = (data["message"] as? [String: Any]) ?? data
         // DSH also stores injected runtime context as user/message events. Those
         // are model inputs, not messages the human sent, and must stay out of chat UI.
