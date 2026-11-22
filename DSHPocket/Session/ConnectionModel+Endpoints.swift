@@ -176,6 +176,10 @@ extension ConnectionModel {
             recordDiagnostic("切换连接：\(endpoint.kind.label) \(DSHURL.redactedAddress(endpoint.address))")
         } catch {
             connection.serverAddress = previous
+            // 换票也失败：先别急着报错——可能只是「这条路在这个网络里不通」。
+            // 冷启动时上面只试了「上次用的那一条」，那条如果是公网而人正在家里/公司，
+            // 必然失败并退回连接页（2026-11-23 反馈「每次都是公网」）。
+            if await restoreFallbackRoute() { return }
             applyConnectError(error)
             if connection.isConnected { recordDiagnostic("切换连接失败，已回滚：\(error.localizedDescription)") }
         }
@@ -228,6 +232,41 @@ extension ConnectionModel {
             connection.isConnected = false
             applyConnectError(error)
         }
+    }
+
+    /// 恢复失败时，换一条已保存的路再试一次。
+    ///
+    /// 与 `autoRouteIfEnabled` 的分工：
+    /// - 那个要求 `connection.isConnected`，是「连上之后优化」；
+    /// - 这个是「没连上」时用——正是它的场景，所以不能套用那个 guard。
+    ///
+    /// 只排除**当前这条**（刚试过并失败），其余仍按「局域网优先 + 延迟最低」挑，
+    /// 与手动选路的规则保持一致，避免出现两套不同的偏好。
+    @MainActor
+    private func restoreFallbackRoute() async -> Bool {
+        let addresses = savedEndpoints.map(\.address)
+        guard addresses.count > 1 else { return false }
+        await probeRunner.probeRound(addresses: addresses)
+
+        let candidates = savedEndpoints.compactMap { endpoint -> RouteCandidate? in
+            guard endpoint.address != connection.serverAddress else { return nil }
+            let kind = DSHEndpointKind(rawValue: Self.endpointKind(of: endpoint.address).rawValue) ?? .custom
+            switch probeRunner.results[endpoint.address] {
+            case .reachable(let value):
+                return RouteCandidate(address: endpoint.address, kind: kind, reachable: true, rttMs: value)
+            case .unreachable:
+                return RouteCandidate(address: endpoint.address, kind: kind, reachable: false, rttMs: nil)
+            case .none:
+                return nil    // 还没探测到，不参与选择
+            }
+        }
+        guard let target = RoutePolicy.choose(from: candidates, preference: .lanFirst) else { return false }
+
+        recordDiagnostic("恢复失败，换路重试：\(DSHURL.redactedAddress(target))")
+        connection.serverAddress = target
+        connection.errorMessage = nil
+        await connect()
+        return connection.isConnected
     }
 
     @MainActor
