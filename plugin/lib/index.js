@@ -1606,7 +1606,13 @@ export function apply(ctx) {
             latestConnectionSnapshot = snapshotFromTelemetry(payload)
             await logLine(`telemetry received (${Object.keys(payload ?? {}).length} keys)`)
             try {
-              const telemetryDir = join(homedir(), 'Library', 'Logs', 'DSHPocket')
+              // 按平台分支：macOS 放 ~/Library/Logs（Console.app 能直接看），
+              // 其它平台放插件自己的日志目录。
+              // 之前无条件拼 Library，在 Linux 服务器上会在 /root 下凭空造出
+              // 一个 macOS 风格的 ~/Library 目录（2026-11-23 阿里云侧发现并上报）。
+              const telemetryDir = process.platform === 'darwin'
+                ? join(homedir(), 'Library', 'Logs', 'DSHPocket')
+                : join(LOG_DIR, 'logs')
               await mkdir(telemetryDir, { recursive: true })
               const day = new Date().toISOString().slice(0, 10).replace(/-/g, '')
               const line = JSON.stringify({ receivedAt: new Date().toISOString(), ...payload })
