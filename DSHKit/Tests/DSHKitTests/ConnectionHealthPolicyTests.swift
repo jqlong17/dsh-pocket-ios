@@ -25,7 +25,7 @@ final class ConnectionHealthPolicyTests: XCTestCase {
     // MARK: - 该不该探
 
     func testProbesOnlySavedAddresses() {
-        let saved = ["http://192.168.1.18:3091", "https://a.example.ts.net"]
+        let saved = ["http://192.168.1.10:3091", "https://a.example.ts.net"]
         XCTAssertTrue(ConnectionHealthPolicy.shouldProbe(address: saved[0], saved: saved))
         XCTAssertFalse(ConnectionHealthPolicy.shouldProbe(address: "http://203.0.113.1:3091", saved: saved))
     }

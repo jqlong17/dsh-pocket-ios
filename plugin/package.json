@@ -67,5 +67,8 @@
   "author": "Ruska <jqlong17@gmail.com>",
   "bin": {
     "dsh-pocket-ios": "bin/dsh-pocket-ios.js"
+  },
+  "scripts": {
+    "test": "node --test --test-force-exit test/*.test.js"
   }
 }

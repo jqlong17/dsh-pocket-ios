@@ -67,7 +67,7 @@ test('extractWireGuardConfig：按 client_config_start/end 标记截取', () => 
 })
 
 test('normalizeWireGuardConfig：去掉 # 注释（WireGuard 不支持注释）', () => {
-  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.18', 11500)
+  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.10', 11500)
   assert.ok(!out.includes('#'), '不能残留 # 注释，否则客户端解析失败')
 })
 
@@ -76,20 +76,20 @@ test('normalizeWireGuardConfig：重复的 AllowedIPs 去重', () => {
     'AllowedIPs = 10.14.14.0/24',
     'AllowedIPs = 10.14.14.0/24,10.14.14.0/24'
   )
-  const out = normalizeWireGuardConfig(cfg, '192.168.1.18', 11500)
+  const out = normalizeWireGuardConfig(cfg, '192.168.1.10', 11500)
   assert.match(out, /AllowedIPs = 10\.14\.14\.0\/24$/m)
   assert.equal(out.split('10.14.14.0/24').length - 1, 1, '同一个网段只能出现一次')
 })
 
 test('normalizeWireGuardConfig：网络地址 .0 修成可用主机地址 .2', () => {
-  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.18', 11500)
+  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.10', 11500)
   assert.match(out, /Address = 10\.14\.14\.2\/32/)
   assert.ok(!out.includes('10.14.14.0/32'), '.0 是网络地址，塞进客户端无法通信')
 })
 
 test('normalizeWireGuardConfig：Endpoint 换成本机可达地址', () => {
-  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.18', 11500)
-  assert.match(out, /Endpoint = 192\.168\.1\.18:11500/)
+  const out = normalizeWireGuardConfig(extractWireGuardConfig(REAL), '192.168.1.10', 11500)
+  assert.match(out, /Endpoint = 192\.168\.1\.10:11500/)
   assert.ok(!out.includes('0.0.0.0'), '0.0.0.0 在手机上指手机自己')
 })
 
@@ -140,7 +140,7 @@ test('findEasytier：没装时返回 null，不抛错', async () => {
 
 test('shadowrocketConf：skip-proxy 不能含 10.0.0.0/8', async () => {
   const { shadowrocketConf } = await import('../lib/easytier.js')
-  const conf = shadowrocketConf({ socksHost: '192.168.1.18', socksPort: 1080 })
+  const conf = shadowrocketConf({ socksHost: '192.168.1.10', socksPort: 1080 })
   const skipLine = conf.split('\n').find((l) => l.startsWith('skip-proxy'))
   assert.ok(skipLine)
   // 10.0.0.0/8 覆盖 10.14.14.0/24，留着就等于让客户端直连虚拟网络
@@ -150,9 +150,9 @@ test('shadowrocketConf：skip-proxy 不能含 10.0.0.0/8', async () => {
 
 test('shadowrocketConf：有 SOCKS5 节点和指向它的规则', async () => {
   const { shadowrocketConf } = await import('../lib/easytier.js')
-  const conf = shadowrocketConf({ socksHost: '192.168.1.18', socksPort: 1080 })
+  const conf = shadowrocketConf({ socksHost: '192.168.1.10', socksPort: 1080 })
   assert.match(conf, /\[Proxy\]/)
-  assert.match(conf, /EasyTier = socks5, 192\.168\.1\.18, 1080/)
+  assert.match(conf, /EasyTier = socks5, 192\.168\.1\.10, 1080/)
   assert.match(conf, /\[Rule\]/)
   assert.match(conf, /IP-CIDR,10\.14\.14\.0\/24,EasyTier,no-resolve/)
 })

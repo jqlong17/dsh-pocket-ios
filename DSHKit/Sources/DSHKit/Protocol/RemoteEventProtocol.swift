@@ -56,7 +56,7 @@ public enum RemoteEventProtocol {
 
     /// 解析就绪帧。缺 `clientId` 视为未就绪（返回 nil，调用方继续等）。
     ///
-    /// `host` 在实测帧里是对象（`{"home":"/Users/ruska"}`），不是字符串，
+    /// `host` 在实测帧里是对象（`{"home":"/Users/<user>"}`），不是字符串，
     /// 所以这里宽松取值：字符串直接用，对象取 `home`，都不是就为 nil。
     public static func ready(from value: [String: Any]) -> Ready? {
         guard value["type"] as? String == "ready",

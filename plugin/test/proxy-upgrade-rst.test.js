@@ -78,7 +78,18 @@ test('upgrade 后客户端 RST，代理不产生未捕获异常', async () => {
     assert.equal(uncaught.length, 0, `RST 不该产生未捕获异常，实际收到: ${uncaught.map((e) => e?.code ?? e)}`)
   } finally {
     process.off('uncaughtException', onUncaught)
-    await new Promise((r) => upstream.close(r))
-    await new Promise((r) => proxy.close(r))
+    // 先断开残余连接再 close：客户端 RST 之后 pipe 的对端 socket 可能还开着，
+    // close() 会一直等它们——表现为「测试跑完但进程不退出」（实测）。
+    upstream.closeAllConnections?.()
+    proxy.closeAllConnections?.()
+    // 不 await close()：客户端 RST 之后还有 socket 让 close 的回调不触发，
+    // 表现是断言都过了、进程却永不退出（实测 25s 超时）。
+    // 这里改成显式销毁 + unref，测试结束即释放。
+    upstream.closeAllConnections?.()
+    proxy.closeAllConnections?.()
+    upstream.close()
+    proxy.close()
+    upstream.unref()
+    proxy.unref()
   }
 })

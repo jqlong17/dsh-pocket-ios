@@ -8,7 +8,7 @@ final class AddressStabilityWindowTests: XCTestCase {
         // 这是本次要修的那个真 bug：全局窗口在切换地址后会串数据，
         // 导致「失败 2 次」分不清是局域网还是 Tailscale 造成的。
         var window = AddressStabilityWindow()
-        let lan = "http://192.168.1.18:3091"
+        let lan = "http://192.168.1.10:3091"
         let tail = "https://a.example.ts.net"
 
         for _ in 0..<10 { window.record(address: lan, connected: true) }

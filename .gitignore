@@ -29,3 +29,27 @@ spec/
 
 # Archify 生成物（图 + candidate JSON，本地留档即可）
 .archify/
+
+# 签名与凭证：任何情况下都不入库
+*.p12
+*.p8
+*.cer
+*.mobileprovision
+AuthKey_*.p8
+ExportOptions.local.plist
+
+# 本地环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# 插件运行时数据（设备凭证、配对 PIN、节点列表、日志）
+plugin/peers.json
+plugin/devices.json
+plugin/pin
+plugin/*.log
+plugin/node_modules/
+
+# 其它本地缓存
+*.log
+.DS_Store

@@ -8,7 +8,7 @@ final class RoutePolicyTests: XCTestCase {
 
     func testManualPreferenceNeverSwitches() {
         // 用户手选过的路不该被悄悄改掉——这是开关默认关闭的原因，也是最容易出事的地方。
-        let lan = candidate("http://192.168.1.18:3091", kind: .lan, reachable: true, rtt: 5)
+        let lan = candidate("http://192.168.1.10:3091", kind: .lan, reachable: true, rtt: 5)
         let ts = candidate("https://a.ts.net", kind: .publicNetwork, reachable: true, rtt: 300)
         XCTAssertNil(RoutePolicy.choose(from: [lan, ts], preference: .manual))
     }
@@ -16,28 +16,28 @@ final class RoutePolicyTests: XCTestCase {
     func testLanWinsWhenReachable() {
         // 局域网 RTT 更大也要选它：省掉的是固定的 TLS 握手 + 隧道开销，
         // 比几毫秒的 RTT 差异值钱得多。
-        let lan = candidate("http://192.168.1.18:3091", kind: .lan, reachable: true, rtt: 300)
+        let lan = candidate("http://192.168.1.10:3091", kind: .lan, reachable: true, rtt: 300)
         let ts = candidate("https://a.ts.net", kind: .publicNetwork, reachable: true, rtt: 10)
-        XCTAssertEqual(RoutePolicy.choose(from: [lan, ts], preference: .lanFirst), "http://192.168.1.18:3091")
+        XCTAssertEqual(RoutePolicy.choose(from: [lan, ts], preference: .lanFirst), "http://192.168.1.10:3091")
     }
 
     func testFallsBackToFastestWhenLanDown() {
         // 手机离开家里：局域网不可达，应切到最快的公网地址。
-        let lan = candidate("http://192.168.1.18:3091", kind: .lan, reachable: false, rtt: nil)
+        let lan = candidate("http://192.168.1.10:3091", kind: .lan, reachable: false, rtt: nil)
         let slow = candidate("https://slow.ts.net", kind: .publicNetwork, reachable: true, rtt: 200)
         let fast = candidate("https://fast.ts.net", kind: .publicNetwork, reachable: true, rtt: 30)
         XCTAssertEqual(RoutePolicy.choose(from: [lan, slow, fast], preference: .lanFirst), "https://fast.ts.net")
     }
 
     func testPicksFastestAmongMultipleLan() {
-        let a = candidate("http://192.168.1.18:3091", kind: .lan, reachable: true, rtt: 40)
+        let a = candidate("http://192.168.1.10:3091", kind: .lan, reachable: true, rtt: 40)
         let b = candidate("http://192.168.1.20:3091", kind: .lan, reachable: true, rtt: 3)
         XCTAssertEqual(RoutePolicy.choose(from: [a, b], preference: .lanFirst), "http://192.168.1.20:3091")
     }
 
     func testAllUnreachableReturnsNil() {
         // 宁可保持现状，也不切到一个已知不通的地址。
-        let a = candidate("http://192.168.1.18:3091", kind: .lan, reachable: false, rtt: nil)
+        let a = candidate("http://192.168.1.10:3091", kind: .lan, reachable: false, rtt: nil)
         let b = candidate("https://a.ts.net", kind: .publicNetwork, reachable: false, rtt: nil)
         XCTAssertNil(RoutePolicy.choose(from: [a, b], preference: .lanFirst))
     }

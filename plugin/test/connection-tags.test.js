@@ -11,7 +11,7 @@ import {
 } from '../lib/connection-tags.js'
 
 /** 造一份 App 遥测 payload。 */
-function telemetry({ network = 'wifi', currentAddress = 'http://192.168.1.18:3091', rttMs = 12, ok = true } = {}) {
+function telemetry({ network = 'wifi', currentAddress = 'http://192.168.1.10:3091', rttMs = 12, ok = true } = {}) {
   return {
     probeNetwork: network,
     probes: [
@@ -57,7 +57,7 @@ test('过期快照不用于标新消息', () => {
 test('地址分类', () => {
   assert.equal(classifyAddress('https://a.tail1234.ts.net'), 'tailscale')
   assert.equal(classifyAddress('https://foo.trycloudflare.com'), 'cloudflare')
-  assert.equal(classifyAddress('http://192.168.1.18:3091'), 'lan')
+  assert.equal(classifyAddress('http://192.168.1.10:3091'), 'lan')
   assert.equal(classifyAddress('http://10.0.0.5:3091'), 'lan')
   assert.equal(classifyAddress('http://172.20.1.1:3091'), 'lan')
   assert.equal(classifyAddress('http://203.0.113.9:3091'), 'public')
