@@ -22,6 +22,9 @@ final class ConnectionModel {
     static let savedEndpointsKey = "dsh-pocket.saved-endpoints"
     /// 主机列表（新真源）。旧键保留，迁移失败时可回退。
     static let hostsKey = "dsh-pocket.hosts"
+    /// 「上次选中的主机」。注意它和 `savedServerAddressKey`（上次**连成功**的地址）是两件事：
+    /// 用户在列表里点了阿里云、但当时没连上，下次启动仍应先试阿里云，而不是悄悄退回 Mac。
+    static let currentHostIdKey = "dsh-pocket.current-host-id"
     static let finishedAwaitingKey = "dsh-pocket.finished-awaiting"
     static let completionAlertKey = "dsh-pocket.completion-alert"
     static let runningSnapshotKey = "dsh-pocket.session-running"

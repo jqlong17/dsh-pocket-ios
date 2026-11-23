@@ -405,6 +405,7 @@ extension ConnectionModel {
             ConnectionVault.saveDeviceToken(from: url, address: connection.serverAddress)
         }
         recordEndpoint(connection.serverAddress)
+        persistCurrentHostId()
     }
 
     /// 自动选路：探测所有已保存地址，按策略挑一条并切换过去。

@@ -37,9 +37,22 @@ extension ConnectionModel {
             recordDiagnostic("迁移为 \(hosts.count) 台主机（原 \(list.count) 条地址）")
         }
         if currentHostId == nil {
-            currentHostId = hosts.first { host in
-                host.endpoints.contains { $0.address == connection.serverAddress }
-            }?.id ?? hosts.first?.id
+            // 先认「上次选中的主机」（显式持久化），再退回「地址反推」。
+            let persisted = UserDefaults.standard.string(forKey: Self.currentHostIdKey)
+            currentHostId = hosts.first { $0.id == persisted }?.id
+                ?? hosts.first { host in
+                    host.endpoints.contains { $0.address == connection.serverAddress }
+                }?.id
+                ?? hosts.first?.id
+        }
+        // 启动时若「上次选中的主机」不是当前地址所属的那台，先把地址挪过去。
+        // 这样 restoreConnection 会先试它；失败后仍会退回上次连成功的地址（见 restore 的错误路径）。
+        if let id = currentHostId,
+           let host = hosts.first(where: { $0.id == id }),
+           !host.endpoints.contains(where: { $0.address == connection.serverAddress }),
+           let preferred = Self.preferredEndpointIn(host) {
+            connection.serverAddress = preferred.address
+            recordDiagnostic("启动优先恢复上次选中的主机：\(host.name)")
         }
         seedServerEndpointIfNeeded()
     }
@@ -93,6 +106,7 @@ extension ConnectionModel {
             if let machine, !machine.isEmpty { hosts[hi].machine = machine }
             currentHostId = hosts[hi].id
             persistHosts()
+            persistCurrentHostId()
             return
         }
 
@@ -104,6 +118,7 @@ extension ConnectionModel {
             hosts[hi].lastUsedAt = now
             currentHostId = hosts[hi].id
             persistHosts()
+            persistCurrentHostId()
             recordDiagnostic("地址归并到已有主机：\(machine)")
             return
         }
@@ -118,6 +133,7 @@ extension ConnectionModel {
         hosts.append(host)
         currentHostId = host.id
         persistHosts()
+        persistCurrentHostId()
     }
 
     /// 生成主机默认名：DSH 1、DSH 2……（避开已占用的名字）。
@@ -259,6 +275,24 @@ extension ConnectionModel {
         }
     }
 
+    /// 持久化「上次选中的主机」。
+    func persistCurrentHostId() {
+        if let id = currentHostId {
+            UserDefaults.standard.set(id, forKey: Self.currentHostIdKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.currentHostIdKey)
+        }
+    }
+
+    /// 主机内优先用哪条地址：局域网优先，其次最近使用。
+    /// 与 `switchHost` 的挑选规则保持一致，避免「启动选的」和「切换选的」不是同一条。
+    static func preferredEndpointIn(_ host: DSHHost) -> SavedEndpoint? {
+        host.endpoints.sorted { a, b in
+            if (a.kind == .lan) != (b.kind == .lan) { return a.kind == .lan }
+            return a.lastUsedAt > b.lastUsedAt
+        }.first
+    }
+
     /// 改主机名（设置页的铅笔走这里）。
     @MainActor
     func renameHost(id: String, name: String) {
@@ -281,6 +315,7 @@ extension ConnectionModel {
         hosts.removeAll { $0.id == id }
         if currentHostId == id { currentHostId = hosts.first?.id }
         persistHosts()
+        persistCurrentHostId()
     }
 
     /// 按主机切换：在它的地址里挑最优的一条（局域网优先），逐个试，第一个成功即完成。
@@ -296,6 +331,7 @@ extension ConnectionModel {
             if await switchConnection(to: endpoint.address) {
                 currentHostId = hostId
                 persistHosts()
+                persistCurrentHostId()
                 return true
             }
         }
@@ -320,6 +356,18 @@ extension ConnectionModel {
             // 冷启动时上面只试了「上次用的那一条」，那条如果是公网而人正在家里/公司，
             // 必然失败并退回连接页（2026-11-23 反馈「每次都是公网」）。
             if await restoreFallbackRoute() { return }
+            // ③ 仍失败：退回「上次连成功的那台」。
+            // 场景：上次选中的主机（比如阿里云）现在彻底不通，而上次连成功的 Mac 还在。
+            // 没有这一步，用户会停在连接页——而他其实有一台能用的机器。
+            if let lastGood = UserDefaults.standard.string(forKey: Self.savedServerAddressKey),
+               lastGood != connection.serverAddress,
+               hosts.contains(where: { $0.endpoints.contains { $0.address == lastGood } }) {
+                recordDiagnostic("仍连不上，退回上次连接成功的地址：\(DSHURL.redactedAddress(lastGood))")
+                connection.serverAddress = lastGood
+                connection.errorMessage = nil
+                await connect()
+                if connection.isConnected { return }
+            }
             applyConnectError(error)
             if connection.isConnected { recordDiagnostic("切换连接失败，已回滚：\(error.localizedDescription)") }
         }
