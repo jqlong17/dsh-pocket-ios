@@ -241,6 +241,15 @@ window.__ModuleLoader__.load({
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("剩余有效时间", "Time remaining")),
             React.createElement("div", { style: { fontSize: 20, fontWeight: 600, color: remaining > 0 ? "#147A5E" : "#b45309", marginBottom: 10 } },
               remaining > 0 ? remaining + "s" : makeT(currentLang())("已过期", "Expired")),
+            // 端口回落提示：默认端口被占用时自动换了，用户不需要操作，
+            // 但必须能看见——否则他只会看到「二维码不可用」而不知道原因。
+            status && status.portFallback
+              ? React.createElement("div", {
+                  style: { fontSize: 11, color: "#b45309", marginBottom: 6, lineHeight: 1.5 }
+                }, makeT(currentLang())(
+                  `端口 ${status.portFallback.from} 被占用，已自动改用 ${status.portFallback.to}`,
+                  `Port ${status.portFallback.from} is taken; using ${status.portFallback.to} instead`))
+              : null,
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("固定地址", "Fixed address")),
             React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
               React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, ((status && (status.address || status.httpsUrl))

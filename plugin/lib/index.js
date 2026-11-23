@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { createServer, request as httpRequest } from 'node:http'
+import { portCandidates, selectProxyPort, readPersistedPort, writePersistedPort, preferredPort } from './proxy-port.js'
 import { promisify } from 'node:util'
 import QRCode from 'qrcode'
 import { CloudflareTunnel, findCloudflared } from './cloudflare.js'
@@ -107,9 +108,23 @@ const TAILSCALE_BIN = process.platform === 'darwin'
   : 'tailscale'
 const BODY_MAX = 64 * 1024
 /** 稳定本地入口端口：Tailscale Serve 指向它；默认 3081（与 dsh-pocket 代理端口一致）。 */
-const PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 3091)
+/**
+ * 入口端口的「默认值」。注意：真正用的是下面的 `proxyPort`。
+ *
+ * 为什么分开：默认值只是首选，实际端口可能在启动时因占用而回落
+ * （见 lib/proxy-port.js）。以前这个常量被当成唯一事实散落到十几处，
+ * 一旦回落就没人知道，用户只看到「二维码不可用」。
+ */
+const DEFAULT_PROXY_PORT = 3091
+const ENV_PROXY_PORT = Number(process.env.DSH_POCKET_IOS_PROXY_PORT ?? 0) || null
+/** 本次运行实际使用的端口：启动探测后确定，之后所有地址/隧道都用它。 */
+let proxyPort = ENV_PROXY_PORT ?? DEFAULT_PROXY_PORT
+/** 端口回落信息（{ from, to }）；正常为 null，用于面板提示「已自动改用」。 */
+let proxyPortFallback = null
 
 const LOG_DIR = join(homedir(), '.dsh', 'dsh-pocket-ios')
+/** 上次成功监听的端口（跨重启稳定用）。 */
+const PERSISTED_PORT_FILE = join(LOG_DIR, 'proxy-port')
 
 // 一次性配对 token 有效期。10 分钟：手机端要经历「看到码 → 掏出手机 →
 // 从相册选图 / 对准扫码 → 等隧道冷启动」，实测 5 分钟在服务器 + 相册导入
@@ -742,7 +757,7 @@ async function tailscale(args) {
 /**
  * 确保 `tailscale serve` 把插件入口发布到 tailnet。
  *
- * 不再给 `port` 默认值：默认值会和 `PROXY_PORT` 形成第二个「事实副本」，
+ * 不再给 `port` 默认值：默认值会和实际端口形成第二个「事实副本」，
  * 一旦两边不同步就会把 serve 指到没人监听的端口（2026-11-24 发现：
  * 调用方写死 3091，设了 DSH_POCKET_IOS_PROXY_PORT 也不生效）。
  * 现在漏传会直接变成 undefined 并在日志里立刻暴露。
@@ -1070,7 +1085,9 @@ async function connectionOverview() {
       address: status.address ?? null,
       error: status.error ?? null,
       pinSet: Boolean(status.pinSet),
-      port: PROXY_PORT,
+      port: proxyPort,
+      // 端口回落时面板要能提示「已自动改用」，而不是只显示「二维码不可用」。
+      portFallback: proxyPortFallback,
       // 本机机器名：面板要能回答「你现在扫的是哪台」。
       // 手机端「主机」默认名和它对得上时，用户一眼就知道谁是谁。
       machine: osHostname(),
@@ -1095,14 +1112,14 @@ async function modeStatus() {
   }
 
   if (currentMode === 'cloudflare') {
-    // 隧道必须指向**插件代理**（PROXY_PORT），不能指向 dsh web 本体。
+    // 隧道必须指向**插件代理**（proxyPort），不能指向 dsh web 本体。
     // 指向本体时 Host 是隧道域名、不经过 forwardHeaders 的 loopback 改写，
     // 而 DSH 的 /api 只信任 loopback / trustedHosts：
     //   GET  /            → 200（首页不做 Host 校验）
     //   POST /api/...     → 403 forbidden（peer 不是 owner）
     // App 又把 403 映射成 invalidPin，于是用户看到「配对没成功」——
     // 明明 token 和服务端都正常（2026-11-15 在阿里云上抓到的就是这个）。
-    const port = PROXY_PORT
+    const port = proxyPort
     if (!port) {
       return { ...base, address: null, qr: null, state: 'error', error: '拿不到 dsh web 端口' }
     }
@@ -1143,7 +1160,7 @@ async function modeStatus() {
     const ip = selectLanIPv4()
     const port = dshWebPortRef
     // 诊断：lan 分支返回 error 时最常见的两个原因就是这两个为 null
-    void logLine(`lan status: ip=${ip ?? 'null'} dshPort=${port ?? 'null'} proxyPort=${PROXY_PORT}`)
+    void logLine(`lan status: ip=${ip ?? 'null'} dshPort=${port ?? 'null'} proxyPort=${proxyPort}`)
     if (!ip || !port) {
       return {
         ...base,
@@ -1156,8 +1173,8 @@ async function modeStatus() {
       }
     }
     // 必须用代理端口：DSH 自己只监听 127.0.0.1:${port}，手机连不上。
-    // 代理（PROXY_PORT）已经在 0.0.0.0 上监听并转发到 DSH。
-    const address = lanEntryUrl(ip, PROXY_PORT)
+    // 代理（proxyPort）已经在 0.0.0.0 上监听并转发到 DSH。
+    const address = lanEntryUrl(ip, proxyPort)
     const qr = await QRCode.toDataURL(address, { margin: 1, width: 360 })
     return { ...base, address, qr, state: 'ready', error: null }
   }
@@ -1216,16 +1233,16 @@ async function modeStatus() {
     const virtualHost = clientAddressFrom(wg).replace(/\.\d+$/, '.1')
     return {
       ...base,
-      address: `http://${virtualHost}:${PROXY_PORT}`,
+      address: `http://${virtualHost}:${proxyPort}`,
       qr,
       state: 'ready',
       error: null,
       config,
       // Shadowrocket 这类代理客户端用这个订阅 URL（配置里带了显式规则）
-      confUrl: lanIp ? `http://${lanIp}:${PROXY_PORT}${CHANNEL}/easytier.conf` : null,
+      confUrl: lanIp ? `http://${lanIp}:${proxyPort}${CHANNEL}/easytier.conf` : null,
       // 配对码（面板上方大二维码）本来就是 http://10.14.14.1:3091/?pair=xxx，
       // 手机代理配好后扫它即可自动登录。这里要把顺序讲清楚，否则用户会以为只能手填密码。
-      hint: `先在手机代理里加载下方订阅（一次性），之后扫上方二维码即自动连接 http://${virtualHost}:${PROXY_PORT}，无需密码。`,
+      hint: `先在手机代理里加载下方订阅（一次性），之后扫上方二维码即自动连接 http://${virtualHost}:${proxyPort}，无需密码。`,
     }
   }
 
@@ -1294,6 +1311,10 @@ export async function tailscaleStatus() {
     // 机器身份：客户端靠它把「同一台机器的多个地址」归到一组。
     // 用 hostname 而不是临时生成 id —— 它稳定、人能认出来，重启也不变。
     machineName: osHostname(),
+    // 面板的「固定地址」读的是这个 RPC，所以端口回落也要在这里返回，
+    // 否则提示只在 overview 里、界面上永远不显示。
+    portFallback: proxyPortFallback,
+    port: proxyPort,
   }
 }
 
@@ -1478,7 +1499,7 @@ function attachStableProxy(ctx, handler) {
     proxyReq.on('error', () => socket.destroy())
     proxyReq.end()
   })
-  server.on('error', (error) => ctx?.logger?.warn?.(`dsh-pocket-ios: 稳定入口端口 ${PROXY_PORT} 不可用（${error?.message ?? error}）`))
+  server.on('error', (error) => ctx?.logger?.warn?.(`dsh-pocket-ios: 稳定入口端口 ${proxyPort} 不可用（${error?.message ?? error}）`))
   // 兜底：任何未经 upgrade 路径处理的客户端连接错误，都不能让它冒泡到 host。
   server.on('clientError', (error, socket) => {
     try { socket.destroy() } catch { /* 已关闭 */ }
@@ -1487,14 +1508,36 @@ function attachStableProxy(ctx, handler) {
   // 绑 0.0.0.0 而不是只绑回环：局域网模式下手机要能直连这个端口。
   // 安全性由 DSH 自身的登录态保证（非 /dsh-pocket-ios/ 前缀的请求会原样转发给 DSH，
   // 未认证时 DSH 返回 401）——这和 dsh-pocket 的做法一致。
-  server.listen(PROXY_PORT, '0.0.0.0', () => {
-    ctx?.logger?.info?.(`dsh-pocket-ios: 稳定入口 http://0.0.0.0:${PROXY_PORT} → DSH 127.0.0.1:${dshPort}`)
-  })
+  // 端口探测后再监听：默认端口被占用时自动往下找，并把结果落到磁盘，
+  // 下次启动优先复用（跨重启稳定，tailscale serve 的持久配置才不会指向空端口）。
+  void (async () => {
+    const persisted = await readPersistedPort(PERSISTED_PORT_FILE)
+    const start = preferredPort({ envPort: ENV_PROXY_PORT, persistedPort: persisted, defaultPort: DEFAULT_PROXY_PORT })
+    const probe = (candidate) => new Promise((resolve) => {
+      const tester = createServer()
+      tester.once('error', () => { try { tester.close() } catch { /* 已关闭 */ } resolve(false) })
+      tester.once('listening', () => { try { tester.close() } catch { /* 已关闭 */ } resolve(true) })
+      try { tester.listen(candidate, '0.0.0.0') } catch { resolve(false) }
+    })
+    const picked = await selectProxyPort({ candidates: portCandidates(start, 10), isFree: probe, ephemeral: 0 })
+    proxyPort = picked.port
+    server.listen(proxyPort, '0.0.0.0', () => {
+      const actual = server.address()
+      if (actual && typeof actual === 'object') proxyPort = actual.port
+      if (picked.fallback) {
+        proxyPortFallback = { from: start, to: proxyPort }
+        // 回落是「软件之间的事」，用户不该被问，但日志和面板要能看见。
+        void logLine(`入口端口 ${start} 被占用，已自动改用 ${proxyPort}`)
+      }
+      void writePersistedPort(PERSISTED_PORT_FILE, proxyPort)
+      ctx?.logger?.info?.(`dsh-pocket-ios: 稳定入口 http://0.0.0.0:${proxyPort} → DSH 127.0.0.1:${dshPort}`)
+    })
+  })()
   return () => {
     try { server.close() } catch { /* 已关闭 */ }
     // DSH 退出/重载时必须显式停掉 cloudflared，否则它变成孤儿进程一直挂着：
     // 反复重启会累积多个隧道（每轮换一个域名），既浪费又让人以为「地址老在变」。
-    try { void cloudflareFor(PROXY_PORT).stop() } catch { /* 忽略 */ }
+    try { void cloudflareFor(proxyPort).stop() } catch { /* 忽略 */ }
   }
 }
 
@@ -2077,7 +2120,7 @@ function guessProto(req, host) {
           await logLine(`mode -> ${next}`)
           // 切到 Tailscale 时顺手把 serve 打开，用户不用再开终端敲命令。
           if (next === 'tailscale') {
-            const serve = await ensureTailscaleServe(PROXY_PORT)
+            const serve = await ensureTailscaleServe(proxyPort)
             await logLine(`切到 tailscale 后 ensureServe: ${serve.ok ? serve.url : serve.error}`)
 
             // 把 serve 的真实地址写回 tailscale.json（覆盖用）。
@@ -2128,7 +2171,7 @@ function guessProto(req, host) {
             // 局域网没地址时最后才用 host 兜底（至少本机测试能用）。
             const lanIp = selectLanIPv4()
             if (lanIp) {
-              base = `http://${lanIp}:${PROXY_PORT}`
+              base = `http://${lanIp}:${proxyPort}`
             } else {
               // 优先用代理带过来的外部 Host；直连（无代理）时才退回 req.headers.host。
             const host = String(req.headers['x-dsh-original-host'] ?? req.headers.host ?? '')
