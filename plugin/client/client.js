@@ -317,6 +317,9 @@ window.__ModuleLoader__.load({
       var state = st[0], setState = st[1];
       var cleanState = React.useState(false);
       var cleaning = cleanState[0], setCleaning = cleanState[1];
+      // 明细默认收起：状态一行就够，展开是为了排查时才看的。
+      var openState = React.useState(false);
+      var open = openState[0], setOpen = openState[1];
 
       var load = function () {
         if (!props.rpcCall) { setState({ loading: false, data: null }); return; }
@@ -368,43 +371,99 @@ window.__ModuleLoader__.load({
         return h < 24 ? h + t(" 小时前", " h ago") : Math.floor(h / 24) + t(" 天前", " d ago");
       };
 
-      // 显式纵向 + width:100%：宿主把设置分区里的子元素当 flex 行排列，
-      // 不指定方向时三段内容会被挤成三列（实测）。
-      var rootStyle = {
-        display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
-        padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
-      };
-      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, minWidth: 0 };
-      var dim = { opacity: 0.62, whiteSpace: "nowrap" };
-      var sectionTitle = { fontSize: 11, fontWeight: 600, opacity: .5, margin: "2px 0 2px" };
-      var divider = { height: 1, background: "rgba(0,0,0,.06)", margin: "8px 0" };
+      var ready = self.state === "ready";
+      var onlinePeers = peers.filter(function (p) { return p.online; }).length;
+      // 在线设备数（同一台手机装了多个版本也只算一台，服务端已按家族聚合）
+      var activeClients = devices.filter(function (dev) {
+        return Date.now() - (dev.lastUsedAt || 0) < 86400000;
+      }).length;
+
+      // 状态条：一行说清「通不通、走哪条路、地址」。
+      // 这是每天看几十次的信息，占一整块会把真正要操作的扫码挤到下面；
+      // 明细（设备列表、节点列表）折叠在后面，需要时才展开。
       var dot = function (ok) {
         return React.createElement("span", {
           style: {
-            width: 7, height: 7, borderRadius: 4, flex: "0 0 7px",
+            width: 8, height: 8, borderRadius: 4, flex: "0 0 8px",
             background: ok ? "#14a06e" : "#c8ccd2", display: "inline-block"
           }
         });
       };
-      // 名称可伸可缩，右侧信息不换行——避免「iPhone（DSH Pocket）」被折成两行。
+
+      var summary = [
+        self.label || self.mode || "?",
+        activeClients > 0 ? t(activeClients + " 台设备在线", activeClients + " online") : null,
+        peers.length ? t("其它节点 " + onlinePeers + "/" + peers.length, "nodes " + onlinePeers + "/" + peers.length) : null
+      ].filter(Boolean).join(" · ");
+
+      var header = React.createElement("div", {
+        onClick: function () { setOpen(!open); },
+        style: {
+          display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+          padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+        }
+      },
+        dot(ready),
+        React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } },
+          ready ? t("已就绪", "Ready") : t("未就绪", "Not ready")),
+        React.createElement("span", {
+          style: {
+            fontSize: 12, opacity: .62, minWidth: 0, overflow: "hidden",
+            textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 auto"
+          }
+        }, summary),
+        self.address
+          ? React.createElement("span", {
+              style: { fontSize: 12, opacity: .5, flex: "0 0 auto", maxWidth: "45%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+            }, self.address)
+          : null,
+        React.createElement("span", { style: { fontSize: 11, opacity: .45, flex: "0 0 auto" } },
+          open ? "▾" : "▸"));
+
+      // 下载链接压成脚注：装 App 是一次性的事，不该和一个独立卡位抢注意力。
+      var footnote = React.createElement("div", {
+        style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "5px 0 0 4px", fontSize: 10.5, opacity: .5 }
+      },
+        React.createElement("span", null, t("没装 App？", "No app yet?")),
+        React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
+          t("App Store", "App Store")),
+        React.createElement("span", { style: { opacity: .5 } }, "·"),
+        React.createElement("a", { href: DOC_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
+          t("使用说明", "Guide")),
+        React.createElement("span", { style: { opacity: .5 } }, "·"),
+        React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
+          "GitHub"));
+
+      if (!open) {
+        // 收起状态也要把错误露出来，否则「未就绪」是个哑状态。
+        return React.createElement("div", { style: { display: "flex", flexDirection: "column", width: "100%" } },
+          header,
+          footnote,
+          self.error
+            ? React.createElement("div", { style: { fontSize: 11, color: "#b45309", margin: "6px 0 0 4px" } },
+                String(self.error).slice(0, 200))
+            : null);
+      }
+
+      // ── 展开后的明细 ──
+      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, minWidth: 0 };
+      var dim = { opacity: 0.62, whiteSpace: "nowrap" };
       var labelStyle = { fontWeight: 500, flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+      var sectionTitle = { fontSize: 11, fontWeight: 600, opacity: .5, margin: "2px 0" };
+      var divider = { height: 1, background: "rgba(0,0,0,.06)", margin: "8px 0" };
 
-      var ready = self.state === "ready";
-
-      // 设备最多列 3 台：再多会把卡片撑得很高，而「谁连着」看最近三台就够。
-      var shown = devices.slice(0, 3);
+      var shown = devices.slice(0, 4);
       var rest = devices.length - shown.length;
       var deviceNodes = shown.map(function (dev, i) {
         return React.createElement("div", { key: "dev" + i, style: rowStyle },
           dot(Date.now() - (dev.lastUsedAt || 0) < 3600000),
           React.createElement("span", { style: labelStyle },
-            (dev.name || t("未知客户端", "unknown client"))
-              + (dev.count > 1 ? " ×" + dev.count : "")),
+            (dev.name || t("未知客户端", "unknown client")) + (dev.count > 1 ? " ×" + dev.count : "")),
           React.createElement("span", { style: dim }, ago(dev.lastUsedAt)));
       });
       if (rest > 0) {
         deviceNodes.push(React.createElement("div", {
-          key: "dev-rest", style: Object.assign({}, rowStyle, dim, { paddingLeft: 15 })
+          key: "dev-rest", style: Object.assign({}, rowStyle, dim, { paddingLeft: 16 })
         }, t("还有 " + rest + " 台", rest + " more")));
       }
 
@@ -416,35 +475,17 @@ window.__ModuleLoader__.load({
             peer.online ? (peer.rttMs != null ? peer.rttMs + "ms" : t("在线", "online")) : t("不可达", "unreachable")));
       });
 
-      // 三段之间用分隔线，不用三个独立卡片：它们在语义上是「一台机器的完整画像」。
-      var children = [
-        React.createElement("div", { key: "title", style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } },
-          t("连接总览", "Connections")),
-        React.createElement("div", { key: "self", style: rowStyle },
-          dot(ready),
-          React.createElement("span", { style: Object.assign({}, labelStyle, { fontWeight: 600, flex: "0 0 auto" }) },
-            t("本机", "This machine")),
-          React.createElement("span", { style: Object.assign({}, dim, { flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis" }) },
-            (self.label || self.mode || "?") + (self.address ? " · " + self.address : "")))
-      ];
+      var dupCount = devices.reduce(function (n, dev) { return n + Math.max(0, (dev.count || 1) - 1); }, 0);
 
-      if (self.error) {
-        children.push(React.createElement("div", {
-          key: "self-err", style: { fontSize: 11, color: "#b45309", marginLeft: 15, marginTop: 2 }
-        }, String(self.error).slice(0, 120)));
-      }
+      var children = [header];
+      var body = [];
 
       if (devices.length) {
-        children.push(React.createElement("div", { key: "d-div", style: divider }));
-        var dupCount = devices.reduce(function (n, dev) { return n + Math.max(0, (dev.count || 1) - 1); }, 0);
-        children.push(React.createElement("div", {
-          key: "d-title",
-          style: Object.assign({}, sectionTitle, { display: "flex", alignItems: "center", gap: 8 })
-        },
+        body.push(React.createElement("div", { key: "d-title", style: Object.assign({}, sectionTitle, { display: "flex", alignItems: "center", gap: 8 }) },
           React.createElement("span", null, t("已连接的客户端", "Clients")),
           dupCount > 0
             ? React.createElement("button", {
-                onClick: function () { cleanupDevices(); },
+                onClick: function (e) { e.stopPropagation(); cleanupDevices(); },
                 disabled: cleaning,
                 style: {
                   marginLeft: "auto", padding: "2px 8px", borderRadius: 6,
@@ -453,17 +494,23 @@ window.__ModuleLoader__.load({
                 }
               }, t("清理 " + dupCount + " 条重复", "clean " + dupCount + " dup"))
             : null));
-        children.push(React.createElement("div", { key: "d-list" }, deviceNodes));
+        body.push(React.createElement("div", { key: "d-list" }, deviceNodes));
       }
 
       if (peers.length) {
-        children.push(React.createElement("div", { key: "p-div", style: divider }));
-        children.push(React.createElement("div", { key: "p-title", style: sectionTitle },
-          t("其它 DSH 节点", "Other DSH nodes")));
-        children.push(React.createElement("div", { key: "p-list" }, peerNodes));
+        if (body.length) body.push(React.createElement("div", { key: "p-div", style: divider }));
+        body.push(React.createElement("div", { key: "p-title", style: sectionTitle }, t("其它 DSH 节点", "Other DSH nodes")));
+        body.push(React.createElement("div", { key: "p-list" }, peerNodes));
       }
 
-      return React.createElement("div", { style: rootStyle }, children);
+      children.push(React.createElement("div", {
+        key: "body",
+        style: { padding: "4px 14px 12px", border: "1px solid rgba(0,0,0,.08)", borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }
+      }, body));
+
+      children.push(footnote);
+
+      return React.createElement("div", { style: { display: "flex", flexDirection: "column", width: "100%" } }, children);
     }
     // 用户仍然需要能增删节点（否则连不上就改不了，等于锁死）。
     function PeersCard(props) {
@@ -478,6 +525,9 @@ window.__ModuleLoader__.load({
       var busy = busyState[0], setBusy = busyState[1];
       var errState = React.useState(null);
       var actionError = errState[0], setActionError = errState[1];
+      // 默认收起：多数用户只有一个 DSH，这块对他没用，不该占主页位置。
+      var openState = React.useState(false);
+      var open = openState[0], setOpen = openState[1];
 
       var load = function () {
         if (!props.rpcCall) { setState({ loading: false, peers: [], error: null }); return; }
@@ -545,14 +595,32 @@ window.__ModuleLoader__.load({
           }, "×"));
       });
 
+      var header = React.createElement("div", {
+        onClick: function () { setOpen(!open); },
+        style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }
+      },
+        React.createElement("span", { style: { fontWeight: 600, fontSize: 13 } },
+          t("其它 DSH 节点", "Other DSH nodes")),
+        React.createElement("span", { style: { fontSize: 12, opacity: .55, flex: "1 1 auto" } },
+          state.peers.length ? state.peers.length + "" : t("未添加", "none")),
+        React.createElement("span", { style: { fontSize: 11, opacity: .45 } }, open ? "▾" : "▸"));
+
+      if (!open) {
+        return React.createElement("div", {
+          style: {
+            display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
+            padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+          }
+        }, header);
+      }
+
       return React.createElement("div", {
         style: {
           display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
           padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
         }
       },
-        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } },
-          t("其它 DSH 节点", "Other DSH nodes")),
+        header,
         React.createElement("div", { style: { fontSize: 11, opacity: .6, marginBottom: 8, lineHeight: 1.5 } },
           t("你自己另外的 DSH：填它的地址即可，插件不预置任何节点。", "Your other DSH instances: enter an address. No nodes are preinstalled.")),
 
@@ -582,29 +650,17 @@ window.__ModuleLoader__.load({
           ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, actionError)
           : null);
     }
-    function AppDownloadCard() {
-      return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
-        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" } },
-          React.createElement("div", {
-            style: { width: 116, height: 116, flex: "0 0 116px", background: "#fff", borderRadius: 8, padding: 6, border: "1px solid rgba(0,0,0,.06)", boxSizing: "border-box" },
-            dangerouslySetInnerHTML: { __html: QR_SVG }
-          }),
-          React.createElement("div", { style: { flex: "1 1 240px", minWidth: 0 } },
-            React.createElement("div", { style: { fontWeight: 600, fontSize: 15, marginBottom: 4 } }, makeT(currentLang())("在 iPhone 上使用 DSH", "Use DSH on iPhone")),
-            React.createElement("div", { style: { fontSize: 12, opacity: 0.68, lineHeight: 1.55, marginBottom: 10 } },
-              makeT(currentLang())("扫码从 App Store 安装 DSH Pocket iOS；装好后用上方二维码连接。", "Scan to install DSH Pocket iOS from the App Store, then connect with the QR above.")),
-            React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-              React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: chipPrimary }, makeT(currentLang())("在 App Store 下载", "Download on the App Store")),
-              React.createElement("a", { href: DOC_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, makeT(currentLang())("使用说明", "Guide")),
-              React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: chipStyle }, makeT(currentLang())("GitHub 仓库", "GitHub repo"))))));
-    }
+
+
 
     function MobileAccessPanel(props) {
       return React.createElement("div", { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
+        // 顺序按「用户来这儿要做什么」的概率排：
+        //   状态一眼可见（一行）→ 选连接方式（决定地址）→ 扫码连接 → 装 App（一次）→ 多机配置（小众）
+        // 之前状态占了大半屏、把扫码挤到最下面，而这个页面最常用的动作正是扫码和看状态。
         React.createElement(OverviewCard, { rpcCall: props.rpcCall }),
-        React.createElement(PeersCard, { rpcCall: props.rpcCall }),
-        React.createElement(AppDownloadCard),
-        React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }));
+        React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }),
+        React.createElement(PeersCard, { rpcCall: props.rpcCall }));
     }
 
     // 每个注册各自兜底。
