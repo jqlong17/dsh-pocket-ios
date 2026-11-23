@@ -21,10 +21,26 @@ extension ConnectionModel {
         SavedEndpoint.Kind(DSHEndpointPolicy.kind(of: address))
     }
 
+    /// 读主机列表；没有就以旧地址列表迁移一次。
     func loadSavedEndpoints() {
-        guard let data = UserDefaults.standard.data(forKey: Self.savedEndpointsKey),
-              let list = try? JSONDecoder().decode([SavedEndpoint].self, from: data) else { return }
-        savedEndpoints = Self.dedupEndpoints(list)
+        if let data = UserDefaults.standard.data(forKey: Self.hostsKey),
+           let list = try? JSONDecoder().decode([DSHHost].self, from: data),
+           !list.isEmpty {
+            hosts = list
+        } else if let data = UserDefaults.standard.data(forKey: Self.savedEndpointsKey),
+                  let list = try? JSONDecoder().decode([SavedEndpoint].self, from: data),
+                  !list.isEmpty {
+            // 迁移：有机器名的按机器名归并，没有的各成一台。
+            // 旧键不删——迁移结果不对时还能回退重跑。
+            hosts = DSHHost.migrate(from: Self.dedupEndpoints(list))
+            persistHosts()
+            recordDiagnostic("迁移为 \(hosts.count) 台主机（原 \(list.count) 条地址）")
+        }
+        if currentHostId == nil {
+            currentHostId = hosts.first { host in
+                host.endpoints.contains { $0.address == connection.serverAddress }
+            }?.id ?? hosts.first?.id
+        }
         seedServerEndpointIfNeeded()
     }
 
@@ -42,11 +58,7 @@ extension ConnectionModel {
             existingAddresses: existing,
             developmentAddress: address
         ) else { return }
-        savedEndpoints.append(SavedEndpoint(address: address, kind: .custom, lastUsedAt: Date().timeIntervalSince1970, label: "服务器"))
-        savedEndpoints = Self.dedupEndpoints(savedEndpoints)
-        if let data = try? JSONEncoder().encode(savedEndpoints) {
-            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
-        }
+        recordEndpoint(address)
 #endif
     }
 
@@ -60,23 +72,99 @@ extension ConnectionModel {
         }
     }
 
-    /// 连接成功后记录地址；同一地址只保留一条（供连接页手动选择）。
+    /// 连接成功后记录这条地址属于哪台主机。
+    ///
+    /// 归属顺序（先确定、后猜测）：
+    /// 1. 已有主机的某个地址就是它 → 更新使用时间；
+    /// 2. 插件报过机器名，且已有主机是同名机器 → 把这条地址挂进那台；
+    /// 3. 都不匹配 → 新建一台主机，默认名 DSH n。
     func recordEndpoint(_ address: String) {
         guard let url = try? Self.serverURL(from: address) else { return }
         // 存的是去参数后的地址：配对 token 只用于当次登录，不写进地址列表。
         let normalized = DSHURL.baseAddress(url)
-        let existingLabel = savedEndpoints.first(where: { $0.address == normalized })?.label
-        var list = savedEndpoints.filter { $0.address != normalized }
-        list.append(SavedEndpoint(address: normalized,
-                                  kind: Self.endpointKind(of: normalized),
-                                  lastUsedAt: Date().timeIntervalSince1970,
-                                  label: existingLabel))
-        savedEndpoints = Self.dedupEndpoints(list)
-        if let data = try? JSONEncoder().encode(savedEndpoints) {
-            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        let now = Date().timeIntervalSince1970
+        let machine = currentMachineName
+
+        if let hi = hosts.firstIndex(where: { $0.endpoints.contains { $0.address == normalized } }) {
+            if let ei = hosts[hi].endpoints.firstIndex(where: { $0.address == normalized }) {
+                hosts[hi].endpoints[ei].lastUsedAt = now
+            }
+            hosts[hi].lastUsedAt = now
+            if let machine, !machine.isEmpty { hosts[hi].machine = machine }
+            currentHostId = hosts[hi].id
+            persistHosts()
+            return
         }
+
+        if let machine, !machine.isEmpty,
+           let hi = hosts.firstIndex(where: { $0.machine == machine }) {
+            hosts[hi].endpoints.append(SavedEndpoint(address: normalized,
+                                                    kind: Self.endpointKind(of: normalized),
+                                                    lastUsedAt: now))
+            hosts[hi].lastUsedAt = now
+            currentHostId = hosts[hi].id
+            persistHosts()
+            recordDiagnostic("地址归并到已有主机：\(machine)")
+            return
+        }
+
+        let host = DSHHost(id: UUID().uuidString,
+                           name: Self.nextHostName(hosts),
+                           endpoints: [SavedEndpoint(address: normalized,
+                                                     kind: Self.endpointKind(of: normalized),
+                                                     lastUsedAt: now)],
+                           lastUsedAt: now,
+                           machine: machine)
+        hosts.append(host)
+        currentHostId = host.id
+        persistHosts()
     }
 
+    /// 生成主机默认名：DSH 1、DSH 2……（避开已占用的名字）。
+    static func nextHostName(_ hosts: [DSHHost]) -> String {
+        let used = Set(hosts.map(\.name))
+        var n = 1
+        while used.contains("DSH \(n)") { n += 1 }
+        return "DSH \(n)"
+    }
+
+    /// 取当前这台 DSH 的机器名（插件 tailscale.status 里的 machineName）。
+    ///
+    /// 为什么要这一步：设置里的连接列表只是一串地址，而同一台机器常有多个地址
+    /// （局域网 + Tailscale）。没有机器名就只能平铺，用户看不出「这两条是同一台」。
+    /// 取不到就保持 nil——那种情况下界面按地址各自成组，不会错，只是不合并。
+    @MainActor
+    func refreshMachineName() async {
+        guard let base = try? Self.serverURL(from: connection.serverAddress) else { return }
+        var request = URLRequest(url: base.appending(path: "dsh-pocket-ios/tailscale.status"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpShouldHandleCookies = true
+        request.timeoutInterval = 8
+        let envelope: [String: Any] = [
+            "type": "client-request",
+            "rpcId": UUID().uuidString,
+            "method": "tailscale.status",
+            "payload": ["args": [:] as [String: Any]],
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: envelope) else { return }
+        request.httpBody = body
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let result = object["result"] as? [String: Any],
+              let value = result["value"] as? [String: Any],
+              let name = value["machineName"] as? String,
+              !name.isEmpty else { return }
+        currentMachineName = name
+        // 回写一遍：把机器名补到刚存下的那条地址上。
+        recordEndpoint(connection.serverAddress)
+    }
+
+    /// 给还没有名字的旧地址补上默认名（DSH 1、DSH 2…）。
+    ///
+    /// 为什么必须补：分组是按名字来的，没有名字时会退回「局域网 / 公网」这种类型名，
+    /// 于是**两条不同机器的局域网地址会被错并成一组**。补上唯一名字才不会并错。
+    /// 只在用户没改过名的地址上动手，改过的一律不碰。
     /// 用 session/list 的最新 running 校验一次（只在没有实时 turn 事件时生效）。
     @MainActor
     func refreshRunningState(for sessionId: String) async {
@@ -139,9 +227,14 @@ extension ConnectionModel {
     /// 删除一条已保存的连接（只删记录，不影响当前正在使用的地址）。
     @MainActor
     func removeEndpoint(_ address: String) {
-        savedEndpoints.removeAll { $0.address == address }
-        if let data = try? JSONEncoder().encode(savedEndpoints) {
-            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        if let hi = hosts.firstIndex(where: { $0.endpoints.contains { $0.address == address } }) {
+            hosts[hi].endpoints.removeAll { $0.address == address }
+            // 一条地址都不剩的主机就不该留在列表里。
+            if hosts[hi].endpoints.isEmpty {
+                if currentHostId == hosts[hi].id { currentHostId = nil }
+                hosts.remove(at: hi)
+            }
+            persistHosts()
         }
         // 删掉的正是当前这台电脑：把 Keychain 里的地址与登录 cookie 一起清掉，
         // 否则下次启动又会凭旧凭证自动连回来——用户会以为「删了还在」。
@@ -153,13 +246,60 @@ extension ConnectionModel {
         }
     }
 
+    /// 改的是**主机名**，不是地址标签。
+    ///
+    /// 语义修正：以前这里改 `endpoint.label`，导致「改名」实际只改了某条地址，
+    /// 同一台机器的另一条地址还是旧名字，于是分组怎么都合不上。
     func renameEndpoint(_ address: String, label: String?) {
-        guard let index = savedEndpoints.firstIndex(where: { $0.address == address }) else { return }
+        guard let hi = hosts.firstIndex(where: { $0.endpoints.contains { $0.address == address } }) else { return }
         let trimmed = label?.trimmingCharacters(in: .whitespacesAndNewlines)
-        savedEndpoints[index].label = (trimmed?.isEmpty == false) ? trimmed : nil
-        if let data = try? JSONEncoder().encode(savedEndpoints) {
-            UserDefaults.standard.set(data, forKey: Self.savedEndpointsKey)
+        if let trimmed, !trimmed.isEmpty {
+            hosts[hi].name = trimmed
+            persistHosts()
         }
+    }
+
+    /// 改主机名（设置页的铅笔走这里）。
+    @MainActor
+    func renameHost(id: String, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = hosts.firstIndex(where: { $0.id == id }) else { return }
+        hosts[index].name = trimmed
+        persistHosts()
+    }
+
+    /// 删掉整台主机（连同它的所有地址）。
+    @MainActor
+    func removeHost(id: String) {
+        guard let host = hosts.first(where: { $0.id == id }) else { return }
+        for endpoint in host.endpoints {
+            if endpoint.address == connection.serverAddress {
+                ConnectionVault.clear(address: endpoint.address)
+                UserDefaults.standard.removeObject(forKey: Self.savedServerAddressKey)
+            }
+        }
+        hosts.removeAll { $0.id == id }
+        if currentHostId == id { currentHostId = hosts.first?.id }
+        persistHosts()
+    }
+
+    /// 按主机切换：在它的地址里挑最优的一条（局域网优先），逐个试，第一个成功即完成。
+    @MainActor
+    func switchHost(to hostId: String) async -> Bool {
+        guard let host = hosts.first(where: { $0.id == hostId }) else { return false }
+        if host.id == currentHostId, connection.isConnected { return true }
+        let ordered = host.endpoints.sorted { a, b in
+            if (a.kind == .lan) != (b.kind == .lan) { return a.kind == .lan }
+            return a.lastUsedAt > b.lastUsedAt
+        }
+        for endpoint in ordered {
+            if await switchConnection(to: endpoint.address) {
+                currentHostId = hostId
+                persistHosts()
+                return true
+            }
+        }
+        return false
     }
 
     /// 手动切换到某个已保存地址（失败时回滚，保持原连接）。
@@ -242,13 +382,69 @@ extension ConnectionModel {
     ///
     /// 只排除**当前这条**（刚试过并失败），其余仍按「局域网优先 + 延迟最低」挑，
     /// 与手动选路的规则保持一致，避免出现两套不同的偏好。
+    /// 切换到另一台机器/另一条地址，**先验证再切**。
+    ///
+    /// 为什么不直接改地址再 `connect()`：`connect()` 会重置当前会话状态。
+    /// 一旦目标不可用（云服务器关机、换了个网络、这台没配对过），
+    /// 用户就「原来的连接没了、新的也连不上」，只能重新扫码——
+    /// 这正是「切过去失败就卡死在连接页」的由来。
+    ///
+    /// 所以先用**新地址**独立拉一次会话列表（一次请求同时验证：网络可达、
+    /// 登录态有效、DSH 在跑），全部通过才动当前连接。
+    /// cookie 由 URLSession 按 host 自动匹配（见 ConnectionVault），不需要也不该
+    /// 在这里手动搬凭证。
+    @MainActor
+    func switchConnection(to address: String) async -> Bool {
+        let target = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty, target != connection.serverAddress else { return true }
+        guard let url = try? Self.serverURL(from: target) else {
+            recordDiagnostic("切换失败：地址无法解析 \(DSHURL.redactedAddress(target))")
+            return false
+        }
+
+        // ① 独立验证，不碰当前连接。
+        //
+        // 顺序很重要：目标机器的 cookie 多半已经过期（DSH 重启过、或很久没连），
+        // 直接探针会 401 → 被判「不可用」。所以先恢复 Keychain 里的 cookie，
+        // 401 时再用**目标地址**的设备凭证换一次新票，然后重试。
+        // 之前漏了这两步，表现就是「切换永远失败」。
+        ConnectionVault.restoreAuthCookies(to: url, address: target)
+        if !(await probeSessions(at: url)) {
+            guard await tryRefreshAuth(for: target), await probeSessions(at: url) else {
+                recordDiagnostic("切换目标不可用，保持当前连接：\(DSHURL.redactedAddress(target))")
+                return false
+            }
+        }
+
+        // ② 验证通过，才切
+        recordDiagnostic("切换连接：\(DSHURL.redactedAddress(connection.serverAddress)) → \(DSHURL.redactedAddress(target))")
+        disconnect()
+        connection.serverAddress = target
+        connection.errorMessage = nil
+        await connect()
+        return connection.isConnected
+    }
+
+    /// 用指定地址探一次会话列表：能拉到就说明网络、登录态、DSH 三者都正常。
+    @MainActor
+    private func probeSessions(at url: URL) async -> Bool {
+        do {
+            _ = try await DSHClient(baseURL: url).sessions()
+            return true
+        } catch {
+            recordDiagnostic("探针失败 \(DSHURL.redactedAddress(url.absoluteString))：\(ConnectFailureMessage.diagnosticText(error))")
+            return false
+        }
+    }
+
     @MainActor
     private func restoreFallbackRoute() async -> Bool {
-        let addresses = savedEndpoints.map(\.address)
+        // 只在当前主机的地址里挑：跨主机跳转在主机模型下是错的
+        let addresses = currentHostEndpoints.map(\.address)
         guard addresses.count > 1 else { return false }
         await probeRunner.probeRound(addresses: addresses)
 
-        let candidates = savedEndpoints.compactMap { endpoint -> RouteCandidate? in
+        let candidates = currentHostEndpoints.compactMap { endpoint -> RouteCandidate? in
             guard endpoint.address != connection.serverAddress else { return nil }
             let kind = DSHEndpointKind(rawValue: Self.endpointKind(of: endpoint.address).rawValue) ?? .custom
             switch probeRunner.results[endpoint.address] {

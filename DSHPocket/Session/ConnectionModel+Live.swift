@@ -56,8 +56,18 @@ extension ConnectionModel {
     /// 用长期设备凭证向插件换新的 `dsh-auth` cookie（跟随 302 即种上）。
     @MainActor
     func tryRefreshAuth() async -> Bool {
-        guard let token = ConnectionVault.loadDeviceToken(for: connection.serverAddress),
-              let base = try? Self.serverURL(from: connection.serverAddress) else { return false }
+        await tryRefreshAuth(for: connection.serverAddress)
+    }
+
+    /// 用指定地址的设备凭证换新票（不依赖当前连接）。
+    ///
+    /// 为什么需要参数：切换连接时目标是「另一台机器」，它的 cookie 早就过期了，
+    /// 而旧的 `tryRefreshAuth()` 只会刷新 `connection.serverAddress`——那正是我们
+    /// 还没切过去的那台。结果就是「探针 401 → 判定目标不可用」，永远换不过去。
+    @MainActor
+    func tryRefreshAuth(for address: String) async -> Bool {
+        guard let token = ConnectionVault.loadDeviceToken(for: address),
+              let base = try? Self.serverURL(from: address) else { return false }
         // 先删掉已失效的 dsh-auth cookie：带着旧凭证去换票，DSH 会当成「续期一个失效会话」，
         // 结果立刻又 401（实测：换票后 2 秒再次失效）。
         purgeAuthCookies(for: base)
@@ -75,17 +85,74 @@ extension ConnectionModel {
             recordDiagnostic("设备凭证换票失败：请求未成功")
             return false
         }
+        // 换票响应顺带带回机器名：客户端靠它把「同一台机器的多条地址」归成一组。
+        // 这条通道本来就要走（换票），所以不额外增加请求。
+        if let machine = http.value(forHTTPHeaderField: "x-dsh-machine"), !machine.isEmpty {
+            learnMachine(machine, for: address)
+        }
         // 必须是新换到的 cookie：请求前已清空旧 cookie，这里能查到就是新的。
         let fresh = HTTPCookieStorage.shared.cookies(for: base)?
             .contains { $0.name.hasPrefix("dsh-auth") } ?? false
         if fresh {
-            ConnectionVault.saveAuthCookies(from: base, address: connection.serverAddress)
+            ConnectionVault.saveAuthCookies(from: base, address: address)
             return true
         }
         // 没拿到 cookie：把插件返回的 ok:false 说明记下来，便于排查。
         let snippet = String(data: data.prefix(120), encoding: .utf8) ?? ""
         recordDiagnostic("设备凭证换票失败：未拿到新 cookie（\(snippet)）")
         return false
+    }
+
+    /// 记住某个地址属于哪台机器，并在必要时**合并主机**。
+    ///
+    /// 主机模型下 machine 的用途变了：不再是「分组用的标签」，
+    /// 而是「这两台主机其实是同一台机器」的判据——
+    /// 比如先扫了局域网地址、后扫了 Tailscale 地址，两者 hostname 相同就该并成一台。
+    @MainActor
+    func learnMachine(_ machine: String, for address: String) {
+        if let url = try? Self.serverURL(from: address),
+           let current = try? Self.serverURL(from: connection.serverAddress),
+           DSHURL.baseAddress(url) == DSHURL.baseAddress(current) {
+            currentMachineName = machine
+        }
+        guard let index = hosts.firstIndex(where: { $0.endpoints.contains { $0.address == address } }) else { return }
+        if hosts[index].machine != machine {
+            hosts[index].machine = machine
+            persistHosts()
+            recordDiagnostic("学到机器名：\(machine) → \(DSHURL.redactedAddress(address))")
+        }
+        mergeHosts(sharingMachine: machine)
+    }
+
+    /// 把 machine 相同的多台主机并成一台：保留最近用的那台的名字，地址合并去重。
+    @MainActor
+    func mergeHosts(sharingMachine machine: String) {
+        let group = hosts.filter { $0.machine == machine }
+        guard group.count > 1 else { return }
+        guard var keep = group.max(by: { $0.lastUsedAt < $1.lastUsedAt }) else { return }
+        var seen = Set<String>()
+        keep.endpoints = group.flatMap(\.endpoints).filter { seen.insert($0.address).inserted }
+        keep.lastUsedAt = group.map(\.lastUsedAt).max() ?? keep.lastUsedAt
+        let removed = Set(group.map(\.id)).subtracting([keep.id])
+        if let cid = currentHostId, removed.contains(cid) { currentHostId = keep.id }
+        hosts = hosts.filter { !removed.contains($0.id) }
+        if let i = hosts.firstIndex(where: { $0.id == keep.id }) { hosts[i] = keep }
+        persistHosts()
+        recordDiagnostic("合并主机：\(machine)，现有 \(hosts.count) 台")
+    }
+
+    /// 给还没有机器名的旧地址补一次名字。
+    ///
+    /// 为什么需要：分组依赖机器名，而机器名是这次改动才引入的，用户已有的地址全是空的——
+    /// 那样它们会各自成一组，看起来比改动前还乱。这里在打开设置时静默补一次。
+    @MainActor
+    func backfillMachineNames() async {
+        let pending = savedEndpoints.filter { $0.machine == nil }
+        guard !pending.isEmpty else { return }
+        for endpoint in pending.prefix(6) {
+            // 只换票、不切连接；失败就跳过，下次再试。
+            _ = await tryRefreshAuth(for: endpoint.address)
+        }
     }
 
     /// 删掉 HTTPCookieStorage 里的认证 cookie（只删 dsh-auth 开头，不动设备凭证与其它 cookie）。

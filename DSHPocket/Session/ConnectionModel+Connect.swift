@@ -64,6 +64,39 @@ extension ConnectionModel {
         return true
     }
 
+    /// 扫码切换：扫描一台机器的配对码，试着连过去；失败就回滚到原来那台。
+    ///
+    /// 为什么不复用 `switchConnection(to:)`：那个只做「已有凭据的探测」，
+    /// 而扫到的是**新机器**，凭据要靠配对码现场换——那正是 `connect()` 的职责。
+    /// 所以这条路径是：先用扫描结果改地址与 pending token → connect → 失败回滚。
+    ///
+    /// 回滚很重要：以前换机器必须先「断开」，因为失败后没有退路；
+    /// 现在先记下原地址，连不上就切回去重连，用户不会卡在连不上的状态。
+    @MainActor
+    func switchConnection(scannedValue: String) async -> Bool {
+        let previous = connection.serverAddress
+        guard useScannedAddress(scannedValue) else { return false }
+        let target = connection.serverAddress
+        guard target != previous else {
+            // 扫到的就是当前这台：当作「重新认证」，直接连一次。
+            await connect()
+            return connection.isConnected
+        }
+
+        recordDiagnostic("扫码切换：\(DSHURL.redactedAddress(previous)) → \(DSHURL.redactedAddress(target))")
+        await connect()
+        if connection.isConnected { return true }
+
+        // 失败：回滚。pending token 属于目标机器，清掉，否则会拿去对原机器认证。
+        recordDiagnostic("扫码切换失败，回滚到 \(DSHURL.redactedAddress(previous))")
+        pendingPairToken = nil
+        pendingLoginToken = nil
+        connection.serverAddress = previous
+        connection.errorMessage = nil
+        await connect()
+        return false
+    }
+
     /// 用 Keychain 里保存的登录态恢复连接（不要求密码）。
     ///
     /// 顺序：先放回保存的 cookie 直接拉会话；失败再用长期设备凭证换新票重试。
@@ -348,12 +381,16 @@ extension ConnectionModel {
         connection.serverAddress = "https://studio.example.ts.net"
         UserDefaults.standard.set(connection.serverAddress, forKey: "dsh-pocket.store-shot-address")
         let now = Date().timeIntervalSince1970
-        savedEndpoints = [
-            SavedEndpoint(address: "https://studio.example.ts.net", kind: .publicNetwork,
-            lastUsedAt: now, label: en ? "Home" : "家"),
-            SavedEndpoint(address: "http://192.0.2.20:3091", kind: .lan,
-            lastUsedAt: now - 3600, label: en ? "Office" : "公司")
+        hosts = [
+            DSHHost(id: "demo-home", name: en ? "Home" : "家",
+                    endpoints: [SavedEndpoint(address: "https://studio.example.ts.net", kind: .publicNetwork, lastUsedAt: now)],
+                    lastUsedAt: now, machine: nil),
+            DSHHost(id: "demo-office", name: en ? "Office" : "公司",
+                    endpoints: [SavedEndpoint(address: "http://192.0.2.20:3091", kind: .lan, lastUsedAt: now - 3600)],
+                    lastUsedAt: now - 3600, machine: nil)
         ]
+        currentHostId = "demo-home"
+        persistHosts()
     }
 
     /// 连接成功后统一落盘。地址、登录 cookie、设备凭证三者缺一都会导致「重装后又要求扫码」，
@@ -388,11 +425,12 @@ extension ConnectionModel {
             recordDiagnostic("自动选路推迟：正在补发")
             return
         }
-        let addresses = savedEndpoints.map(\.address)
+        // 只在当前主机的地址里挑：跨主机跳转在主机模型下是错的
+        let addresses = currentHostEndpoints.map(\.address)
         guard addresses.count > 1 else { return }   // 只有一条路没有选择余地
 
         await probeRunner.probeRound(addresses: addresses)
-        let candidates = savedEndpoints.compactMap { endpoint -> RouteCandidate? in
+        let candidates = currentHostEndpoints.compactMap { endpoint -> RouteCandidate? in
             switch probeRunner.results[endpoint.address] {
             case .reachable(let value):
                 return RouteCandidate(

@@ -32,6 +32,7 @@
 		B0982BB365FBF4B26DCCC2F3 /* PocketStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3365B12F581DA08C741BF650 /* PocketStep.swift */; };
 		3BAFD678D5506EC897AF9863 /* PocketStepGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7C02A1D3C5E680F02A221 /* PocketStepGroup.swift */; };
 		84CFC9EF18201C55E2462E46 /* SavedEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7921B0E958B2FF36B58FC916 /* SavedEndpoint.swift */; };
+		A1B2C3D4E5F60718293A4B61 /* DSHHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B60 /* DSHHost.swift */; };
 		1DA80F6492D5C10D6A8DFE6D /* StreamOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E0F68355A45E21A7BD846A1 /* StreamOpen.swift */; };
 		6288280FC9388CFDB23E6396 /* TurnFailureNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03912C341CC7145AC58849A9 /* TurnFailureNotice.swift */; };
 		C09222E621DF54D8938C1DBB /* ConnectionModel+Connect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943528201F1F90E206912130 /* ConnectionModel+Connect.swift */; };
@@ -145,6 +146,7 @@
 		3365B12F581DA08C741BF650 /* PocketStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketStep.swift; sourceTree = "<group>"; };
 		A8B7C02A1D3C5E680F02A221 /* PocketStepGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketStepGroup.swift; sourceTree = "<group>"; };
 		7921B0E958B2FF36B58FC916 /* SavedEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedEndpoint.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B60 /* DSHHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHHost.swift; sourceTree = "<group>"; };
 		4E0F68355A45E21A7BD846A1 /* StreamOpen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamOpen.swift; sourceTree = "<group>"; };
 		03912C341CC7145AC58849A9 /* TurnFailureNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFailureNotice.swift; sourceTree = "<group>"; };
 		943528201F1F90E206912130 /* ConnectionModel+Connect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Connect.swift"; sourceTree = "<group>"; };
@@ -374,6 +376,7 @@
 				3365B12F581DA08C741BF650 /* PocketStep.swift */,
 				A8B7C02A1D3C5E680F02A221 /* PocketStepGroup.swift */,
 				7921B0E958B2FF36B58FC916 /* SavedEndpoint.swift */,
+				A1B2C3D4E5F60718293A4B60 /* DSHHost.swift */,
 				4E0F68355A45E21A7BD846A1 /* StreamOpen.swift */,
 				03912C341CC7145AC58849A9 /* TurnFailureNotice.swift */,
 			);
@@ -663,6 +666,7 @@
 				B0982BB365FBF4B26DCCC2F3 /* PocketStep.swift in Sources */,
 				3BAFD678D5506EC897AF9863 /* PocketStepGroup.swift in Sources */,
 				84CFC9EF18201C55E2462E46 /* SavedEndpoint.swift in Sources */,
+				A1B2C3D4E5F60718293A4B61 /* DSHHost.swift in Sources */,
 				1DA80F6492D5C10D6A8DFE6D /* StreamOpen.swift in Sources */,
 				6288280FC9388CFDB23E6396 /* TurnFailureNotice.swift in Sources */,
 				6483BC565C3B0062050B8008 /* AppSettingsSheet.swift in Sources */,

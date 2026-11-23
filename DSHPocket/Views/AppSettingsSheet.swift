@@ -32,6 +32,15 @@ struct AppSettingsSheet: View {
     @State private var reorderContext: ReorderContext?
     /// 连接健康探测：哪条地址现在能用、多快。
     @State private var probeRunner = EndpointProbeRunner()
+    /// 正在重命名的主机（nil 表示没有弹窗）。
+    @State private var renamingHostId: String?
+    @State private var renameHostText = ""
+    /// 正在切换的目标地址（nil 表示没在切）。
+    @State private var switchingTo: String?
+    /// 切换失败的说明。失败时**不关闭设置、不动当前连接**，只把原因摆出来。
+    @State private var switchError: String?
+    /// 扫码切换用。
+    @State private var showingScanner = false
 
     struct ReorderContext: Identifiable {
         let id = UUID()
@@ -48,174 +57,41 @@ struct AppSettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(L10n.t("语言")) {
-                    ForEach(AppLanguage.allCases) { language in
-                        Button {
-                            LanguageStore.shared.code = language
-                        } label: {
-                            HStack {
-                                Text(language.title())
-                                Spacer()
-                                if LanguageStore.shared.code == language {
-                                    Image(systemName: "checkmark").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
-                                }
-                            }
-                        }
-                        .foregroundStyle(.primary)
+                // 三块职责分开：主机（哪台机器）→ 地址（这台机器怎么连）→ 添加（新的）。
+                // 之前把「当前连接」和「主机列表」拆成两块，同一件事说了两遍。
+                Section {
+                    ForEach(model.hosts) { host in
+                        hostRow(host)
                     }
+                } header: {
+                    Text(L10n.t("主机"))
+                } footer: {
+                    Text(L10n.t("点一行即切换；左滑可重命名或删除整台。当前主机的多条地址会列在它下面。"))
                 }
-                Section(L10n.t("会话列表")) {
-                    Picker(L10n.t("显示方式"), selection: $sessionListModeRaw) {
-                        ForEach(SessionListMode.allCases) { mode in
-                            Text(mode.title()).tag(mode.rawValue)
-                        }
-                    }
-                }
-                Section(L10n.t("工作区")) {
+
+                Section {
                     Button {
-                        openReorder()
+                        // 埋点：区分「按钮没触发」和「扫码器弹了又秒退」。
+                        model.recordDiagnostic("settings: 点击扫码，即将弹出扫码器 showScanner=true")
+                        showingScanner = true
                     } label: {
-                        HStack {
-                            Text(L10n.t("调整工作区顺序"))
-                            Spacer()
+                        HStack(spacing: 10) {
+                            Image(systemName: "qrcode.viewfinder")
+                                .font(.body)
+                                .foregroundStyle(.tint)
+                                .frame(width: 28)
+                            Text(L10n.t("扫码添加另一台"))
+                            Spacer(minLength: 6)
                             Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
+                                .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
                     }
-                    .foregroundStyle(.primary)
-                }
-                Section(L10n.t("完成提醒")) {
-                    Toggle(isOn: Binding(
-                        get: { model.completionAlertsEnabled },
-                        set: { _ in model.toggleCompletionAlerts() }
-                    )) {
-                        Text(L10n.t("完成提醒"))
-                    }
-                }
-                Section {
-                    Picker(selection: Binding(
-                        get: { model.busyEnterPreference },
-                        set: { mode in
-                            Task { await model.setBusyEnterPreference(mode) }
-                        }
-                    )) {
-                        Text(L10n.t("插话发送")).tag(PromptMode.steer)
-                        Text(L10n.t("排队发送")).tag(PromptMode.queue)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("繁忙时的发送行为"))
-                            Text(L10n.t("智能体运行时按下发送键的投递方式"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                    .buttonStyle(.plain)
                 } header: {
-                    Text(L10n.t("发送"))
+                    Text(L10n.t("添加"))
                 } footer: {
-                    Text(L10n.t("与电脑端共用同一份设置。空闲时总是新开一轮，此设置只在生成中生效。"))
-                }
-
-                Section(L10n.t("调试")) {
-                    Button {
-                        UIPasteboard.general.string = model.diagnosticReport()
-                        diagnosticsCopied = true
-                        Task {
-                            try? await Task.sleep(for: .seconds(2))
-                            diagnosticsCopied = false
-                        }
-                    } label: {
-                        Label(diagnosticsCopied ? L10n.t("已复制诊断信息") : L10n.t("复制诊断信息"),
-                              systemImage: diagnosticsCopied ? "checkmark.circle.fill" : "stethoscope")
-                    }
-                    Button {
-                        Task { await model.diagnoseBusyEnterWrite() }
-                    } label: {
-                        Label(L10n.t("诊断发送方式写入"), systemImage: "stethoscope")
-                    }
-                    Toggle(isOn: Binding(
-                        get: { LayoutDebug.enabled },
-                        set: { LayoutDebug.enabled = $0 }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("布局调试模式"))
-                            Text(L10n.t("给关键组件画红框并标编号，方便沟通间距"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Toggle(isOn: Binding(
-                        get: { model.showToolProcess },
-                        set: { model.showToolProcess = $0 }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("显示工具过程"))
-                            Text(L10n.t("关闭时为精简模式：不显示过程、最近的回复完整排版、更早的纯文本；开启后显示每轮的工具调用并全部完整排版"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Toggle(isOn: Binding(
-                        get: { model.autoRouteEnabled },
-                        set: { enabled in
-                            model.autoRouteEnabled = enabled
-                            // 打开时立刻决策一次，不用等下次回前台。
-                            if enabled { Task { await model.autoRouteIfEnabled() } }
-                        }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("自动切换连接"))
-                            Text(L10n.t("局域网可用时优先用它（更快），不可用时切到最快的一条"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Toggle(isOn: Binding(
-                        get: { model.probeRunner.testMode },
-                        set: { model.probeRunner.testMode = $0 }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t("连接探测测试模式"))
-                            Text(L10n.t("每 10 秒探测一次（默认 60 秒），用于排查连接问题"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                // 一键切换：列出这台设备连过的地址，点一下直接连。
-                //
-                // 复用 ConnectionVault 按地址隔离的设备凭证，所以切回以前连过的
-                // 电脑通常不需要再输密码——「点一下就回去」才是历史连接的意义。
-                if !model.savedEndpoints.isEmpty {
-                    Section {
-                        ForEach(model.savedEndpoints) { endpoint in
-                            Button {
-                                model.connection.serverAddress = endpoint.address
-                                model.connection.errorMessage = nil
-                                Task { await model.connect() }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(endpoint.displayName)
-                                            .foregroundStyle(.primary)
-                                        Text(endpoint.address)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                    }
-                                    Spacer(minLength: 8)
-                                    Sparkline(series: model.probeLatency[endpoint.address])
-                                        .frame(width: 52, height: 14)
-                                    healthBadge(for: endpoint.address)
-                                    if endpoint.address == model.connection.serverAddress {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundStyle(.tint)
-                                    }
-                                }
-                            }
-                        }
-                    } header: {
-                        Text(L10n.t("切换连接"))
-                    } footer: {
-                        Text(L10n.t("点一下直接切换；连过的地址已记住凭证，不用再输密码。"))
-                    }
+                    Text(L10n.t("扫一台新机器不必先断开：先连上才切过去，连不上会保持现在的连接。"))
                 }
 
                 // 当前连接一览：方式 / 状态 / 地址。
@@ -251,6 +127,21 @@ struct AppSettingsSheet: View {
                             Text(stability.label)
                         }
                     }
+                    // 自动选路是这个页面的核心开关，跟着「当前连接」走，
+                    // 而不是埋在调试里——它直接决定走局域网还是切到别处。
+                    Toggle(isOn: Binding(
+                        get: { model.autoRouteEnabled },
+                        set: { enabled in
+                            model.autoRouteEnabled = enabled
+                            if enabled { Task { await model.autoRouteIfEnabled() } }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("自动切换连接"))
+                            Text(L10n.t("局域网可用时优先用它（更快），不可用时切到最快的一条"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
                     Text(L10n.t("当前连接"))
                 }
@@ -266,11 +157,131 @@ struct AppSettingsSheet: View {
                     Text(L10n.t("断开后需要重新扫码或输入访问密码。"))
                 }
 
+                Section(L10n.t("对话显示")) {
+                    Picker(L10n.t("显示方式"), selection: $sessionListModeRaw) {
+                        ForEach(SessionListMode.allCases) { mode in
+                            Text(mode.title()).tag(mode.rawValue)
+                        }
+                    }
+                    Toggle(isOn: Binding(
+                        get: { model.showToolProcess },
+                        set: { model.showToolProcess = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("显示工具过程"))
+                            Text(L10n.t("关闭时为精简模式：不显示过程、最近的回复完整排版、更早的纯文本；开启后显示每轮的工具调用并全部完整排版"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section(L10n.t("完成提醒")) {
+                    Toggle(isOn: Binding(
+                        get: { model.completionAlertsEnabled },
+                        set: { _ in model.toggleCompletionAlerts() }
+                    )) {
+                        Text(L10n.t("完成提醒"))
+                    }
+                }
+
+                Section {
+                    Picker(selection: Binding(
+                        get: { model.busyEnterPreference },
+                        set: { mode in
+                            Task { await model.setBusyEnterPreference(mode) }
+                        }
+                    )) {
+                        Text(L10n.t("插话发送")).tag(PromptMode.steer)
+                        Text(L10n.t("排队发送")).tag(PromptMode.queue)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("繁忙时的发送行为"))
+                            Text(L10n.t("智能体运行时按下发送键的投递方式"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text(L10n.t("发送"))
+                } footer: {
+                    Text(L10n.t("与电脑端共用同一份设置。空闲时总是新开一轮，此设置只在生成中生效。"))
+                }
+
+                Section(L10n.t("工作区")) {
+                    Button {
+                        openReorder()
+                    } label: {
+                        HStack {
+                            Text(L10n.t("调整工作区顺序"))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+
+                Section(L10n.t("调试")) {
+                    Button {
+                        UIPasteboard.general.string = model.diagnosticReport()
+                        diagnosticsCopied = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            diagnosticsCopied = false
+                        }
+                    } label: {
+                        Label(diagnosticsCopied ? L10n.t("已复制诊断信息") : L10n.t("复制诊断信息"),
+                              systemImage: diagnosticsCopied ? "checkmark.circle.fill" : "stethoscope")
+                    }
+                    Button {
+                        Task { await model.diagnoseBusyEnterWrite() }
+                    } label: {
+                        Label(L10n.t("诊断发送方式写入"), systemImage: "stethoscope")
+                    }
+                    Toggle(isOn: Binding(
+                        get: { LayoutDebug.enabled },
+                        set: { LayoutDebug.enabled = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("布局调试模式"))
+                            Text(L10n.t("给关键组件画红框并标编号，方便沟通间距"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Toggle(isOn: Binding(
+                        get: { model.probeRunner.testMode },
+                        set: { model.probeRunner.testMode = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t("连接探测测试模式"))
+                            Text(L10n.t("每 10 秒探测一次（默认 60 秒），用于排查连接问题"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section("DSH Pocket") {
                     HStack {
                         Text(L10n.t("版本"))
                         Spacer()
                         Text(versionText).foregroundStyle(.secondary)
+                    }
+                }
+
+                Section(L10n.t("语言")) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Button {
+                            LanguageStore.shared.code = language
+                        } label: {
+                            HStack {
+                                Text(language.title())
+                                Spacer()
+                                if LanguageStore.shared.code == language {
+                                    Image(systemName: "checkmark").foregroundStyle(Color(red: 0.08, green: 0.48, blue: 0.37))
+                                }
+                            }
+                        }
+                        .foregroundStyle(.primary)
                     }
                 }
             }
@@ -309,10 +320,187 @@ struct AppSettingsSheet: View {
                     onClose: { reorderContext = nil }
                 )
             }
+        // 用「在自身导航栈里 push」而不是再弹一层 sheet。
+        // 设置页本身就是一个 sheet，在它里面再 present sheet 会被系统合并/顶掉——
+        // 表现就是相机闪一下就消失、整个设置被关掉回到会话列表（实测）。
+        // 打开设置时补一次机器名：学到 hostname 后能把「同一台机器的两条地址」自动并成一台。
+        .alert(L10n.t("切换失败"), isPresented: Binding(
+            get: { switchError != nil },
+            set: { if !$0 { switchError = nil } }
+        )) {
+            Button(L10n.t("好"), role: .cancel) { switchError = nil }
+        } message: {
+            Text(switchError ?? "")
+        }
+        .alert(L10n.t("重命名主机"), isPresented: Binding(
+            get: { renamingHostId != nil },
+            set: { if !$0 { renamingHostId = nil } }
+        )) {
+            TextField(L10n.t("例如「Mac」「阿里云」"), text: $renameHostText)
+            Button(L10n.t("保存")) {
+                if let id = renamingHostId {
+                    model.renameHost(id: id, name: renameHostText)
+                }
+                renamingHostId = nil
+            }
+            Button(L10n.t("取消"), role: .cancel) { renamingHostId = nil }
+        }
+        .task { await model.backfillMachineNames() }
+        .navigationDestination(isPresented: $showingScanner) {
+            QRScannerView { value in
+                model.recordDiagnostic("settings: 扫码器回调 len=\(value.count) host=\(URL(string: value)?.host ?? "-")")
+                showingScanner = false
+                Task {
+                    let ok = await model.switchConnection(scannedValue: value)
+                    if ok {
+                        dismiss()
+                    } else {
+                        switchError = L10n.t("扫码切换失败，已保持原连接不变。确认那台机器的 DSH 在运行、二维码没过期。")
+                    }
+                }
+            }
+            .navigationTitle(L10n.t("扫描二维码"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L10n.t("取消")) { showingScanner = false }
+                }
+            }
+        }
         }
         .id(languageRevision)
         .onReceive(NotificationCenter.default.publisher(for: .appLanguageChanged)) { _ in
             languageRevision &+= 1
+        }
+    }
+
+    /// 设置页里的「一条已保存连接」。
+    ///
+    /// 这里刻意不用 Button 包整行：Form 底层是 List，行会先吃掉一次点击
+    /// （新建会话的工作区列表踩过同一个坑）。用 onTapGesture，铅笔单独一层。
+    /// 当前主机（顶部那块用）。
+    private var currentHost: DSHHost? {
+        model.hosts.first { $0.id == model.currentHostId }
+    }
+
+
+    /// 当前主机下的一条地址：类型 + 地址；正在用的标「使用中」，其余可点或删。
+    ///
+    /// 不用左滑：这些是嵌套在主机行里的子行，滑动容易和父行冲突，
+    /// 所以删除给一个明确的小按钮。
+    @ViewBuilder
+    private func addressSubRow(_ endpoint: SavedEndpoint, isActive: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text(endpoint.kind.label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            Text(endpoint.address)
+                .font(.caption.monospaced())
+                .foregroundStyle(isActive ? .primary : .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            if isActive {
+                Text(L10n.t("使用中"))
+                    .font(.caption2)
+                    .foregroundStyle(Color.accentColor)
+            } else {
+                Button {
+                    Task { await model.switchToEndpoint(endpoint) }
+                } label: {
+                    Text(L10n.t("用这条")).font(.caption2)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(role: .destructive) {
+                model.removeEndpoint(endpoint.address)
+            } label: {
+                Label(L10n.t("删除这条地址"), systemImage: "trash")
+            }
+        }
+    }
+
+    /// 主机一行：名字 + 地址数 + 当前用的那条地址。
+    @ViewBuilder
+    private func hostRow(_ host: DSHHost) -> some View {
+        let isCurrent = host.id == model.currentHostId
+        // 外层 VStack：主行(可点/可滑) + 当前主机的地址子行。
+        // 之前把 if 直接插在 HStack 的修饰符链中间，导致 contentShape 无处可挂。
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
+                    .font(.body)
+                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary.opacity(0.4))
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(host.name).font(.body.weight(.medium))
+                        if host.endpoints.count > 1 {
+                            Text(L10n.tf("%d 条地址", host.endpoints.count))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let endpoint = host.preferredEndpoint {
+                        // 地址 + 连接方式：用户问「现在走的是哪种」时，答案就在这一行。
+                        Text("\(endpoint.address) · \(endpoint.kind.label)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 6)
+                if switchingTo == host.id {
+                    ProgressView().controlSize(.small)
+                } else if isCurrent {
+                    Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
+                        .font(.caption)
+                        .foregroundStyle(model.connection.isConnected ? Color.accentColor : Color.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard host.id != model.currentHostId, switchingTo == nil else { return }
+                switchingTo = host.id
+                Task {
+                    let ok = await model.switchHost(to: host.id)
+                    switchingTo = nil
+                    if !ok {
+                        switchError = L10n.t("连不上 ") + host.name
+                            + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
+                    }
+                }
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    model.removeHost(id: host.id)
+                } label: {
+                    Label(L10n.t("删除"), systemImage: "trash")
+                }
+                Button {
+                    renamingHostId = host.id
+                    renameHostText = host.name
+                } label: {
+                    Label(L10n.t("重命名"), systemImage: "pencil")
+                }
+                .tint(.blue)
+            }
+
+            // 当前主机的地址铺在它下面：只有「现在这台怎么连」需要看到多条，
+            // 别的机器不展开，否则列表立刻变长一倍。
+            if isCurrent, host.endpoints.count > 1 {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(host.endpoints) { endpoint in
+                        addressSubRow(endpoint, isActive: endpoint.address == model.connection.serverAddress)
+                            .padding(.leading, 38)
+                    }
+                }
+            }
         }
     }
 
@@ -499,4 +687,6 @@ struct Sparkline: View {
         .frame(height: height)
         .accessibilityLabel(L10n.t("最近时延曲线"))
     }
+
+
 }

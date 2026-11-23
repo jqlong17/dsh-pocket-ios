@@ -9,12 +9,14 @@
  */
 import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
+import { listPeerSessions, sayToPeer } from './peer-client.js'
+import { registerRemoteTools } from './remote-tools.js'
 import net from 'node:net'
 import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } from './connection-tags.js'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { randomInt } from 'node:crypto'
-import { homedir } from 'node:os'
+import { homedir, hostname as osHostname } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
@@ -28,7 +30,10 @@ import { findEasytier, readWireGuardPortal, normalizeWireGuardConfig, clientAddr
 const execFileP = promisify(execFile)
 
 export const name = 'dsh-pocket-ios'
-export const inject = ['connection', 'webServer']
+// tools：注册跨机器工具要用 ctx.tools。
+// 缺了它会在 apply 里抛 "cannot get property "tools" without inject"——
+// 而且这个错会在注册工具那一步才炸，日志里才看得到，容易误判成插件没加载。
+export const inject = ['connection', 'webServer', 'tools']
 
 const CHANNEL = '/dsh-pocket-ios'
 
@@ -1058,6 +1063,9 @@ async function connectionOverview() {
       error: status.error ?? null,
       pinSet: Boolean(status.pinSet),
       port: PROXY_PORT,
+      // 本机机器名：面板要能回答「你现在扫的是哪台」。
+      // 手机端「主机」默认名和它对得上时，用户一眼就知道谁是谁。
+      machine: osHostname(),
     },
     devices,
     peers: probed,
@@ -1265,7 +1273,20 @@ export async function tailscaleStatus() {
   // 产品安全：二维码只包含连接地址，绝不把访问密码写进二维码/图片。
   const qrUrl = httpsUrl
   const qr = qrUrl ? await QRCode.toDataURL(qrUrl, { margin: 1, width: 360 }) : null
-  return { available: Boolean(dnsName) || Boolean(httpsUrl), dnsName, httpsUrl, pin, pinSet: Boolean(pin), qrUrl, qr, serveRaw, source }
+  return {
+    available: Boolean(dnsName) || Boolean(httpsUrl),
+    dnsName,
+    httpsUrl,
+    pin,
+    pinSet: Boolean(pin),
+    qrUrl,
+    qr,
+    serveRaw,
+    source,
+    // 机器身份：客户端靠它把「同一台机器的多个地址」归到一组。
+    // 用 hostname 而不是临时生成 id —— 它稳定、人能认出来，重启也不变。
+    machineName: osHostname(),
+  }
 }
 
 /** APNs device token 存储。和设备凭证放同一目录，都不入库。 */
@@ -1476,6 +1497,17 @@ function attachStableProxy(ctx, handler) {
 export function apply(ctx) {
   const webServer = ctx?.webServer
   const connection = ctx?.connection
+
+  // 工具不依赖 webServer：即使面板 RPC 没挂上（或宿主没提供 webServer），
+  // 跨机器发消息也该能用。所以放在下面的 return 之前。
+  // 异步注册并留下日志：工具是否真的挂上，只能从日志确认（模型看不到注册过程）。
+  // 异步注册并留下日志：工具是否真的挂上，只能从日志确认（模型看不到注册过程）。
+  // 之前漏了 import 导致 ReferenceError → 整个插件加载失败（两台机器同时挂），
+  // 所以这里必须保证 registerRemoteTools 在模块顶层被导入。
+  void registerRemoteTools(ctx, { readPeers, log: logLine }).catch((error) => {
+    ctx?.logger?.warn?.(`dsh-pocket-ios: 注册跨机器工具失败: ${error?.message ?? error}`)
+    void logLine(`注册跨机器工具抛出异常: ${error?.message ?? error}`)
+  })
   if (!webServer || typeof webServer.register !== 'function') {
     ctx?.logger?.warn?.('dsh-pocket-ios: webServer 不可用，Tailscale 卡片 RPC 未挂载')
     return
@@ -1820,7 +1852,14 @@ function guessProto(req, host) {
           }
           const proto = guessProto(req, host)
           const target = connection.authenticatedUrl(`${proto}://${host}/`)
-          res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+          // 顺带把机器名带回给客户端：同一台机器常有局域网 + Tailscale 两条地址，
+          // 客户端没有机器名就没法把「这两条是同一台」归到一组。客户端本来就要走这个
+          // 端点换票，带上它不额外增加一次往返。
+          res.writeHead(302, {
+            location: target,
+            'cache-control': 'no-store',
+            'x-dsh-machine': osHostname(),
+          })
           res.end()
           return
         }
@@ -1919,6 +1958,50 @@ function guessProto(req, host) {
             type: 'server-response', rpcId,
             result: { ok: true, value: { removed: removed.length, kept: Object.keys(devices).length } }
           })
+          return
+        }
+
+        // 跨机器：列出对方会话（供「@ 远程会话」选择器用）
+        if (endpoint === 'peer.sessions') {
+          const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
+          const id = String(args.id ?? args.address ?? '')
+          const list = await readPeers()
+          const peer = list.find((item) => item.id === id || item.address === id)
+          if (!peer) {
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'no-peer', message: '没有这个节点' } } })
+            return
+          }
+          try {
+            const sessions = await listPeerSessions(peer.address)
+            await logLine(`peer.sessions ${peer.id}: ${sessions.length}`)
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { sessions } } })
+          } catch (error) {
+            await logLine(`peer.sessions failed ${peer.id}: ${error?.message ?? error}`)
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'peer-failed', message: String(error?.message ?? error).slice(0, 300) } } })
+          }
+          return
+        }
+
+        // 跨机器：发一条消息并等回复
+        if (endpoint === 'peer.say') {
+          const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
+          const id = String(args.id ?? args.address ?? '')
+          const sessionId = String(args.sessionId ?? '')
+          const text = String(args.text ?? '')
+          const list = await readPeers()
+          const peer = list.find((item) => item.id === id || item.address === id)
+          if (!peer) {
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'no-peer', message: '没有这个节点' } } })
+            return
+          }
+          try {
+            const result = await sayToPeer(peer.address, { sessionId, text, timeoutMs: Number(args.timeoutMs ?? 120000) })
+            await logLine(`peer.say ${peer.id} -> ${result.reply ? 'ok' : 'timeout'} ${result.elapsedMs}ms`)
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: result } })
+          } catch (error) {
+            await logLine(`peer.say failed ${peer.id}: ${error?.message ?? error}`)
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'peer-failed', message: String(error?.message ?? error).slice(0, 300) } } })
+          }
           return
         }
 

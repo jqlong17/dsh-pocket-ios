@@ -20,11 +20,31 @@ import UserNotifications
 final class ConnectionModel {
     static let savedServerAddressKey = "dsh-pocket.server-address"
     static let savedEndpointsKey = "dsh-pocket.saved-endpoints"
+    /// 主机列表（新真源）。旧键保留，迁移失败时可回退。
+    static let hostsKey = "dsh-pocket.hosts"
     static let finishedAwaitingKey = "dsh-pocket.finished-awaiting"
     static let completionAlertKey = "dsh-pocket.completion-alert"
     static let runningSnapshotKey = "dsh-pocket.session-running"
-    /// 记住的地址列表（局域网 + 公网各一份），仅用于手动选择，不自动切换。
-    var savedEndpoints: [SavedEndpoint] = []
+    /// 主机列表：用户概念上的「那台机器」。
+    /// 一台主机可以有多个地址（家里局域网 / 公司局域网 / Tailscale），切换时自动挑。
+    var hosts: [DSHHost] = []
+    /// 当前连的是哪台主机。
+    var currentHostId: String?
+    /// 派生：所有主机的地址合集。
+    /// 保留这个名字是为了让连接/探针/自动选路这些既有代码不用一次性全改——
+    /// 它们仍然按「地址」工作，只是地址的来源变成了 hosts。
+    var savedEndpoints: [SavedEndpoint] { hosts.flatMap(\.endpoints) }
+
+    /// 当前主机自己的地址（自动选路必须限定在这里，不能跨主机跳）。
+    var currentHostEndpoints: [SavedEndpoint] {
+        hosts.first { $0.id == currentHostId }?.endpoints ?? savedEndpoints
+    }
+
+    func persistHosts() {
+        if let data = try? JSONEncoder().encode(hosts) {
+            UserDefaults.standard.set(data, forKey: Self.hostsKey)
+        }
+    }
     /// 已完成、等待用户回复的会话（红点）。持久化，打开会话后清除。
     var finishedAwaitingSessionIds: Set<String> = Set(
         UserDefaults.standard.stringArray(forKey: ConnectionModel.finishedAwaitingKey) ?? []
@@ -47,6 +67,9 @@ final class ConnectionModel {
     /// 滚动帧率监控（绘制层指标，与数据层的 renderMs 互补）。
     @ObservationIgnored let frameMonitor = RenderFrameMonitor()
     @ObservationIgnored var lastRenderMs: Double = 0
+    /// 当前连的那台 DSH 的机器名（插件报的 hostname）。
+    /// 用来把「同一台机器的多个地址」在设置里归成一组；取不到就是 nil。
+    @ObservationIgnored var currentMachineName: String?
     @ObservationIgnored var lastRenderEntryCount: Int = 0
     /// 合并前 / 合并后的消息条数（诊断「按 turn 合并」是否生效）。
     @ObservationIgnored var lastRawMessageCount: Int = 0

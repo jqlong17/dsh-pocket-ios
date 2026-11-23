@@ -37,6 +37,9 @@ struct SavedEndpoint: Codable, Identifiable, Hashable {
     var lastUsedAt: Double
     /// 用户自定义标签，例如「公司」「家」；为空时显示 kind.label。
     var label: String?
+    /// 这台地址属于哪台 DSH（由插件报出的 hostname）。
+    /// 同一台机器可能有多条地址（局域网 + Tailscale），靠它归组；老数据没有，保持 nil。
+    var machine: String?
 
     var id: String { address }
     var displayName: String { label ?? kind.label }

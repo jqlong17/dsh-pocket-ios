@@ -234,7 +234,9 @@ window.__ModuleLoader__.load({
             : pairValue.data && pairValue.data.qr
             ? React.createElement("img", { src: pairValue.data.qr, alt: makeT(currentLang())("扫码连接二维码", "Scan-to-connect QR"), style: { width: 148, height: 148, borderRadius: 8, background: "#fff", padding: 5, border: "1px solid rgba(0,0,0,.06)", flex: "0 0 148px" } })
             : React.createElement("div", { style: { width: 148, height: 148, borderRadius: 8, border: "1px dashed rgba(0,0,0,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, opacity: 0.6, flex: "0 0 148px", textAlign: "center", padding: 8 } },
-                pairValue.loading ? makeT(currentLang())("正在生成二维码…", "Generating QR…") : makeT(currentLang())(makeT(currentLang())("二维码不可用", "QR unavailable"), "QR unavailable")),
+                pairValue.loading
+                  ? makeT(currentLang())("正在生成二维码…", "Generating QR…")
+                  : makeT(currentLang())(pairValue.error ? "二维码不可用（原因见下方）" : "二维码不可用", "QR unavailable")),
           React.createElement("div", { style: { flex: "1 1 220px", minWidth: 0 } },
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("剩余有效时间", "Time remaining")),
             React.createElement("div", { style: { fontSize: 20, fontWeight: 600, color: remaining > 0 ? "#147A5E" : "#b45309", marginBottom: 10 } },
@@ -317,9 +319,6 @@ window.__ModuleLoader__.load({
       var state = st[0], setState = st[1];
       var cleanState = React.useState(false);
       var cleaning = cleanState[0], setCleaning = cleanState[1];
-      // 明细默认收起：状态一行就够，展开是为了排查时才看的。
-      var openState = React.useState(false);
-      var open = openState[0], setOpen = openState[1];
 
       var load = function () {
         if (!props.rpcCall) { setState({ loading: false, data: null }); return; }
@@ -373,14 +372,7 @@ window.__ModuleLoader__.load({
 
       var ready = self.state === "ready";
       var onlinePeers = peers.filter(function (p) { return p.online; }).length;
-      // 在线设备数（同一台手机装了多个版本也只算一台，服务端已按家族聚合）
-      var activeClients = devices.filter(function (dev) {
-        return Date.now() - (dev.lastUsedAt || 0) < 86400000;
-      }).length;
 
-      // 状态条：一行说清「通不通、走哪条路、地址」。
-      // 这是每天看几十次的信息，占一整块会把真正要操作的扫码挤到下面；
-      // 明细（设备列表、节点列表）折叠在后面，需要时才展开。
       var dot = function (ok) {
         return React.createElement("span", {
           style: {
@@ -390,129 +382,157 @@ window.__ModuleLoader__.load({
         });
       };
 
-      var summary = [
-        self.label || self.mode || "?",
-        activeClients > 0 ? t(activeClients + " 台设备在线", activeClients + " online") : null,
-        peers.length ? t("其它节点 " + onlinePeers + "/" + peers.length, "nodes " + onlinePeers + "/" + peers.length) : null
-      ].filter(Boolean).join(" · ");
+      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5, minWidth: 0 };
+      var dim = { opacity: 0.62, whiteSpace: "nowrap", flex: "0 0 auto" };
+      var labelStyle = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+      // 分组标题：本机 / 其它 DSH 节点，一眼能分清是「这台」还是「别的机器」。
+      var groupTitle = {
+        fontSize: 11, fontWeight: 600, opacity: .5, margin: "0 0 2px",
+        display: "flex", alignItems: "center", gap: 6
+      };
+      var divider = { height: 1, background: "rgba(0,0,0,.06)", margin: "10px 0" };
 
-      var header = React.createElement("div", {
-        onClick: function () { setOpen(!open); },
-        style: {
-          display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
-          padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
-        }
-      },
-        dot(ready),
-        React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } },
-          ready ? t("已就绪", "Ready") : t("未就绪", "Not ready")),
-        React.createElement("span", {
-          style: {
-            fontSize: 12, opacity: .62, minWidth: 0, overflow: "hidden",
-            textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 auto"
-          }
-        }, summary),
-        self.address
-          ? React.createElement("span", {
-              style: { fontSize: 12, opacity: .5, flex: "0 0 auto", maxWidth: "45%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
-            }, self.address)
-          : null,
-        React.createElement("span", { style: { fontSize: 11, opacity: .45, flex: "0 0 auto" } },
-          open ? "▾" : "▸"));
+      // 本机组
+      var selfRows = [
+        React.createElement("div", { key: "self", style: rowStyle },
+          dot(ready),
+          React.createElement("span", { style: Object.assign({}, labelStyle, { fontWeight: 600, flex: "0 0 auto" }) },
+            ready ? t("已就绪", "Ready") : t("未就绪", "Not ready")),
+          React.createElement("span", { style: Object.assign({}, labelStyle, { flex: "1 1 auto", opacity: .7 }) },
+            (self.label || self.mode || "?") + (self.address ? " · " + self.address : ""))),
+      ];
 
-      // 下载链接压成脚注：装 App 是一次性的事，不该和一个独立卡位抢注意力。
-      var footnote = React.createElement("div", {
-        style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "5px 0 0 4px", fontSize: 10.5, opacity: .5 }
-      },
-        React.createElement("span", null, t("没装 App？", "No app yet?")),
-        React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
-          t("App Store", "App Store")),
-        React.createElement("span", { style: { opacity: .5 } }, "·"),
-        React.createElement("a", { href: DOC_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
-          t("使用说明", "Guide")),
-        React.createElement("span", { style: { opacity: .5 } }, "·"),
-        React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: { color: "inherit" } },
-          "GitHub"));
-
-      if (!open) {
-        // 收起状态也要把错误露出来，否则「未就绪」是个哑状态。
-        return React.createElement("div", { style: { display: "flex", flexDirection: "column", width: "100%" } },
-          header,
-          footnote,
-          self.error
-            ? React.createElement("div", { style: { fontSize: 11, color: "#b45309", margin: "6px 0 0 4px" } },
-                String(self.error).slice(0, 200))
-            : null);
+      // 本机机器名：回答「我现在这台是哪台」。手机端主机默认名能对上时不用猜。
+      if (self.machine) {
+        selfRows.push(React.createElement("div", {
+          key: "self-machine",
+          style: { fontSize: 11, opacity: .5, marginLeft: 16, marginTop: 2, display: "flex", alignItems: "center", gap: 6 }
+        },
+          React.createElement("span", null, t("本机", "Machine") + " " + self.machine),
+          React.createElement("button", {
+            type: "button",
+            onClick: function (e) { e.stopPropagation(); try { navigator.clipboard.writeText(self.machine) } catch (_) {} },
+            style: { border: "none", background: "transparent", color: "inherit", cursor: "pointer", padding: 0, fontSize: 11, textDecoration: "underline" }
+          }, t("复制", "copy"))));
       }
 
-      // ── 展开后的明细 ──
-      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, minWidth: 0 };
-      var dim = { opacity: 0.62, whiteSpace: "nowrap" };
-      var labelStyle = { fontWeight: 500, flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-      var sectionTitle = { fontSize: 11, fontWeight: 600, opacity: .5, margin: "2px 0" };
-      var divider = { height: 1, background: "rgba(0,0,0,.06)", margin: "8px 0" };
+      if (self.error) {
+        selfRows.push(React.createElement("div", {
+          key: "self-err",
+          style: { fontSize: 11, color: "#b45309", marginLeft: 16, marginTop: 2, lineHeight: 1.5 }
+        }, String(self.error).slice(0, 160)));
+      }
 
-      var shown = devices.slice(0, 4);
+      // 客户端：挂在本机下面，因为它们连的是「这一台」。
+      var shown = devices.slice(0, 3);
       var rest = devices.length - shown.length;
-      var deviceNodes = shown.map(function (dev, i) {
+      var dupCount = devices.reduce(function (n, dev) { return n + Math.max(0, (dev.count || 1) - 1); }, 0);
+
+      var clientRows = shown.map(function (dev, i) {
         return React.createElement("div", { key: "dev" + i, style: rowStyle },
           dot(Date.now() - (dev.lastUsedAt || 0) < 3600000),
-          React.createElement("span", { style: labelStyle },
+          React.createElement("span", { style: Object.assign({}, labelStyle, { flex: "1 1 auto" }) },
             (dev.name || t("未知客户端", "unknown client")) + (dev.count > 1 ? " ×" + dev.count : "")),
           React.createElement("span", { style: dim }, ago(dev.lastUsedAt)));
       });
       if (rest > 0) {
-        deviceNodes.push(React.createElement("div", {
+        clientRows.push(React.createElement("div", {
           key: "dev-rest", style: Object.assign({}, rowStyle, dim, { paddingLeft: 16 })
         }, t("还有 " + rest + " 台", rest + " more")));
       }
 
-      var peerNodes = peers.map(function (peer, i) {
-        return React.createElement("div", { key: "peer" + i, style: rowStyle },
-          dot(Boolean(peer.online)),
-          React.createElement("span", { style: labelStyle }, peer.name || peer.id),
-          React.createElement("span", { style: dim },
-            peer.online ? (peer.rttMs != null ? peer.rttMs + "ms" : t("在线", "online")) : t("不可达", "unreachable")));
-      });
-
-      var dupCount = devices.reduce(function (n, dev) { return n + Math.max(0, (dev.count || 1) - 1); }, 0);
-
-      var children = [header];
-      var body = [];
-
       if (devices.length) {
-        body.push(React.createElement("div", { key: "d-title", style: Object.assign({}, sectionTitle, { display: "flex", alignItems: "center", gap: 8 }) },
+        selfRows.push(React.createElement("div", {
+          key: "clients-title",
+          style: { fontSize: 11, opacity: .45, margin: "6px 0 0", display: "flex", alignItems: "center" }
+        },
           React.createElement("span", null, t("已连接的客户端", "Clients")),
           dupCount > 0
             ? React.createElement("button", {
                 onClick: function (e) { e.stopPropagation(); cleanupDevices(); },
                 disabled: cleaning,
                 style: {
-                  marginLeft: "auto", padding: "2px 8px", borderRadius: 6,
-                  border: "1px solid rgba(0,0,0,.12)", background: "#fff",
-                  fontSize: 11, cursor: cleaning ? "default" : "pointer", opacity: cleaning ? .5 : 1
+                  marginLeft: "auto", padding: "1px 7px", borderRadius: 6,
+                  border: "1px solid rgba(0,0,0,.1)", background: "#fff",
+                  fontSize: 10.5, cursor: cleaning ? "default" : "pointer", opacity: cleaning ? .5 : 1
                 }
               }, t("清理 " + dupCount + " 条重复", "clean " + dupCount + " dup"))
             : null));
-        body.push(React.createElement("div", { key: "d-list" }, deviceNodes));
+        selfRows.push(React.createElement("div", { key: "clients" }, clientRows));
       }
 
-      if (peers.length) {
-        if (body.length) body.push(React.createElement("div", { key: "p-div", style: divider }));
-        body.push(React.createElement("div", { key: "p-title", style: sectionTitle }, t("其它 DSH 节点", "Other DSH nodes")));
-        body.push(React.createElement("div", { key: "p-list" }, peerNodes));
-      }
+      // 其它节点组
+      var peerRows = peers.map(function (peer, i) {
+        return React.createElement("div", { key: "peer" + i, style: rowStyle },
+          dot(Boolean(peer.online)),
+          React.createElement("span", { style: Object.assign({}, labelStyle, { flex: "0 0 auto", fontWeight: 500 }) },
+            peer.name || peer.id),
+          React.createElement("span", { style: Object.assign({}, labelStyle, { flex: "1 1 auto", opacity: .5 }) },
+            peer.address || ""),
+          React.createElement("span", { style: dim },
+            peer.online
+              ? (peer.rttMs != null ? peer.rttMs + "ms" : t("在线", "online"))
+              : t("不可达", "unreachable")));
+      });
 
-      children.push(React.createElement("div", {
-        key: "body",
-        style: { padding: "4px 14px 12px", border: "1px solid rgba(0,0,0,.08)", borderTop: "none", borderRadius: "0 0 12px 12px", background: "#fff" }
-      }, body));
+      return React.createElement("div", {
+        style: {
+          display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
+          padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+        }
+      },
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 8 } },
+          t("连接状态", "Connection status")),
 
-      children.push(footnote);
+        React.createElement("div", { style: groupTitle }, t("本机", "This machine")),
+        React.createElement("div", null, selfRows),
 
-      return React.createElement("div", { style: { display: "flex", flexDirection: "column", width: "100%" } }, children);
+        React.createElement("div", { style: divider }),
+
+        React.createElement("div", { style: groupTitle },
+          React.createElement("span", null, t("跨机器协作（本机连别人）", "Cross-machine (this → others)")),
+          peers.length
+            ? React.createElement("span", { style: { opacity: .7, fontWeight: 400 } },
+                onlinePeers + "/" + peers.length + t(" 在线", " online"))
+            : null),
+        peers.length
+          ? React.createElement("div", null, peerRows)
+          : React.createElement("div", { style: Object.assign({}, rowStyle, dim) },
+              t("还没有添加", "None added")),
+
+        );
     }
-    // 用户仍然需要能增删节点（否则连不上就改不了，等于锁死）。
+    // 使用说明与下载。之前它只是二维码卡里一个 chip，后来被我缩成 10.5px 的脚注，
+    // 实际上「怎么用」是用户第一次进来最需要的东西，应该有正常字号和独立位置。
+    function HelpCard() {
+      var t = makeT(currentLang());
+      var link = {
+        display: "inline-flex", alignItems: "center", gap: 4,
+        padding: "5px 11px", borderRadius: 8, border: "1px solid rgba(0,0,0,.1)",
+        background: "#fff", fontSize: 12.5, color: "#0f766e", textDecoration: "none", whiteSpace: "nowrap"
+      };
+      return React.createElement("div", {
+        style: {
+          display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
+          padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+        }
+      },
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 2 } },
+          t("使用说明与下载", "Guide and downloads")),
+        React.createElement("div", { style: { fontSize: 11.5, opacity: .6, marginBottom: 8 } },
+          t("完整的功能介绍、连接方式对比和常见问题都在文档站。", "Features, connection options and FAQ live on the docs site.")),
+        React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+          React.createElement("a", { href: DOC_URL, target: "_blank", rel: "noreferrer", style: link },
+            t("使用说明", "Guide"), React.createElement("span", { style: { opacity: .55, fontSize: 11 } }, "dsh-pocket.docs.notta.uk")),
+          React.createElement("a", { href: APP_STORE_URL, target: "_blank", rel: "noreferrer", style: link },
+            t("App Store 下载", "App Store")),
+          React.createElement("a", { href: REPO_URL, target: "_blank", rel: "noreferrer", style: link },
+            "GitHub"),
+          // 直达「多台 DSH 之间互相连接」一节。
+          React.createElement("a", { href: DOC_URL + "/#%E5%A4%9A%E5%8F%B0-dsh-%E4%B9%8B%E9%97%B4%E4%BA%92%E7%9B%B8%E8%BF%9E%E6%8E%A5", target: "_blank", rel: "noreferrer", style: link },
+            t("多台 DSH 互连", "Multi-DSH"))));
+    }
+
     function PeersCard(props) {
       var t = makeT(currentLang());
       var st = React.useState({ loading: true, peers: [], error: null });
@@ -600,7 +620,7 @@ window.__ModuleLoader__.load({
         style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }
       },
         React.createElement("span", { style: { fontWeight: 600, fontSize: 13 } },
-          t("其它 DSH 节点", "Other DSH nodes")),
+          t("跨机器协作", "Cross-machine")),
         React.createElement("span", { style: { fontSize: 12, opacity: .55, flex: "1 1 auto" } },
           state.peers.length ? state.peers.length + "" : t("未添加", "none")),
         React.createElement("span", { style: { fontSize: 11, opacity: .45 } }, open ? "▾" : "▸"));
@@ -622,7 +642,7 @@ window.__ModuleLoader__.load({
       },
         header,
         React.createElement("div", { style: { fontSize: 11, opacity: .6, marginBottom: 8, lineHeight: 1.5 } },
-          t("你自己另外的 DSH：填它的地址即可，插件不预置任何节点。", "Your other DSH instances: enter an address. No nodes are preinstalled.")),
+          t("这是本机去连别的 DSH（让助手发消息过去）。和手机端「主机」不是一个方向——那里是手机记住了哪些机器。插件不预置任何节点。", "This machine → other DSH instances. The app's Hosts list is the opposite direction.")),
 
         rows.length ? rows : React.createElement("div", { style: { fontSize: 12, opacity: .62, padding: "4px 0 8px" } },
           t("还没有添加节点", "No nodes yet")),
@@ -655,11 +675,10 @@ window.__ModuleLoader__.load({
 
     function MobileAccessPanel(props) {
       return React.createElement("div", { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
-        // 顺序按「用户来这儿要做什么」的概率排：
-        //   状态一眼可见（一行）→ 选连接方式（决定地址）→ 扫码连接 → 装 App（一次）→ 多机配置（小众）
-        // 之前状态占了大半屏、把扫码挤到最下面，而这个页面最常用的动作正是扫码和看状态。
-        React.createElement(OverviewCard, { rpcCall: props.rpcCall }),
+        // 顺序按用户意图：先「连上」（扫码/方式），再看「连得怎么样」（状态）。
         React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }),
+        React.createElement(OverviewCard, { rpcCall: props.rpcCall }),
+        React.createElement(HelpCard),
         React.createElement(PeersCard, { rpcCall: props.rpcCall }));
     }
 

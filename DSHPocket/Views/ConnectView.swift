@@ -23,9 +23,9 @@ struct ConnectView: View {
     @Bindable var connection: ConnectionState
     @State private var showingScanner = false
     @State private var showingPin = false
-    @State private var renamingEndpoint: SavedEndpoint?
+    @State private var renamingHost: DSHHost?
     @State private var renameText = ""
-    @State private var deletingEndpoint: SavedEndpoint?
+    @State private var deletingHost: DSHHost?
     @State private var scanHint: String?
 
 
@@ -55,7 +55,7 @@ struct ConnectView: View {
                 // 2. 连接按钮——紧挨列表，一次点击就到；不用滚到底部找
                 // 3. 扫码（低频，加新电脑时才用）
                 // 4. 手动连接（更低频）折叠起来，默认不占首屏
-                if model.savedEndpoints.isEmpty {
+                if model.hosts.isEmpty {
                     scanConnectCard
                     manualSectionTitle
                     inputCard
@@ -104,142 +104,130 @@ struct ConnectView: View {
         }
         .onAppear { connection.errorMessage = nil }
         .onChange(of: connection.serverAddress) { _, _ in connection.errorMessage = nil }
-        .alert(L10n.t("命名连接地址"), isPresented: Binding(
-            get: { renamingEndpoint != nil },
-            set: { if !$0 { renamingEndpoint = nil } }
+        .alert(L10n.t("命名这台主机"), isPresented: Binding(
+            get: { renamingHost != nil },
+            set: { if !$0 { renamingHost = nil } }
         )) {
-            TextField(L10n.t("例如：公司 / 家"), text: $renameText)
+            TextField(L10n.t("例如：Mac / 阿里云"), text: $renameText)
             Button(L10n.t("保存")) {
-                if let endpoint = renamingEndpoint {
-                    model.renameEndpoint(endpoint.address, label: renameText)
+                if let host = renamingHost {
+                    model.renameHost(id: host.id, name: renameText)
                 }
-                renamingEndpoint = nil
+                renamingHost = nil
             }
-            Button(L10n.t("清除"), role: .destructive) {
-                if let endpoint = renamingEndpoint {
-                    model.renameEndpoint(endpoint.address, label: nil)
-                }
-                renamingEndpoint = nil
-            }
-            Button(L10n.t("取消"), role: .cancel) { renamingEndpoint = nil }
+            Button(L10n.t("取消"), role: .cancel) { renamingHost = nil }
         } message: {
-            Text(L10n.t("给这个地址起一个有辨识度的名字，例如「公司」或「家」。"))
+            Text(L10n.t("给这台机器起一个有辨识度的名字，例如「Mac」或「阿里云」。"))
         }
-        .alert(L10n.t("删除连接？"), isPresented: Binding(
-            get: { deletingEndpoint != nil },
-            set: { if !$0 { deletingEndpoint = nil } }
-        ), presenting: deletingEndpoint) { endpoint in
+        .alert(L10n.t("删除这台主机？"), isPresented: Binding(
+            get: { deletingHost != nil },
+            set: { if !$0 { deletingHost = nil } }
+        ), presenting: deletingHost) { host in
             Button(L10n.t("删除"), role: .destructive) {
-                model.removeEndpoint(endpoint.address)
-                deletingEndpoint = nil
+                model.removeHost(id: host.id)
+                deletingHost = nil
             }
-            Button(L10n.t("取消"), role: .cancel) { deletingEndpoint = nil }
-        } message: { endpoint in
-            Text("\(endpoint.displayName)：\(endpoint.address)")
+            Button(L10n.t("取消"), role: .cancel) { deletingHost = nil }
+        } message: { host in
+            Text("\(host.name)：\(host.endpoints.count) 条地址")
         }
     }
 
     /// 标题卡已拆到 ConnectHeaderCard.swift。
     private var header: some View { ConnectHeaderCard() }
 
-    private var savedEndpointsCard: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(L10n.t("已保存的连接"))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(L10n.t("点按切换"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 6)
+      private var savedEndpointsCard: some View {
+          VStack(spacing: 0) {
+              HStack {
+                  Text(L10n.t("已保存的主机"))
+                      .font(.footnote.weight(.semibold))
+                      .foregroundStyle(.secondary)
+                  Spacer()
+                  Text(L10n.t("点按连接"))
+                      .font(.caption2)
+                      .foregroundStyle(.secondary)
+              }
+              .padding(.horizontal, 14)
+              .padding(.top, 12)
+              .padding(.bottom, 6)
 
-            ForEach(Array(model.savedEndpoints.enumerated()), id: \.element.id) { index, endpoint in
-                if index > 0 {
-                    Divider().padding(.leading, 52)
-                }
-                Button {
-                    connection.serverAddress = endpoint.address
-                    connection.errorMessage = nil
-                    // 点一下就直连：设备凭证与 cookie 现在按地址各存一份（见 ConnectionVault），
-                    // 所以切回以前连过的电脑通常不需要再输密码。
-                    // 之前这里只填地址不发起连接，用户还得再点一次「连接」——
-                    // 历史连接的意义就没了（2026-11-15 用户反馈）。
-                    Task { await model.connect() }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: endpoint.kind == .lan ? "wifi" : "globe")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(brand)
-                            .frame(width: 26, height: 26)
-                            .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 5) {
-                                if endpoint.label != nil {
-                                    Text(endpoint.displayName)
-                                        .font(.footnote.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(endpoint.kind.label)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text(endpoint.kind.label)
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Text(endpoint.address)
-                                .font(.footnote)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        Spacer(minLength: 8)
-                        Button {
-                            renamingEndpoint = endpoint
-                            renameText = endpoint.label ?? ""
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        Button {
-                            deletingEndpoint = endpoint
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L10n.t("删除连接"))
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L10n.t("重命名\(endpoint.kind.label)地址"))
-                        if connection.serverAddress == endpoint.address {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
+              // 按主机列出：一个名字 = 一台机器。点它即切换，内部自动挑最优地址。
+              // 之前这里列的是地址，一台机器有两条地址就会显示成两行，和设置页对不上。
+              ForEach(Array(model.hosts.enumerated()), id: \.element.id) { index, host in
+                  if index > 0 {
+                      Divider().padding(.leading, 52)
+                  }
+                  Button {
+                      Task { await model.switchHost(to: host.id) }
+                  } label: {
+                      HStack(spacing: 12) {
+                          Image(systemName: host.preferredEndpoint?.kind == .lan ? "wifi" : "globe")
+                              .font(.subheadline.weight(.medium))
+                              .foregroundStyle(brand)
+                              .frame(width: 26, height: 26)
+                              .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+                          VStack(alignment: .leading, spacing: 1) {
+                              HStack(spacing: 5) {
+                                  Text(host.name)
+                                      .font(.footnote.weight(.semibold))
+                                      .foregroundStyle(.primary)
+                                  if host.endpoints.count > 1 {
+                                      Text(L10n.tf("%d 条地址", host.endpoints.count))
+                                          .font(.caption2)
+                                          .foregroundStyle(.secondary)
+                                  }
+                              }
+                              if let endpoint = host.preferredEndpoint {
+                                  Text("\(endpoint.address) · \(endpoint.kind.label)")
+                                      .font(.footnote)
+                                      .foregroundStyle(.secondary)
+                                      .lineLimit(1)
+                                      .truncationMode(.middle)
+                              }
+                          }
+                          Spacer(minLength: 8)
+                          Button {
+                              renamingHost = host
+                              renameText = host.name
+                          } label: {
+                              Image(systemName: "pencil")
+                                  .font(.caption)
+                                  .foregroundStyle(.secondary)
+                                  .frame(width: 28, height: 28)
+                          }
+                          .buttonStyle(.plain)
+                          .accessibilityLabel(L10n.t("重命名这台主机"))
+                          Button {
+                              deletingHost = host
+                          } label: {
+                              Image(systemName: "trash")
+                                  .font(.caption)
+                                  .foregroundStyle(.secondary)
+                                  .frame(width: 28, height: 28)
+                          }
+                          .buttonStyle(.plain)
+                          .accessibilityLabel(L10n.t("删除这台主机"))
+                          if host.id == model.currentHostId {
+                              Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
+                          }
+                      }
+                      .padding(.horizontal, 14)
+                      .padding(.vertical, 10)
+                      .contentShape(Rectangle())
+                  }
+                  .buttonStyle(.plain)
+              }
 
-            Text(L10n.t("局域网最多保留 3 个（可命名为「公司」「家」），公网保留最近 5 个；公网地址变化后重新扫码更新。"))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-                .padding(.bottom, 12)
-        }
-        .background(card, in: RoundedRectangle(cornerRadius: 12))
-    }
+              Text(L10n.t("一台机器的多个地址会自动挑最优（局域网优先）。扫码可新增主机。"))
+                  .font(.caption2)
+                  .foregroundStyle(.secondary)
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .padding(.horizontal, 14)
+                  .padding(.top, 6)
+                  .padding(.bottom, 12)
+          }
+          .background(card, in: RoundedRectangle(cornerRadius: 12))
+      }
 
 
     /// 扫码连接（主入口）：三步引导 + 大按钮。
