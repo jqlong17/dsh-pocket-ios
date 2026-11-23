@@ -597,6 +597,86 @@ function deviceFamilyLabel(family) {
 }
 let devicesCache = null
 
+/**
+ * 把请求来源 IP 解析成 tailnet 身份。
+ *
+ * 为什么需要：同一 tailnet 内是同一个账号的设备，互发消息不该再走
+ * 「配对码」——配对码本质是给「不可信的陌生链路」用的，而 tailnet 已经
+ * 由 Tailscale 做过设备与账号认证，再要一次是多余的，而且会过期。
+ *
+ * 判定必须严格：源 IP 落在 100.64.0.0/10，且 whois 出来的 UserID
+ * 与本机的 UserID 相同。只认 IP 前缀是不够的——同 tailnet 但不同用户
+ * 的机器也在这个网段里。
+ */
+const TAILNET_CIDR_PREFIX = /^(100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)/
+
+function stripV4Mapped(addr) {
+  return String(addr ?? '').replace(/^::ffff:/, '')
+}
+
+async function localTailnetUserId() {
+  try {
+    const json = JSON.parse(await tailscale(['status', '--json']))
+    const id = json?.Self?.UserID
+    return id == null ? null : String(id)
+  } catch {
+    return null
+  }
+}
+
+/** 返回 { trusted, userId, login, via, reason } */
+async function tailnetIdentity(req) {
+  const remote = stripV4Mapped(req.socket?.remoteAddress)
+
+  // 路径 A：经 tailscale serve 转发。它会把身份写进请求头，而 remote 变成回环。
+  // 只信任「remote 是回环 + 有 tailscale-user-login」的组合：
+  // 外部客户端连不到 127.0.0.1，所以伪造不了这个头。
+  if (remote === '127.0.0.1' || remote === '::1' || remote === 'localhost') {
+    const login = String(req.headers['tailscale-user-login'] ?? '').trim()
+    if (login) {
+      const self = await localTailnetIdentity()
+      if (self && self.login && login.toLowerCase() !== self.login.toLowerCase()) {
+        return { trusted: false, userId: null, login, via: 'serve', reason: 'different-user' }
+      }
+      return { trusted: true, userId: self?.userId ?? null, login, via: 'serve', reason: null }
+    }
+    return { trusted: false, userId: null, login: null, via: 'serve', reason: 'serve-no-identity' }
+  }
+
+  // 路径 B：直连 tailnet IP（没有经过 serve）。用 whois 查身份。
+  if (!TAILNET_CIDR_PREFIX.test(remote)) {
+    return { trusted: false, userId: null, login: null, via: 'direct', reason: 'not-tailnet' }
+  }
+  const selfUserId = await localTailnetUserId()
+  if (!selfUserId) return { trusted: false, userId: null, login: null, via: 'whois', reason: 'tailscale-unavailable' }
+  try {
+    const out = await tailscale(['whois', remote])
+    const userSection = out.split(/\n(?=\S)/).find((chunk) => /^User:/.test(chunk)) ?? ''
+    const idMatch = userSection.match(/ID:\s*(\d+)/)
+    const nameMatch = userSection.match(/Name:\s*(\S+)/)
+    const userId = idMatch ? idMatch[1] : null
+    const login = nameMatch ? nameMatch[1] : null
+    if (!userId) return { trusted: false, userId: null, login, via: 'whois', reason: 'whois-no-user' }
+    if (userId !== selfUserId) return { trusted: false, userId, login, via: 'whois', reason: 'different-user' }
+    return { trusted: true, userId, login, via: 'whois', reason: null }
+  } catch {
+    return { trusted: false, userId: null, login: null, via: 'whois', reason: 'whois-failed' }
+  }
+}
+
+/** 本机的 tailnet 账号（登录名 + 用户 ID），用于比对。 */
+async function localTailnetIdentity() {
+  try {
+    const json = JSON.parse(await tailscale(['status', '--json']))
+    const userId = json?.Self?.UserID
+    const users = json?.User ?? {}
+    const login = userId != null ? users?.[String(userId)]?.LoginName ?? null : null
+    return { userId: userId == null ? null : String(userId), login }
+  } catch {
+    return null
+  }
+}
+
 async function readDevices() {
   if (devicesCache) return devicesCache
   try {
@@ -1428,6 +1508,9 @@ export function apply(ctx) {
           || rawPath === `${CHANNEL}/push.visible`
           // cli.* 免 cookie，但**只允许本机回环**（CLI 在服务器终端里跑，
           // 没法走浏览器登录那套）。IP 校验在每个端点内部做。
+          // peer/pair 免 cookie：它就是来换凭据的第一步，调用方当然还没有 cookie。
+          // 身份由 tailnet whois 校验（同账号 + 100.64.0.0/10），见端点内部。
+          || rawPath === `${CHANNEL}/peer/pair`
           || rawPath === `${CHANNEL}/cli.pair`
           || rawPath === `${CHANNEL}/cli.status`
           || rawPath === `${CHANNEL}/cli.mode`
@@ -1536,6 +1619,42 @@ export function apply(ctx) {
         // CLI 专用配对端点：给「DSH 装在无 GUI 服务器上、只在终端里出码」的场景用。
         // 不走 cookie/auth（CLI 拿不到浏览器会话），改为严格限制来源必须是本机回环，
         // 且只返回一次性的配对 token，不暴露任何长期凭证。
+        // tailnet 内部互信：同账号的机器不需要配对码，直接发一张设备凭据。
+        // 解决两个死结：配对码会过期；cli.pair 只允许对方本机调用。
+        if (urlObject.pathname === `${CHANNEL}/peer/pair`) {
+          const identity = await tailnetIdentity(req)
+          if (!identity.trusted) {
+            await logLine(`peer/pair rejected: ${identity.reason} from ${stripV4Mapped(req.socket?.remoteAddress)}`)
+            send(res, 403, { ok: false, error: '只接受同一 tailnet 账号内的机器', reason: identity.reason })
+            return
+          }
+          const devices = await readDevices()
+          const family = 'peer-tailnet'
+          let existing = Object.keys(devices).find(
+            (key) => (devices[key]?.family ?? deviceFamily(devices[key]?.name)) === family
+          )
+          if (!existing) {
+            existing = newDeviceToken()
+            devices[existing] = {
+              name: `tailnet peer (${identity.login ?? identity.userId})`,
+              family,
+              createdAt: Date.now(),
+              lastUsedAt: Date.now(),
+            }
+          } else {
+            devices[existing].lastUsedAt = Date.now()
+          }
+          await saveDevices(devices)
+          await logLine(`peer/pair granted to ${identity.login ?? identity.userId}`)
+          res.writeHead(200, {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'set-cookie': `dsh-pocket-device=${encodeURIComponent(existing)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`,
+          })
+          res.end(JSON.stringify({ ok: true, peer: identity.login ?? identity.userId }))
+          return
+        }
+
         if (urlObject.pathname === `${CHANNEL}/cli.pair`) {
           const remote = String(req.socket?.remoteAddress ?? '')
           const isLocal = /^(127\.|::1$|::ffff:127\.)/.test(remote)
