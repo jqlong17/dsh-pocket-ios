@@ -315,6 +315,8 @@ window.__ModuleLoader__.load({
       var t = makeT(currentLang());
       var st = React.useState({ loading: true, data: null });
       var state = st[0], setState = st[1];
+      var cleanState = React.useState(false);
+      var cleaning = cleanState[0], setCleaning = cleanState[1];
 
       var load = function () {
         if (!props.rpcCall) { setState({ loading: false, data: null }); return; }
@@ -334,6 +336,17 @@ window.__ModuleLoader__.load({
         var timer = setInterval(load, 15000);
         return function () { clearInterval(timer); };
       }, []);
+
+      // 清理同家族的旧记录：每个家族只留最近那条。
+      // 不做自动清理——用户可能想保留旧设备的凭据，所以只在他点的时候执行。
+      var cleanupDevices = function () {
+        if (cleaning || !props.rpcCall) return;
+        setCleaning(true);
+        Promise.resolve(props.rpcCall("device.cleanup", {})).then(unwrapRpc).then(function () {
+          setCleaning(false);
+          load();
+        }).catch(function () { setCleaning(false); });
+      };
 
       // 两级都拿不到就整块不显示：上面还有二维码等关键功能，
       // 不能因为总览失败在用户眼前留一块空白或一条红字。
@@ -355,69 +368,220 @@ window.__ModuleLoader__.load({
         return h < 24 ? h + t(" 小时前", " h ago") : Math.floor(h / 24) + t(" 天前", " d ago");
       };
 
-      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12 };
-      var dim = { opacity: 0.62 };
+      // 显式纵向 + width:100%：宿主把设置分区里的子元素当 flex 行排列，
+      // 不指定方向时三段内容会被挤成三列（实测）。
+      var rootStyle = {
+        display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
+        padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+      };
+      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, minWidth: 0 };
+      var dim = { opacity: 0.62, whiteSpace: "nowrap" };
+      var sectionTitle = { fontSize: 11, fontWeight: 600, opacity: .5, margin: "2px 0 2px" };
+      var divider = { height: 1, background: "rgba(0,0,0,.06)", margin: "8px 0" };
       var dot = function (ok) {
         return React.createElement("span", {
           style: {
             width: 7, height: 7, borderRadius: 4, flex: "0 0 7px",
-            background: ok ? "#14a06e" : "#d1d5db", display: "inline-block"
+            background: ok ? "#14a06e" : "#c8ccd2", display: "inline-block"
           }
         });
       };
+      // 名称可伸可缩，右侧信息不换行——避免「iPhone（DSH Pocket）」被折成两行。
+      var labelStyle = { fontWeight: 500, flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
       var ready = self.state === "ready";
-      var deviceNodes = devices.slice(0, 6).map(function (dev, i) {
-        var isIOS = dev.kind === "ios";
+
+      // 设备最多列 3 台：再多会把卡片撑得很高，而「谁连着」看最近三台就够。
+      var shown = devices.slice(0, 3);
+      var rest = devices.length - shown.length;
+      var deviceNodes = shown.map(function (dev, i) {
         return React.createElement("div", { key: "dev" + i, style: rowStyle },
           dot(Date.now() - (dev.lastUsedAt || 0) < 3600000),
-          React.createElement("span", { style: { fontWeight: 500 } },
-            isIOS ? t("iPhone（DSH Pocket）", "iPhone (DSH Pocket)")
-              : dev.kind === "script" ? t("脚本 / 命令行", "script / CLI")
-                : t("未知客户端", "unknown client")),
-          React.createElement("span", { style: dim }, "· " + ago(dev.lastUsedAt)));
+          React.createElement("span", { style: labelStyle },
+            (dev.name || t("未知客户端", "unknown client"))
+              + (dev.count > 1 ? " ×" + dev.count : "")),
+          React.createElement("span", { style: dim }, ago(dev.lastUsedAt)));
       });
+      if (rest > 0) {
+        deviceNodes.push(React.createElement("div", {
+          key: "dev-rest", style: Object.assign({}, rowStyle, dim, { paddingLeft: 15 })
+        }, t("还有 " + rest + " 台", rest + " more")));
+      }
 
       var peerNodes = peers.map(function (peer, i) {
-        var ok = peer.lastOkAt && (Date.now() - peer.lastOkAt < 300000);
         return React.createElement("div", { key: "peer" + i, style: rowStyle },
-          dot(ok),
+          dot(Boolean(peer.online)),
+          React.createElement("span", { style: labelStyle }, peer.name || peer.id),
+          React.createElement("span", { style: dim },
+            peer.online ? (peer.rttMs != null ? peer.rttMs + "ms" : t("在线", "online")) : t("不可达", "unreachable")));
+      });
+
+      // 三段之间用分隔线，不用三个独立卡片：它们在语义上是「一台机器的完整画像」。
+      var children = [
+        React.createElement("div", { key: "title", style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } },
+          t("连接总览", "Connections")),
+        React.createElement("div", { key: "self", style: rowStyle },
+          dot(ready),
+          React.createElement("span", { style: Object.assign({}, labelStyle, { fontWeight: 600, flex: "0 0 auto" }) },
+            t("本机", "This machine")),
+          React.createElement("span", { style: Object.assign({}, dim, { flex: "1 1 auto", overflow: "hidden", textOverflow: "ellipsis" }) },
+            (self.label || self.mode || "?") + (self.address ? " · " + self.address : "")))
+      ];
+
+      if (self.error) {
+        children.push(React.createElement("div", {
+          key: "self-err", style: { fontSize: 11, color: "#b45309", marginLeft: 15, marginTop: 2 }
+        }, String(self.error).slice(0, 120)));
+      }
+
+      if (devices.length) {
+        children.push(React.createElement("div", { key: "d-div", style: divider }));
+        var dupCount = devices.reduce(function (n, dev) { return n + Math.max(0, (dev.count || 1) - 1); }, 0);
+        children.push(React.createElement("div", {
+          key: "d-title",
+          style: Object.assign({}, sectionTitle, { display: "flex", alignItems: "center", gap: 8 })
+        },
+          React.createElement("span", null, t("已连接的客户端", "Clients")),
+          dupCount > 0
+            ? React.createElement("button", {
+                onClick: function () { cleanupDevices(); },
+                disabled: cleaning,
+                style: {
+                  marginLeft: "auto", padding: "2px 8px", borderRadius: 6,
+                  border: "1px solid rgba(0,0,0,.12)", background: "#fff",
+                  fontSize: 11, cursor: cleaning ? "default" : "pointer", opacity: cleaning ? .5 : 1
+                }
+              }, t("清理 " + dupCount + " 条重复", "clean " + dupCount + " dup"))
+            : null));
+        children.push(React.createElement("div", { key: "d-list" }, deviceNodes));
+      }
+
+      if (peers.length) {
+        children.push(React.createElement("div", { key: "p-div", style: divider }));
+        children.push(React.createElement("div", { key: "p-title", style: sectionTitle },
+          t("其它 DSH 节点", "Other DSH nodes")));
+        children.push(React.createElement("div", { key: "p-list" }, peerNodes));
+      }
+
+      return React.createElement("div", { style: rootStyle }, children);
+    }
+    // 用户仍然需要能增删节点（否则连不上就改不了，等于锁死）。
+    function PeersCard(props) {
+      var t = makeT(currentLang());
+      var st = React.useState({ loading: true, peers: [], error: null });
+      var state = st[0], setState = st[1];
+      var nameState = React.useState("");
+      var name = nameState[0], setName = nameState[1];
+      var addrState = React.useState("");
+      var addr = addrState[0], setAddr = addrState[1];
+      var busyState = React.useState(false);
+      var busy = busyState[0], setBusy = busyState[1];
+      var errState = React.useState(null);
+      var actionError = errState[0], setActionError = errState[1];
+
+      var load = function () {
+        if (!props.rpcCall) { setState({ loading: false, peers: [], error: null }); return; }
+        Promise.resolve(props.rpcCall("peers.list", {})).then(unwrapRpc).then(function (d) {
+          setState({ loading: false, peers: (d && d.peers) || [], error: null });
+        }).catch(function (e) {
+          setState({ loading: false, peers: [], error: String((e && e.message) || e) });
+        });
+      };
+
+      React.useEffect(function () { load(); }, []);
+
+      var add = function () {
+        if (busy) return;
+        var address = String(addr || "").trim();
+        if (!address) { setActionError(t("请填写地址", "Address required")); return; }
+        setBusy(true); setActionError(null);
+        Promise.resolve(props.rpcCall("peers.add", { name: String(name || "").trim(), address: address }))
+          .then(unwrapRpc).then(function (d) {
+            setBusy(false);
+            setState({ loading: false, peers: (d && d.peers) || [], error: null });
+            setName(""); setAddr("");
+          }).catch(function (e) {
+            setBusy(false);
+            setActionError(String((e && e.message) || e));
+          });
+      };
+
+      var remove = function (id) {
+        if (busy) return;
+        setBusy(true); setActionError(null);
+        Promise.resolve(props.rpcCall("peers.remove", { id: id })).then(unwrapRpc).then(function (d) {
+          setBusy(false);
+          setState({ loading: false, peers: (d && d.peers) || [], error: null });
+        }).catch(function (e) {
+          setBusy(false);
+          setActionError(String((e && e.message) || e));
+        });
+      };
+
+      // 旧版宿主端没有 peers.*，这时整块不渲染，避免给用户一个按不动的表单。
+      if (state.loading || state.error) return null;
+
+      var inputStyle = {
+        padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(0,0,0,.14)",
+        fontSize: 12, minWidth: 0, outline: "none", background: "#fff"
+      };
+      var chip = {
+        padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(0,0,0,.14)",
+        background: "#fff", fontSize: 12, cursor: "pointer"
+      };
+
+      var rows = state.peers.map(function (peer) {
+        return React.createElement("div", {
+          key: peer.id,
+          style: { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12 }
+        },
           React.createElement("span", { style: { fontWeight: 500 } }, peer.name || peer.id),
-          React.createElement("span", { style: dim }, "· " + (peer.address || t("无地址", "no address"))));
+          React.createElement("span", { style: { opacity: .62, flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+            peer.address),
+          React.createElement("button", {
+            onClick: function () { remove(peer.id); },
+            style: Object.assign({}, chip, { padding: "3px 8px", color: "#b91c1c" }),
+            title: t("移除", "Remove")
+          }, "×"));
       });
 
       return React.createElement("div", {
-        style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff" }
+        style: {
+          display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box",
+          padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff"
+        }
       },
-        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } },
-          t("连接总览", "Connections")),
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 4 } },
+          t("其它 DSH 节点", "Other DSH nodes")),
+        React.createElement("div", { style: { fontSize: 11, opacity: .6, marginBottom: 8, lineHeight: 1.5 } },
+          t("你自己另外的 DSH：填它的地址即可，插件不预置任何节点。", "Your other DSH instances: enter an address. No nodes are preinstalled.")),
 
-        React.createElement("div", { style: rowStyle },
-          dot(ready),
-          React.createElement("span", { style: { fontWeight: 600 } }, t("本机", "This machine")),
-          React.createElement("span", { style: dim },
-            "· " + (self.label || self.mode || "?") + (self.address ? " · " + self.address : "")),
-        self.error
-          ? React.createElement("div", { style: { fontSize: 11, color: "#b45309", marginLeft: 15 } }, String(self.error).slice(0, 120))
-          : null,
+        rows.length ? rows : React.createElement("div", { style: { fontSize: 12, opacity: .62, padding: "4px 0 8px" } },
+          t("还没有添加节点", "No nodes yet")),
 
-        devices.length
-          ? React.createElement("div", null,
-            React.createElement("div", { style: { height: 1, background: "rgba(0,0,0,.06)", margin: "7px 0" } }),
-            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, opacity: .55 } },
-              t("已连接的客户端", "Clients")),
-            deviceNodes)
-          : null,
+        React.createElement("div", { style: { display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" } },
+          React.createElement("input", {
+            value: name,
+            onChange: function (e) { setName(e.target.value); },
+            placeholder: t("名称（可选）", "Name (optional)"),
+            style: Object.assign({}, inputStyle, { flex: "0 1 110px" })
+          }),
+          React.createElement("input", {
+            value: addr,
+            onChange: function (e) { setAddr(e.target.value); },
+            placeholder: "https://host:8443",
+            style: Object.assign({}, inputStyle, { flex: "1 1 180px" })
+          }),
+          React.createElement("button", {
+            onClick: add,
+            disabled: busy,
+            style: Object.assign({}, chip, busy ? { opacity: .5 } : null)
+          }, t("添加", "Add"))),
 
-        peers.length
-          ? React.createElement("div", null,
-            React.createElement("div", { style: { height: 1, background: "rgba(0,0,0,.06)", margin: "7px 0" } }),
-            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, opacity: .55 } },
-              t("其它 DSH 节点", "Other DSH nodes")),
-            peerNodes)
-          : null));
+        actionError
+          ? React.createElement("div", { style: { fontSize: 11, color: "#b91c1c", marginTop: 6 } }, actionError)
+          : null);
     }
-
     function AppDownloadCard() {
       return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
         React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" } },
@@ -438,6 +602,7 @@ window.__ModuleLoader__.load({
     function MobileAccessPanel(props) {
       return React.createElement("div", { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
         React.createElement(OverviewCard, { rpcCall: props.rpcCall }),
+        React.createElement(PeersCard, { rpcCall: props.rpcCall }),
         React.createElement(AppDownloadCard),
         React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }));
     }

@@ -9,6 +9,7 @@
  */
 import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
+import net from 'node:net'
 import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } from './connection-tags.js'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -561,6 +562,39 @@ export function registerPluginAggregator(ctx) {
  * token 是 32 字节随机串，只在本机文件与用户 Keychain 里，不上传任何地方。
  */
 const DEVICE_FILE = join(LOG_DIR, 'devices.json')
+
+/**
+ * 把 User-Agent 归一化成「设备家族」。
+ *
+ * 为什么不能直接用整个 UA 当设备名：UA 里带 App 的 build 号
+ * （`DSHPocket/14`），每次装新版本 UA 就变一次，于是同一台手机被记成
+ * 一台新设备。实测一台 iPhone 攒出了 9 条记录，设备管理面板彻底失真。
+ *
+ * 归一化只保留「谁 + 哪个平台」，用它做匹配键，装多少个版本都是同一台。
+ * 真要精确到安装实例，得让客户端带一个持久化的设备 id（另议）。
+ */
+function deviceFamily(userAgent) {
+  const ua = String(userAgent ?? '')
+  if (/DSHPocket/i.test(ua)) return 'dshpocket-ios'
+  if (/\bcurl\b|\bwget\b/i.test(ua)) return 'cli'
+  if (/node|python|go-http|axios/i.test(ua)) return 'script'
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'safari-ios'
+  if (/Macintosh/i.test(ua)) return 'safari-mac'
+  // 认不出来就取第一段，至少别把整条 UA 当键
+  return (ua.split(/[\s/]/)[0] || 'unknown').toLowerCase().slice(0, 32)
+}
+
+/** 家族 → 面板上显示的名字 */
+function deviceFamilyLabel(family) {
+  switch (family) {
+    case 'dshpocket-ios': return 'iPhone（DSH Pocket）'
+    case 'safari-ios': return 'Safari（iPhone）'
+    case 'safari-mac': return 'Safari（Mac）'
+    case 'cli': return '命令行 / curl'
+    case 'script': return '脚本'
+    default: return family
+  }
+}
 let devicesCache = null
 
 async function readDevices() {
@@ -786,43 +820,154 @@ function cloudflareFor(port) {
  * 3. 对端：其它 DSH 节点（即用于跨机器通信的 peer），从 peers.json 读。
  *    这一块没有 peer 时返回空数组，面板据此隐藏整段，不显示一个空标题。
  */
+/**
+ * 探测一个节点是否可达，只做 TCP 连接。
+ *
+ * 为什么不发 HTTP 请求：
+ * - 对方要登录态，401 也算「在线」，可我们拿不到明文状态反而更绕；
+ * - 这台机器装了代理，`fetch` 会读 HTTPS_PROXY 把请求劫走（实测过）；
+ * - 而 tailscale serve 那条链上 http/1.1 会被 RST（也实测过）。
+ * TCP 连接既绕开这三点，又正好回答「对方在不在」这个唯一的问题。
+ */
+/**
+ * 「其它 DSH 节点」的存储。
+ *
+ * 为什么必须由用户填、不能写死：这个插件要发给别人用，每个人连的是自己的机器。
+ * 包本身不带任何节点数据，默认是空数组——用户装上后看到「还没有添加」，
+ * 而不是看到开发者的服务器。
+ */
+const PEERS_FILE = join(LOG_DIR, 'peers.json')
+const PEERS_LIMIT = 20
+
+async function readPeers() {
+  try {
+    const raw = await readFile(PEERS_FILE, 'utf8')
+    const parsed = JSON.parse(raw)
+    const list = Array.isArray(parsed) ? parsed : []
+    return list
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({
+        id: String(item.id ?? ''),
+        name: String(item.name ?? ''),
+        address: String(item.address ?? ''),
+        note: item.note ? String(item.note) : null,
+      }))
+      .filter((item) => item.id && item.address)
+  } catch {
+    // 文件不存在就是「用户还没加过」，不是错误。
+    return []
+  }
+}
+
+async function writePeers(list) {
+  await mkdir(LOG_DIR, { recursive: true })
+  await writeFile(PEERS_FILE, JSON.stringify(list, null, 2) + '\n', { mode: 0o600 })
+}
+
+/**
+ * 校验并归一化一个节点。
+ *
+ * 只收 http/https：探测做的是 TCP 连接，但地址会被拼进 UI 和日志，
+ * 放开其它协议只会带来无谓的解析分支。
+ * 拒绝带用户名密码的 URL——那会把凭据写进 peers.json 明文。
+ */
+function normalizePeer(input) {
+  const name = String(input?.name ?? '').trim().slice(0, 40)
+  const raw = String(input?.address ?? '').trim()
+  if (!raw) return { error: '请填写地址' }
+  let url
+  try {
+    url = new URL(raw)
+  } catch {
+    return { error: '地址格式不对，需要像 https://host:8443 这样' }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { error: '只支持 http / https' }
+  }
+  if (!url.hostname) return { error: '地址缺少主机名' }
+  if (url.username || url.password) return { error: '地址里不要带账号密码' }
+  const address = `${url.protocol}//${url.host}`
+  return {
+    peer: {
+      id: `${url.host}`,
+      name: name || url.host,
+      address,
+      note: null,
+    },
+  }
+}
+
+function probeTcp(address, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    let host = ''
+    let port = 0
+    try {
+      const u = new URL(address)
+      host = u.hostname
+      port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80)
+    } catch {
+      resolve({ online: false, rttMs: null, error: '地址无法解析' })
+      return
+    }
+    const started = Date.now()
+    const socket = net.connect({ host, port })
+    let done = false
+    const finish = (result) => {
+      if (done) return
+      done = true
+      try { socket.destroy() } catch { /* 已关闭 */ }
+      resolve(result)
+    }
+    socket.setTimeout(timeoutMs, () => finish({ online: false, rttMs: null, error: '超时' }))
+    socket.once('connect', () => finish({ online: true, rttMs: Date.now() - started, error: null }))
+    socket.once('error', (error) => finish({ online: false, rttMs: null, error: String(error?.code ?? error?.message ?? error) }))
+  })
+}
+
 async function connectionOverview() {
   const status = await modeStatus()
 
+  // 按「设备家族」聚合：一台 iPhone 装了 9 个版本也只显示一行。
+  // 原始记录仍然各留一份（撤销单条时要能定位），这里只是展示层归并。
   let devices = []
   try {
     const raw = await readDevices()
-    devices = Object.entries(raw).map(([token, info]) => {
-      const name = String(info?.name ?? '')
-      // UA 里识别不出来的就别装作认识：如实标成 unknown，避免面板上出现
-      // 「DSH Pocket」这种其实来自 curl 的误导性名字。
-      const kind = /DSHPocket|Darwin|CFNetwork/i.test(name)
-        ? 'ios'
-        : /curl|wget|node|python/i.test(name)
-          ? 'script'
-          : 'unknown'
-      return {
-        token: `${token.slice(0, 6)}…`,
-        name: name.slice(0, 80),
-        kind,
-        createdAt: info?.createdAt ?? 0,
-        lastUsedAt: info?.lastUsedAt ?? 0,
+    const byFamily = new Map()
+    for (const [token, info] of Object.entries(raw)) {
+      const family = info?.family ?? deviceFamily(info?.name)
+      const lastUsedAt = Number(info?.lastUsedAt ?? 0)
+      const prev = byFamily.get(family)
+      if (!prev) {
+        byFamily.set(family, { family, token, count: 1, lastUsedAt, createdAt: Number(info?.createdAt ?? 0) })
+      } else {
+        prev.count += 1
+        if (lastUsedAt > prev.lastUsedAt) {
+          prev.lastUsedAt = lastUsedAt
+          prev.token = token
+        }
       }
-    }).sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+    }
+    devices = [...byFamily.values()]
+      .map((item) => ({
+        token: `${String(item.token).slice(0, 6)}…`,
+        full: item.token,
+        family: item.family,
+        name: deviceFamilyLabel(item.family),
+        count: item.count,
+        createdAt: item.createdAt,
+        lastUsedAt: item.lastUsedAt,
+      }))
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
   } catch { /* 没有设备文件就是空列表 */ }
 
-  let peers = []
-  try {
-    const raw = await readFile(join(LOG_DIR, 'peers.json'), 'utf8')
-    const parsed = JSON.parse(raw)
-    peers = (Array.isArray(parsed) ? parsed : Object.values(parsed ?? {})).map((p) => ({
-      id: String(p?.id ?? ''),
-      name: String(p?.name ?? p?.id ?? ''),
-      address: String(p?.address ?? ''),
-      lastOkAt: Number(p?.lastOkAt ?? 0),
-      lastError: p?.lastError ? String(p.lastError).slice(0, 160) : null,
-    }))
-  } catch { /* 还没配 peer */ }
+  const peers = await readPeers()
+
+  // 并行探测，避免多个节点串行叠加超时（每个 2s，串行会很慢）。
+  const probed = await Promise.all(peers.map(async (peer) => {
+    if (!peer.address) return { ...peer, online: false, rttMs: null, probeError: '没有地址' }
+    const r = await probeTcp(peer.address)
+    return { ...peer, online: r.online, rttMs: r.rttMs, probeError: r.error }
+  }))
 
   return {
     self: {
@@ -835,7 +980,7 @@ async function connectionOverview() {
       port: PROXY_PORT,
     },
     devices,
-    peers,
+    peers: probed,
   }
 }
 
@@ -1494,15 +1639,24 @@ function guessProto(req, host) {
           let deviceCookie = []
           try {
             const devices = await readDevices()
-            // 复用同名设备，避免每次配对都堆一条。
-            const deviceName = String(req.headers['user-agent'] ?? 'iOS').slice(0, 80)
-            let existing = Object.keys(devices).find((key) => devices[key]?.name === deviceName)
+            // 按「设备家族」复用，不再按整条 UA。
+            // UA 里带 App build 号（DSHPocket/14），装一次新版本就成了「新设备」——
+            // 实测一台 iPhone 攒出 9 条记录，设备管理面板因此失真。
+            const userAgent = String(req.headers['user-agent'] ?? 'iOS')
+            const family = deviceFamily(userAgent)
+            const deviceName = userAgent.slice(0, 80)
+            let existing = Object.keys(devices).find(
+              (key) => (devices[key]?.family ?? deviceFamily(devices[key]?.name)) === family
+            )
             if (!existing) {
               existing = newDeviceToken()
-              devices[existing] = { name: deviceName, createdAt: Date.now(), lastUsedAt: Date.now() }
+              devices[existing] = { name: deviceName, family, createdAt: Date.now(), lastUsedAt: Date.now() }
               await saveDevices(devices)
             } else {
               devices[existing].lastUsedAt = Date.now()
+              // 名字跟最新 UA 走（面板显示当前版本），家族不变。
+              devices[existing].name = deviceName
+              devices[existing].family = family
               await saveDevices(devices)
             }
             deviceCookie = [`dsh-pocket-device=${encodeURIComponent(existing)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`]
@@ -1619,6 +1773,72 @@ function guessProto(req, host) {
         //
         // 为什么要后端聚合：device.list / tailscale.status / 连接质量三个调用之间
         // 状态是会变的（比如刚好在切模式），前端分开发三个请求会显示出互相矛盾的快照。
+        // ── 「其它 DSH 节点」的增删 ─────────────────────────────
+        // 用户自己的服务器由用户填，包本身不带任何节点数据。
+        // 清理同一家族的旧记录：每个家族只留最近用过的那条。
+        // 不做自动清理——用户可能想保留某台旧设备的凭据；这里只在他点按钮时执行。
+        if (endpoint === 'device.cleanup') {
+          const devices = await readDevices()
+          const newest = new Map()
+          for (const [token, info] of Object.entries(devices)) {
+            const family = info?.family ?? deviceFamily(info?.name)
+            const lastUsedAt = Number(info?.lastUsedAt ?? 0)
+            const prev = newest.get(family)
+            if (!prev || lastUsedAt > prev.lastUsedAt) newest.set(family, { token, lastUsedAt })
+          }
+          const removed = []
+          for (const [token, info] of Object.entries(devices)) {
+            const family = info?.family ?? deviceFamily(info?.name)
+            if (newest.get(family)?.token !== token) {
+              delete devices[token]
+              removed.push(family)
+            }
+          }
+          await saveDevices(devices)
+          await logLine(`device cleanup: removed ${removed.length}`)
+          send(res, 200, {
+            type: 'server-response', rpcId,
+            result: { ok: true, value: { removed: removed.length, kept: Object.keys(devices).length } }
+          })
+          return
+        }
+
+        if (endpoint === 'peers.list') {
+          const list = await readPeers()
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { peers: list } } })
+          return
+        }
+        if (endpoint === 'peers.add') {
+          const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
+          const { peer, error } = normalizePeer(args)
+          if (error) {
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'bad-request', message: error } } })
+            return
+          }
+          const list = await readPeers()
+          if (list.length >= PEERS_LIMIT) {
+            send(res, 200, { type: 'server-response', rpcId, result: { ok: false, error: { code: 'too-many', message: `最多 ${PEERS_LIMIT} 个节点` } } })
+            return
+          }
+          // 同一地址只留一条，避免用户连点两次出现重复行。
+          const next = list.filter((item) => item.address !== peer.address)
+          next.push(peer)
+          await writePeers(next)
+          await logLine(`peer added: ${peer.address}`)
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { peers: next } } })
+          return
+        }
+        if (endpoint === 'peers.remove') {
+          const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
+          const id = String(args.id ?? args.address ?? '')
+          const list = await readPeers()
+          const next = list.filter((item) => item.id !== id && item.address !== id)
+          await writePeers(next)
+          await logLine(`peer removed: ${id}`)
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value: { peers: next } } })
+          return
+        }
+
         if (endpoint === 'overview') {
           const value = await connectionOverview()
           send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })
