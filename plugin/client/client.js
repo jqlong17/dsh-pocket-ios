@@ -304,6 +304,120 @@ window.__ModuleLoader__.load({
             null)));
     }
 
+    // 连接总览：本机走哪条路、谁连过、还有哪些 DSH 节点。
+    //
+    // 数据来源分两级：
+    //   ① 首选 overview —— 一次给全（本机 + 已接入设备 + 其它节点）。
+    //      分开发几个 RPC 会拿到互相矛盾的快照（切模式的一瞬间，地址和状态分属前后）。
+    //   ② 宿主端还没更新到有 overview 时，退回 mode.status —— 至少把「本机走哪条路」
+    //      显示出来，卡片不会因为后端没升级就整块消失。
+    function OverviewCard(props) {
+      var t = makeT(currentLang());
+      var st = React.useState({ loading: true, data: null });
+      var state = st[0], setState = st[1];
+
+      var load = function () {
+        if (!props.rpcCall) { setState({ loading: false, data: null }); return; }
+        Promise.resolve(props.rpcCall("overview", {})).then(unwrapRpc).then(function (d) {
+          if (d && d.self) { setState({ loading: false, data: d }); return; }
+          throw new Error("empty overview");
+        }).catch(function () {
+          Promise.resolve(props.rpcCall("mode.status", {})).then(unwrapRpc).then(function (m) {
+            if (!m) { setState({ loading: false, data: null }); return; }
+            setState({ loading: false, data: { self: m, devices: [], peers: [] } });
+          }).catch(function () { setState({ loading: false, data: null }); });
+        });
+      };
+
+      React.useEffect(function () {
+        load();
+        var timer = setInterval(load, 15000);
+        return function () { clearInterval(timer); };
+      }, []);
+
+      // 两级都拿不到就整块不显示：上面还有二维码等关键功能，
+      // 不能因为总览失败在用户眼前留一块空白或一条红字。
+      if (state.loading || !state.data) return null;
+
+      var d = state.data;
+      var self = d.self || {};
+      var devices = d.devices || [];
+      var peers = d.peers || [];
+
+      var ago = function (ms) {
+        if (!ms) return t("从未", "never");
+        var diff = Date.now() - ms;
+        if (diff < 0) diff = 0;
+        var m = Math.floor(diff / 60000);
+        if (m < 1) return t("刚刚", "just now");
+        if (m < 60) return m + t(" 分钟前", " min ago");
+        var h = Math.floor(m / 60);
+        return h < 24 ? h + t(" 小时前", " h ago") : Math.floor(h / 24) + t(" 天前", " d ago");
+      };
+
+      var rowStyle = { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12 };
+      var dim = { opacity: 0.62 };
+      var dot = function (ok) {
+        return React.createElement("span", {
+          style: {
+            width: 7, height: 7, borderRadius: 4, flex: "0 0 7px",
+            background: ok ? "#14a06e" : "#d1d5db", display: "inline-block"
+          }
+        });
+      };
+
+      var ready = self.state === "ready";
+      var deviceNodes = devices.slice(0, 6).map(function (dev, i) {
+        var isIOS = dev.kind === "ios";
+        return React.createElement("div", { key: "dev" + i, style: rowStyle },
+          dot(Date.now() - (dev.lastUsedAt || 0) < 3600000),
+          React.createElement("span", { style: { fontWeight: 500 } },
+            isIOS ? t("iPhone（DSH Pocket）", "iPhone (DSH Pocket)")
+              : dev.kind === "script" ? t("脚本 / 命令行", "script / CLI")
+                : t("未知客户端", "unknown client")),
+          React.createElement("span", { style: dim }, "· " + ago(dev.lastUsedAt)));
+      });
+
+      var peerNodes = peers.map(function (peer, i) {
+        var ok = peer.lastOkAt && (Date.now() - peer.lastOkAt < 300000);
+        return React.createElement("div", { key: "peer" + i, style: rowStyle },
+          dot(ok),
+          React.createElement("span", { style: { fontWeight: 500 } }, peer.name || peer.id),
+          React.createElement("span", { style: dim }, "· " + (peer.address || t("无地址", "no address"))));
+      });
+
+      return React.createElement("div", {
+        style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "#fff" }
+      },
+        React.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 6 } },
+          t("连接总览", "Connections")),
+
+        React.createElement("div", { style: rowStyle },
+          dot(ready),
+          React.createElement("span", { style: { fontWeight: 600 } }, t("本机", "This machine")),
+          React.createElement("span", { style: dim },
+            "· " + (self.label || self.mode || "?") + (self.address ? " · " + self.address : "")),
+        self.error
+          ? React.createElement("div", { style: { fontSize: 11, color: "#b45309", marginLeft: 15 } }, String(self.error).slice(0, 120))
+          : null,
+
+        devices.length
+          ? React.createElement("div", null,
+            React.createElement("div", { style: { height: 1, background: "rgba(0,0,0,.06)", margin: "7px 0" } }),
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, opacity: .55 } },
+              t("已连接的客户端", "Clients")),
+            deviceNodes)
+          : null,
+
+        peers.length
+          ? React.createElement("div", null,
+            React.createElement("div", { style: { height: 1, background: "rgba(0,0,0,.06)", margin: "7px 0" } }),
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, opacity: .55 } },
+              t("其它 DSH 节点", "Other DSH nodes")),
+            peerNodes)
+          : null));
+    }
+
     function AppDownloadCard() {
       return React.createElement("div", { style: { padding: 14, borderRadius: 12, border: "1px solid rgba(0,0,0,.08)", background: "rgba(20,122,94,.04)" } },
         React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" } },
@@ -323,8 +437,25 @@ window.__ModuleLoader__.load({
 
     function MobileAccessPanel(props) {
       return React.createElement("div", { style: { width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 } },
+        React.createElement(OverviewCard, { rpcCall: props.rpcCall }),
         React.createElement(AppDownloadCard),
         React.createElement(AccessPanelCard, { rpcCall: props.rpcCall }));
+    }
+
+    // 每个注册各自兜底。
+    //
+    // 为什么需要：apply() 是串行执行的，任何一处抛错都会让后面的全部不执行。
+    // 更糟的是「整个 client 包加载失败」（例如 dsh.client.inject 里写了没装的包）时，
+    // 连排在最前面的注册也一起消失，界面上表现为「无界面入口」——所有功能一起没。
+    // 有了这层，最坏情况只是「新加的那块不显示」，已经工作的部分照旧。
+    function safeRegister(name, fn) {
+      try {
+        fn();
+      } catch (error) {
+        try {
+          console.warn("[dsh-pocket-ios] 注册失败，已跳过: " + name, error);
+        } catch { /* console 不可用就算了 */ }
+      }
     }
 
     function apply(ctx) {
@@ -332,14 +463,17 @@ window.__ModuleLoader__.load({
         return Promise.resolve(ctx.connection.rpc.call("/dsh-pocket-ios", endpoint || "tailscale.status", payload || {}));
       };
       function MobileAccessSection() { return React.createElement(MobileAccessPanel, { rpcCall: rpcCall }); }
-      ctx.slots.inject("settings.section", function () {
-        return ctx.slots.register({
-          name: "settings.section",
-          id: "pocket-ios",
-          order: 2,
-          label: function () { return currentLang() === "zh" ? "手机访问（iOS）" : "Phone access (iOS)"; },
-          inject: function () { return { rpcCall: rpcCall }; }
-        }, MobileAccessSection);
+
+      safeRegister("settings.section", function () {
+        ctx.slots.inject("settings.section", function () {
+          return ctx.slots.register({
+            name: "settings.section",
+            id: "pocket-ios",
+            order: 2,
+            label: function () { return currentLang() === "zh" ? "手机访问（iOS）" : "Phone access (iOS)"; },
+            inject: function () { return { rpcCall: rpcCall }; }
+          }, MobileAccessSection);
+        });
       });
     }
 

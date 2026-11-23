@@ -777,6 +777,68 @@ function cloudflareFor(port) {
  * @returns {Promise<{mode: string, label: string, address: string|null, qr: string|null,
  *   state: string, error: string|null, modes: {id: string, label: string}[]}>}
  */
+/**
+ * 面板用的连接总览。
+ *
+ * 分三块，正好对应界面上三组信息：
+ * 1. 本机：当前走哪条路、地址是什么、是否就绪；
+ * 2. 客户端：曾经接入过的设备，谁最近活跃（iOS 上会显示成「手机」）；
+ * 3. 对端：其它 DSH 节点（即用于跨机器通信的 peer），从 peers.json 读。
+ *    这一块没有 peer 时返回空数组，面板据此隐藏整段，不显示一个空标题。
+ */
+async function connectionOverview() {
+  const status = await modeStatus()
+
+  let devices = []
+  try {
+    const raw = await readDevices()
+    devices = Object.entries(raw).map(([token, info]) => {
+      const name = String(info?.name ?? '')
+      // UA 里识别不出来的就别装作认识：如实标成 unknown，避免面板上出现
+      // 「DSH Pocket」这种其实来自 curl 的误导性名字。
+      const kind = /DSHPocket|Darwin|CFNetwork/i.test(name)
+        ? 'ios'
+        : /curl|wget|node|python/i.test(name)
+          ? 'script'
+          : 'unknown'
+      return {
+        token: `${token.slice(0, 6)}…`,
+        name: name.slice(0, 80),
+        kind,
+        createdAt: info?.createdAt ?? 0,
+        lastUsedAt: info?.lastUsedAt ?? 0,
+      }
+    }).sort((a, b) => b.lastUsedAt - a.lastUsedAt)
+  } catch { /* 没有设备文件就是空列表 */ }
+
+  let peers = []
+  try {
+    const raw = await readFile(join(LOG_DIR, 'peers.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    peers = (Array.isArray(parsed) ? parsed : Object.values(parsed ?? {})).map((p) => ({
+      id: String(p?.id ?? ''),
+      name: String(p?.name ?? p?.id ?? ''),
+      address: String(p?.address ?? ''),
+      lastOkAt: Number(p?.lastOkAt ?? 0),
+      lastError: p?.lastError ? String(p.lastError).slice(0, 160) : null,
+    }))
+  } catch { /* 还没配 peer */ }
+
+  return {
+    self: {
+      mode: status.mode,
+      label: status.label ?? MODE_LABELS[status.mode] ?? status.mode,
+      state: status.state,
+      address: status.address ?? null,
+      error: status.error ?? null,
+      pinSet: Boolean(status.pinSet),
+      port: PROXY_PORT,
+    },
+    devices,
+    peers,
+  }
+}
+
 async function modeStatus() {
   currentMode = await readMode()
   const modes = MODES.map((id) => ({ id, label: MODE_LABELS[id] }))
@@ -1553,6 +1615,16 @@ function guessProto(req, host) {
           return
         }
         // 切换连接方式：停掉旧隧道、启动新隧道，返回新状态。
+        // 面板「连接总览」：一次拿全，避免前端连打好几个 RPC 又拼不齐时间点。
+        //
+        // 为什么要后端聚合：device.list / tailscale.status / 连接质量三个调用之间
+        // 状态是会变的（比如刚好在切模式），前端分开发三个请求会显示出互相矛盾的快照。
+        if (endpoint === 'overview') {
+          const value = await connectionOverview()
+          send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })
+          return
+        }
+
         if (endpoint === 'mode.set') {
           const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
           const next = String(args.mode ?? '')
@@ -1571,6 +1643,27 @@ function guessProto(req, host) {
           if (next === 'tailscale') {
             const serve = await ensureTailscaleServe(3091)
             await logLine(`切到 tailscale 后 ensureServe: ${serve.ok ? serve.url : serve.error}`)
+
+            // 把 serve 的真实地址写回 tailscale.json（覆盖用）。
+            //
+            // 背景：配对地址优先取 tailscale.json，没有才读 serve status。
+            // 正常情况该文件不存在、走 serve status，地址本来就带端口，不会出问题。
+            // 但如果用户手动写过 tailscale.json（只写主机名、不带端口），而 serve 并不在
+            // 默认 443 上（例如 443 被 nginx 占用时 serve 用 :8443），配对地址就会指向错端口。
+            // 这里在切到 tailscale 时用 serve status 的真实 URL 覆盖它。
+            //
+            // 注意：2026-11-23 曾把「手机连不上」归因到这里，那是误判——那条链路根本没有
+            // tailscale.json，地址一直是对的；真正原因是 App 里存了旧地址。
+            if (serve.ok && serve.url) {
+              try {
+                await mkdir(LOG_DIR, { recursive: true })
+                await writeFile(join(LOG_DIR, 'tailscale.json'),
+                  JSON.stringify({ url: serve.url }, null, 2), { mode: 0o600 })
+                await logLine(`tailscale.json 已更新为 serve 实际地址: ${serve.url}`)
+              } catch (error) {
+                await logLine(`写 tailscale.json 失败: ${error?.message ?? error}`)
+              }
+            }
           }
           // 立刻回一个轻量状态：切到 cloudflare 时隧道要下载/注册，不能阻塞在这里
           const value = { mode: next, label: MODE_LABELS[next], modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })), address: null, qr: null, state: 'starting', error: null, phase: null }

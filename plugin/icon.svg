@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="currentColor" stroke-width="1.8"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- 手机外框：这是「手机访问」这个插件最直接的隐喻 -->
+  <rect x="7" y="2.5" width="10" height="19" rx="2.4" />
+  <!-- 屏幕下方的横线：让人一眼看出是手机而不是卡片 -->
+  <line x1="10.6" y1="18.4" x2="13.4" y2="18.4" />
+  <!-- 顶部听筒：24px 下仍能分辨，再多细节就糊了 -->
+  <line x1="10.8" y1="5.2" x2="13.2" y2="5.2" />
+</svg>
