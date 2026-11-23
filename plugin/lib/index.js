@@ -739,7 +739,15 @@ async function tailscale(args) {
  *
  * 不需要 sudo：`tailscale serve` 是用户级配置（--bg = 后台常驻）。
  */
-async function ensureTailscaleServe(port = 3091) {
+/**
+ * 确保 `tailscale serve` 把插件入口发布到 tailnet。
+ *
+ * 不再给 `port` 默认值：默认值会和 `PROXY_PORT` 形成第二个「事实副本」，
+ * 一旦两边不同步就会把 serve 指到没人监听的端口（2026-11-24 发现：
+ * 调用方写死 3091，设了 DSH_POCKET_IOS_PROXY_PORT 也不生效）。
+ * 现在漏传会直接变成 undefined 并在日志里立刻暴露。
+ */
+async function ensureTailscaleServe(port) {
   // ① 已配好就不动（避免每次切模式都重写配置）
   try {
     const out = await tailscale(['serve', 'status'])
@@ -2069,7 +2077,7 @@ function guessProto(req, host) {
           await logLine(`mode -> ${next}`)
           // 切到 Tailscale 时顺手把 serve 打开，用户不用再开终端敲命令。
           if (next === 'tailscale') {
-            const serve = await ensureTailscaleServe(3091)
+            const serve = await ensureTailscaleServe(PROXY_PORT)
             await logLine(`切到 tailscale 后 ensureServe: ${serve.ok ? serve.url : serve.error}`)
 
             // 把 serve 的真实地址写回 tailscale.json（覆盖用）。
