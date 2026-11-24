@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1216" media="(prefers-color-scheme: dark)">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DeepSeek Harness for Absolute Beginners · An AI assistant that lives on your own computer</title>
+<meta name="description" content="No technical background needed: install DeepSeek's AI assistant on your own computer. Your data stays local.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body id="top">
+
+<header class="topbar">
+  <a class="brand" href="en.html">DSH Basics</a>
+  <span class="spacer"></span>
+  <button class="topbtn" type="button" data-copy-all>Copy all</button>
+  <div class="langswitch" role="group" aria-label="Language">
+    <a href="index.html" hreflang="zh">中文</a>
+    <a class="on" href="en.html" hreflang="en">EN</a>
+  </div>
+</header>
+
+<header class="hero wrap">
+  <div class="kicker">Written for people with zero technical background</div>
+  <h1>Put the AI assistant on <strong>your own computer</strong></h1>
+  <p class="lead">No website. No app store. Install it once, then just double-click to use. Your conversations, files and memory stay on your machine — not uploaded, not used for training.</p>
+  <span class="pill">About 10 minutes · no coding required</span>
+
+  <nav class="toc">
+    <b>Contents</b>
+    <a href="#what"><span>1</span>What it actually is</a>
+    <a href="#why"><span>2</span>Why install it instead of using a website</a>
+    <a href="#need"><span>3</span>What you need</a>
+    <a href="#install"><span>4</span>Installing (Mac / Windows)</a>
+    <a href="#first"><span>5</span>First launch: three things</a>
+    <a href="#use"><span>6</span>What it can do for you</a>
+    <a href="#faq"><span>7</span>Common questions</a>
+    <a href="#next"><span>8</span>Later: use it from your phone</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+<section id="what">
+  <h2>1 · What it actually is</h2>
+  <p><strong>DeepSeek Harness</strong> (DSH for short) is a program from DeepSeek that <strong>you install on your own computer</strong>.</p>
+  <p>Think of it as <strong>an intern who lives inside your machine</strong>:</p>
+  <ul>
+    <li>Ask it to read a file on your computer and it reads it;</li>
+    <li>Ask it to tidy a spreadsheet, write a document or change code, and it does it right there;</li>
+    <li>It remembers what you told it before — and those notes <strong>live on your own disk</strong>.</li>
+  </ul>
+  <p class="muted small">"Harness" is developer jargon (roughly: the shell that drives the model). You never need to remember the word — treat it as one piece of software.</p>
+</main>
+
+<section id="why">
+  <h2>2 · Why install it instead of using a website</h2>
+  <p>Most online AI products work like this: <strong>what you type → goes to their servers → stored there → sometimes used to improve the model</strong>.</p>
+  <p>Two practical consequences:</p>
+  <ol>
+    <li><strong>Your data isn't yours to hold.</strong> Years of conversations, your working habits, the files you upload — all on someone else's machine.</li>
+    <li><strong>The more it "remembers", the more it matters.</strong> Products now compete on memory: the finer the memory, the bigger the loss if it leaks or is used for training.</li>
+  </ol>
+
+  <div class="card">
+    <p class="toc-inline"><strong>One honest note:</strong> privacy policies differ a lot. Some explicitly promise not to train on your data; some do. This page names no products — check the "improve our models" clause in whatever you use.</p>
+  </div>
+
+  <p><strong>Installing it yourself changes the following:</strong></p>
+  <ul>
+    <li><strong>Conversation history</strong> sits in a folder on your computer;</li>
+    <li><strong>Files</strong> don't leave your machine (it reads and writes them locally);</li>
+    <li><strong>Only what you send in a turn</strong> goes to the model — same as chatting on a website, except <strong>history doesn't pile up on someone else's server</strong>;</li>
+    <li>Want it gone? Uninstall, or delete that folder.</li>
+  </ul>
+
+  <div class="ok"><b>In one sentence</b><br>It isn't a "safer AI" — it <strong>moves where your data lives from someone else's house back into yours</strong>.</div>
+</main>
+
+<section id="need">
+  <h2>3 · What you need</h2>
+  <div class="card"><div class="step"><div class="num">1</div><div class="body"><b>A computer</b>
+    <p class="small muted" style="margin:4px 0 0">Mac (recent Apple silicon or Intel) or Windows 10/11. It cannot run on a phone — this is desktop software.</p>
+  </div></div></div>
+  <div class="card"><div class="step"><div class="num">2</div><div class="body"><b>A DeepSeek account</b>
+    <p class="small muted" style="margin:4px 0 0">The same account you use on the DeepSeek website. No account yet? Sign up with a phone number.</p>
+  </div></div></div>
+  <div class="card"><div class="step"><div class="num">3</div><div class="body"><b>Internet access</b>
+    <p class="small muted" style="margin:4px 0 0">Needed for installing and for talking to the model. Offline it opens, but can't answer.</p>
+  </div></div></div>
+  <div class="note"><b>What you don't need:</b> the command line, a server, or any idea what "model" and "API" mean.</div>
+</main>
+
+<section id="install">
+  <h2>4 · Installing</h2>
+  <p>Go to the official download page: <a href="https://www.deepseek.com/download/">deepseek.com/download</a> and look for <strong>DeepSeek Harness (desktop)</strong>.</p>
+
+  <a class="btn" href="https://download.deepseek.com/desktop/dsh-latest-macos-arm64.dmg">Download for Mac (.dmg)</a>
+  <a class="btn" href="https://download.deepseek.com/desktop/dsh-latest-windows-x64.exe">Download for Windows (.exe)</a>
+
+  <h3>On a Mac</h3>
+  <ol>
+    <li>Double-click the downloaded <code>.dmg</code>.</li>
+    <li>Drag the icon into your <strong>Applications</strong> folder.</li>
+    <li>Open Applications, find <strong>DeepSeek Harness</strong>, double-click.</li>
+  </ol>
+  <div class="note"><b>Blocked the first time?</b> "Cannot verify the developer" is normal — it isn't distributed through the App Store.<br>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll down, find the line saying DeepSeek Harness was blocked, click <strong>Open Anyway</strong>, then enter your password.</div>
+
+  <h3>On Windows</h3>
+  <ol>
+    <li>Double-click the downloaded <code>.exe</code>.</li>
+    <li>If a blue "Windows protected your PC" appears, click <strong>More info → Run anyway</strong>.</li>
+    <li>Click through the installer; a shortcut appears on the desktop.</li>
+  </ol>
+
+  <div class="note"><b>Why the warnings?</b> Developer tools like this don't pay for store signing. <strong>As long as you downloaded from <code>deepseek.com</code>, continue safely.</strong> (From anywhere else: delete and re-download.)</div>
+</main>
+
+<section id="first">
+  <h2>5 · First launch: three things</h2>
+
+  <div class="card"><div class="step"><div class="num">1</div><div class="body"><b>Sign in</b>
+    <p class="small muted" style="margin:4px 0 0">Follow the prompt and sign in with your DeepSeek account.</p>
+  </div></div></div>
+
+  <div class="card"><div class="step"><div class="num">2</div><div class="body"><b>Pick a workspace folder</b>
+    <p class="small muted" style="margin:4px 0 0">The workspace is the folder it may read and write. <strong>Create an empty folder</strong> (e.g. "AI workspace" on your desktop) and choose that. <strong>Don't hand it your whole disk on day one</strong> — start small.</p>
+  </div></div></div>
+
+  <div class="card"><div class="step"><div class="num">3</div><div class="body"><b>Say one sentence</b>
+    <p class="small muted" style="margin:4px 0 0">Type:<br><code>Look at what's in this folder and summarise it in one paragraph</code></p>
+  </div></div></div>
+
+  <div class="ok"><b>If you see it "think → call a tool → answer"</b>, you're done.</div>
+</main>
+
+<section id="use">
+  <h2>6 · What it can do for you</h2>
+  <p>It doesn't just chat — it <strong>acts on your computer</strong>:</p>
+  <ul>
+    <li><strong>Tidy files</strong>: "Sort these photos into month folders by date"</li>
+    <li><strong>Spreadsheets</strong>: "Pull March orders out of this CSV and total them"</li>
+    <li><strong>Documents</strong>: "Turn these meeting notes into a weekly report"</li>
+    <li><strong>Code</strong>: "Why doesn't this project run? Find the cause"</li>
+    <li><strong>Bulk edits</strong>: "Replace the old company name in every .txt here"</li>
+  </ul>
+  <div class="note"><b>It asks first.</b> Deleting, overwriting or running commands requires your confirmation — deliberately: it doesn't decide for you.</div>
+</main>
+
+<section id="faq">
+  <h2>7 · Common questions</h2>
+
+  <div class="qa"><b>Does it cost money?</b><p>The software is free and open source. Model usage follows DeepSeek's pricing; everyday Q&amp;A is inexpensive. Check the official site for current rates.</p></div>
+
+  <div class="qa"><b>Where is my data?</b><p>Conversations live in a <code>.dsh</code> folder in your home directory (Mac or Windows). Files you point it at are read locally, not uploaded.</p></div>
+
+  <div class="qa"><b>Will it delete my files?</b><p>It asks before destructive actions, and you can grant access to just one small folder.</p></div>
+
+  <div class="qa"><b>How is this different from the DeepSeek website?</b><p>The website can chat and answer. The desktop program can also <strong>operate your files</strong>, and keeps its <strong>history locally</strong>.</p></div>
+
+  <div class="qa"><b>How do I uninstall?</b><p>Mac: drag it to the Trash. Windows: Settings → Apps → Uninstall. To remove records too, delete the <code>.dsh</code> folder.</p></div>
+
+  <div class="qa"><b>Do I need an "API key"?</b><p>No — sign in and pick a model in the UI. The default is fine.</p></div>
+</main>
+
+<section id="next">
+  <h2>8 · Later: use it from your phone</h2>
+  <p>Once you're comfortable, you may want to continue a session from the sofa. A companion connector plugin <strong>dsh-pocket-ios</strong> plus an iOS app does that:</p>
+  <ul>
+    <li>Install the plugin on the computer, scan a QR code from the phone;</li>
+    <li>The phone is only a remote screen — sessions still run on your computer;</li>
+    <li>Requires an iPhone with iOS 17 or later.</li>
+  </ul>
+  <a class="btn ghost" href="https://dsh-pocket.docs.notta.uk/">Technical guide (for the more technical reader)</a>
+  <p class="muted small">Entirely optional. Get comfortable on the desktop first.</p>
+</main>
+
+</main>
+
+<footer class="wrap">
+  <p>This page is an unofficial beginner's guide, not affiliated with DeepSeek. Official sources:
+  <a href="https://www.deepseek.com/download/">deepseek.com</a> and the
+  <a href="https://deepseek-harness.github.io/deepseek-harness/">official docs</a>.</p>
+  <p>DeepSeek Harness is in "developer preview" — the interface may change. Where it differs, trust what the app shows.</p>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.querySelector('[data-copy-all]');
+    if (!btn) return;
+    function fallback(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+    btn.addEventListener('click', function () {
+      var main = document.querySelector('main');
+      var text = (main ? main.innerText : document.body.innerText).trim();
+      function done() {
+        var old = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('done');
+        setTimeout(function () { btn.textContent = old; btn.classList.remove('done'); }, 1600);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { fallback(text); done(); });
+      } else { fallback(text); done(); }
+    });
+  })();
+</script>
+</body>
+</html>
