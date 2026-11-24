@@ -274,6 +274,28 @@ extension ConnectionModel {
         }
     }
 
+    /// **实际正在连的那台主机**（由 `connection.serverAddress` 反推）。
+    ///
+    /// 为什么需要它：`currentHostId` 表示「用户上次选的主机」，是偏好；
+    /// 而实际连接可能因为回滚/兜底落到另一台（例如选中的阿里云连不上、
+    /// 自动退回 Mac）。两者一旦不一致，界面会显示「已连接 DSH 1」，
+    /// 会话列表却是 DSH 2 的内容（2026-11-24 真机反馈）。
+    /// 所以凡是「显示当前连的是谁」，一律用这个；`currentHostId` 只用于启动时优先尝试。
+    var connectedHost: DSHHost? {
+        hosts.first { host in
+            host.endpoints.contains { $0.address == connection.serverAddress }
+        }
+    }
+
+    /// 让「上次选中的主机」跟随实际连接。
+    ///
+    /// 连接成功后调用：偏好应反映现实，否则下次启动会优先去试一台并不是上次真正在用的机器。
+    func syncCurrentHostIdWithConnection() {
+        guard let host = connectedHost, currentHostId != host.id else { return }
+        currentHostId = host.id
+        persistCurrentHostId()
+    }
+
     /// 持久化「上次选中的主机」。
     func persistCurrentHostId() {
         if let id = currentHostId {
@@ -348,6 +370,7 @@ extension ConnectionModel {
             sessionStore.sessions = try await fetchSessions()
             connection.isConnected = true
             recordEndpoint(endpoint.address)
+            syncCurrentHostIdWithConnection()
             recordDiagnostic("切换连接：\(endpoint.kind.label) \(DSHURL.redactedAddress(endpoint.address))")
         } catch {
             connection.serverAddress = previous
@@ -411,6 +434,10 @@ extension ConnectionModel {
                     connection.isConnected = true
                     connection.errorMessage = nil
                     recordDiagnostic("恢复连接：设备凭证换票成功，免扫码")
+                    // 这条 return 以前不落盘、也不同步偏好，导致「实际连的是 A、
+                    // 界面显示 B」能一直留到下次启动（2026-11-24 真机反馈）。
+                    recordEndpoint(connection.serverAddress)
+                    syncCurrentHostIdWithConnection()
                     return
                 } catch {
                     // 换票成功但拉会话仍失败，继续走下面的错误上报

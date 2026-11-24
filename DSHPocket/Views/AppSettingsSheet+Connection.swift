@@ -10,8 +10,10 @@ import DSHKit
 /// 放在一起只会让「这一页有哪些设置」变得难读。
 extension AppSettingsSheet {
     /// 当前主机（顶部那块用）。
+    /// 当前连接的主机：**由实际地址反推**，不是「上次选中的主机」。
+    /// 两者在回滚/兜底时会分叉，用它才能保证「界面显示的那台 == 会话列表那台」。
     var currentHost: DSHHost? {
-        model.hosts.first { $0.id == model.currentHostId }
+        model.connectedHost
     }
 
 
@@ -58,7 +60,7 @@ extension AppSettingsSheet {
     /// 主机一行：名字 + 地址数 + 当前用的那条地址。
     @ViewBuilder
     func hostRow(_ host: DSHHost) -> some View {
-        let isCurrent = host.id == model.currentHostId
+        let isCurrent = host.id == model.connectedHost?.id
         // 外层 VStack：主行(可点/可滑) + 当前主机的地址子行。
         // 之前把 if 直接插在 HStack 的修饰符链中间，导致 contentShape 无处可挂。
         return VStack(alignment: .leading, spacing: 6) {

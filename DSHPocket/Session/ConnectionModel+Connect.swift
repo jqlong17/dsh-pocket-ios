@@ -404,7 +404,8 @@ extension ConnectionModel {
             ConnectionVault.saveDeviceToken(from: url, address: connection.serverAddress)
         }
         recordEndpoint(connection.serverAddress)
-        persistCurrentHostId()
+        // 偏好跟随现实：连上谁，谁就是「上次选中的主机」。
+        syncCurrentHostIdWithConnection()
     }
 
     /// 自动选路：探测所有已保存地址，按策略挑一条并切换过去。
