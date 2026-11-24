@@ -73,10 +73,17 @@ public struct DSHMessage: Identifiable, Equatable, Sendable {
     public let isUser: Bool
     public let rpcId: String?
     public let images: [DSHImageRef]
+    /// `source.kind`：`user` = 用户发出的消息；`user-question-reply` = 问答卡的回答
+    /// （内容是一段 JSON，不是给人读的气泡）；nil = 老服务端没给。
+    /// 为什么要在解码层带出来：重进会话时要靠它判断「这个问题已经答过了」
+    /// （2026-11-24 卡片反复弹出的 bug）。
+    public let sourceKind: String?
+    /// `source.callId`：问答回复对应的问题调用，用来结算卡片。
+    public let sourceCallId: String?
 
     public init(id: String, sequence: Int, kind: String, text: String,
                 isUser: Bool, rpcId: String? = nil, images: [DSHImageRef] = [],
-                turn: Int? = nil) {
+                turn: Int? = nil, sourceKind: String? = nil, sourceCallId: String? = nil) {
         self.id = id
         self.sequence = sequence
         self.turn = turn
@@ -85,6 +92,8 @@ public struct DSHMessage: Identifiable, Equatable, Sendable {
         self.isUser = isUser
         self.rpcId = rpcId
         self.images = images
+        self.sourceKind = sourceKind
+        self.sourceCallId = sourceCallId
     }
 }
 

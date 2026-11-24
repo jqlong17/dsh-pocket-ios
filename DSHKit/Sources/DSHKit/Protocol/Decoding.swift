@@ -44,9 +44,12 @@ public enum DSHDecoding {
 
         let payload = (data["message"] as? [String: Any]) ?? data
         let source = (payload["source"] as? [String: Any]) ?? (data["source"] as? [String: Any])
+        let sourceKind = source?["kind"] as? String
         if kind == "user/message" {
-            // 注入上下文（runtime-context/skill-catalog/time-context）不是用户消息。
-            guard source?["kind"] as? String == "user" else { return nil }
+            // 注入上下文（runtime-context/skill-catalog/time-context）不是用户消息；
+            // 问答卡的回复（user-question-reply）也不是对话气泡——但它是「已回答」的唯一证据，
+            // 必须解出来交给上层结算卡片，再由上层把它从渲染列表里剔除（2026-11-24）。
+            guard sourceKind == "user" || sourceKind == "user-question-reply" else { return nil }
         }
         let content = payload["content"] as? [[String: Any]] ?? []
         let text = content.compactMap { block -> String? in
@@ -63,8 +66,32 @@ public enum DSHDecoding {
             isUser: kind == "user/message",
             rpcId: RPCId.normalized(source?["rpcId"] as? String),
             images: images,
-            turn: DSHDecoding.intValue(data["turn"])
+            turn: DSHDecoding.intValue(data["turn"]),
+            sourceKind: sourceKind,
+            sourceCallId: source?["callId"] as? String
         )
+    }
+
+    /// 问答卡回复（`user/message` + `source.kind == "user-question-reply"`）对应的 `callId`。
+    ///
+    /// 为什么单独给一个入口：这类事件不是对话消息（正文是 JSON 答案），
+    /// 但它是「这个问题已经答过」的唯一持久证据——DSH 的 `userQuestions` 投影也是这么判的
+    /// （`packages/interaction/user-questions/src/projection.ts`）。
+    public static func questionReplyCallId(fromEvent event: [String: Any]) -> String? {
+        guard event["type"] as? String == "user/message",
+              let data = event["data"] as? [String: Any] else { return nil }
+        let payload = (data["message"] as? [String: Any]) ?? data
+        let source = (payload["source"] as? [String: Any]) ?? (data["source"] as? [String: Any])
+        guard source?["kind"] as? String == "user-question-reply" else { return nil }
+        guard let callId = source?["callId"] as? String,
+              !callId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return callId
+    }
+
+    /// `session/page` 记录形态（`{"event": {...}}` 或裸事件）的问答卡回复 `callId`。
+    public static func questionReplyCallId(fromRecord raw: [String: Any]) -> String? {
+        guard let event = eventPayload(fromRecord: raw) else { return nil }
+        return questionReplyCallId(fromEvent: event)
     }
 
     // MARK: Event → Step / Turn

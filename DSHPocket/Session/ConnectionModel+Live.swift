@@ -245,7 +245,9 @@ extension ConnectionModel {
             // 否则打开会话后 Live Signal 显示 0 帧 / 83 秒，看起来像实时流断了
             // （真机实测踩过：这个会话明明刚加载过快照）。
             recordLiveFrameArrival()
-            mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
+            // 先结算「已回答」再重放步骤：否则 tool/call 会把答过的问题重新抬成卡片
+            // （2026-11-24 真机反馈：回答完退出再进，卡片又弹出来）。
+            mergeMessages(settleQuestionReplies(in: dshMessages).map(Self.pocketMessage(from:)))
             for step in dshSteps { applyDSHStep(step, historical: true) }
             // 快照到达时总是允许上滑试一次。
             //
@@ -262,7 +264,7 @@ extension ConnectionModel {
             noteLoadFinished(source: "snapshot", conversation: conversation)
         case .messages(let dshMessages):
             let beforeCount = messages.count
-            mergeMessages(dshMessages.map(Self.pocketMessage(from:)))
+            mergeMessages(settleQuestionReplies(in: dshMessages).map(Self.pocketMessage(from:)))
             isLoadingConversation = false
             if isLoadingOlder {
                 isLoadingOlder = false
@@ -327,7 +329,10 @@ extension ConnectionModel {
                     }
                 }
             }
-            noteQuestionSettled(callId: callId)
+            // `{"pending":true}` 表示超时后问题仍可回答：此时不能结算，否则卡片被永久吞掉。
+            if !QuestionAnswerReplay.isPendingResult(text) {
+                noteQuestionSettled(callId: callId)
+            }
         case .turnStart(let sequence, let turn):
             if !turnStarts.contains(sequence) { turnStarts.append(sequence) }
             isTurnRunning = true
@@ -400,6 +405,22 @@ extension ConnectionModel {
     /// 手动重连实时流（状态机断开时 UI 上的"重连"按钮）。
     // MARK: 问答卡（实现在 QuestionInbox）
 
+    /// 问答卡的回复不是对话消息（正文是一段 JSON 答案）：用它结算卡片，并从渲染列表里剔除。
+    ///
+    /// 这是「已回答」在日志里的持久证据——App 重启、电脑端已回答、步骤窗口截断都靠它兜住。
+    /// 判定依据与 DSH 的 `userQuestions` 投影一致（`source.kind == "user-question-reply"`）。
+    @MainActor
+    func settleQuestionReplies(in dshMessages: [DSHMessage]) -> [DSHMessage] {
+        dshMessages.filter { message in
+            guard message.sourceKind == "user-question-reply" else { return true }
+            if let callId = message.sourceCallId, !callId.isEmpty {
+                noteQuestionSettled(callId: callId)
+            }
+            return false
+        }
+    }
+
+    /// 问答卡的回复不是对话消息（正文是 JSON 答案）：用它结算卡片。
     @MainActor
     func noteQuestionAsked(callId: String, turn: Int, arguments: String) {
         questionInbox.noteAsked(callId: callId, turn: turn, arguments: arguments)

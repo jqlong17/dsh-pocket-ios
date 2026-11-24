@@ -18,6 +18,11 @@ extension ConnectionModel {
 
     @MainActor
     func mergeSteps(from records: [[String: Any]]) {
+        // 问答卡回复是「已回答」的持久证据：先结算，再重放步骤。
+        // 三条记录摄入路径（HTTP 历史、实时快照兜底、发送后轮询）都经过这里。
+        for callId in records.compactMap(DSHDecoding.questionReplyCallId(fromRecord:)) {
+            noteQuestionSettled(callId: callId)
+        }
         // 分页记录统一在 DSHKit 里分发：步骤走 applyStep，标题单独落，其余忽略。
         applyRecords(DSHDecoding.records(fromRecords: records))
     }
@@ -65,6 +70,10 @@ extension ConnectionModel {
             steps.sort { $0.sequence < $1.sequence }
             recordDiagnostic("过程：\(step.label)\(step.detail.isEmpty ? "" : "（\(step.detail)）")")
         case .toolResult(_, _, let callId, let text, let isError, let images):
+            // 有答案批次才算答完；`{"pending":true}` 表示问题仍可回答（见 QuestionAnswerReplay）。
+            if !QuestionAnswerReplay.isPendingResult(text) {
+                noteQuestionSettled(callId: callId)
+            }
             guard let index = steps.firstIndex(where: { $0.id == callId }) else { return }
             steps[index].isError = isError
             steps[index].finished = true

@@ -313,6 +313,38 @@ App 被杀、重进会话、或本地 pending 气泡被清掉，就会出现"消
 - **不要给整行加 `.contextMenu`**：它会拦截长按，导致文本选择无法触发（踩过）。整条复制放头部按钮，长按留给文本选择。
 - 图片不参与复制（需要时走全屏预览里的保存/分享）。
 
+## 问答卡（ask_user_question）
+
+卡片本身在 `ConversationStatusViews.swift`（`model.pendingQuestion`），状态机在
+`QuestionInbox`：`tool/call` 抬卡片、`tool/result` / 问答回复结算、`turn/end` 收起。
+
+### 已回答的卡片回到会话又弹出来（2026-11-24）
+
+**现象**：选了选项、卡片也收起了；退出会话再进来（或杀掉 App 重开）它又弹出来让人再选。
+
+**原因**：「已回答」以前只记在 `ConversationState.answeredQuestionCallIds`（**纯内存**）。
+重进会话时实时协调器推**快照**，把历史步骤重放一遍，`tool/call` 又走一次 `noteAsked`；
+而回答的持久证据——`user/message` 且 **`source.kind == "user-question-reply"`**
+（正文是 JSON 答案，用 `source.callId` 关联）——我们从来没解析过（解码时还被当成
+「不是用户消息」丢掉了）。步骤窗口一旦不包含该问题的 `tool/result`，就没有任何东西能证明它答过了。
+
+**处理**（判定基准是 DSH 官方 `userQuestions` 投影：
+`packages/interaction/user-questions/src/projection.ts`）：
+
+- `DSHMessage` 带出 `sourceKind` / `sourceCallId`，解码**允许** `user-question-reply` 通过；
+- 摄入时先用它结算卡片，再把它从渲染列表里剔除（正文是 JSON，不能当气泡）；
+  HTTP 历史走 `applyRecords`（`mergeSteps(from:)` 里扫描 `questionReplyCallId(fromRecord:)`）；
+- `tool/result` **只有非 pending 才结算**：`{"pending":true}` 表示超时后仍可回答。
+
+**不要做**：
+
+- 不要在本地 UserDefaults 里存一份「已回答」当唯一依据——它治不了「电脑端已回答」
+  和「步骤窗口截断」，而且官方语义是「会话日志即事实」。
+- 不要把 `{"pending":true}` 当成答完：那会把还能回答的问题永久吞掉。
+
+**验证**：真机上让电脑端触发 `ask_user_question` → 手机回答 → 退出再进 / 杀进程重进，
+卡片都不应再出现；超时未答（pending）时重新进会话，卡片应在。
+
 ## 键盘与输入
 
 - 点对话区空白收键盘：`@FocusState` + `ScrollView.simultaneousGesture(TapGesture())` 置 false。
