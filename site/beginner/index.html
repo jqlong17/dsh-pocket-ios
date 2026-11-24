@@ -21,7 +21,9 @@
     font:17px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
     padding:0 0 env(safe-area-inset-bottom);
   }
-  .wrap{ max-width:680px; margin:0 auto; padding:0 20px; }
+  /* 行宽：手机满宽，桌面限制在 ~46em（约 34 个汉字），比纯 680px 更好读 */
+  .wrap{ max-width:660px; margin:0 auto; padding:0 22px; }
+  @media (min-width:760px){ .wrap{ max-width:700px; padding:0 24px; } h1{ font-size:32px; } }
   header.hero{ padding:44px 0 26px; }
   .kicker{ color:var(--brand); font-weight:600; font-size:14px; letter-spacing:.02em; }
   h1{ font-size:29px; line-height:1.32; margin:10px 0 12px; letter-spacing:-.01em; }
@@ -95,7 +97,7 @@
     <li>它记得你之前交代过的事，这些记录<strong>存在你自己的硬盘里</strong>。</li>
   </ul>
   <p class="muted small">「Harness」这个词是给开发者看的（意思是「驾驭模型的外壳」）。你不用记它，用的时候只当它是一个软件就行。</p>
-</main>
+</section>
 
 <section id="why">
   <h2>2 · 为什么要自己装，而不是用网页版</h2>
@@ -119,7 +121,7 @@
   </ul>
 
   <div class="ok"><b>一句话总结</b><br>它不是「更安全的 AI」，而是<strong>把「你的资料存在哪」这件事，从别人家搬回你自己家</strong>。</div>
-</main>
+</section>
 
 <section id="need">
   <h2>3 · 你需要准备什么</h2>
@@ -139,7 +141,7 @@
     </div></div>
   </div>
   <div class="note"><b>不用准备的：</b>不用会命令行、不用买服务器、不用懂「模型」「API」这些词。</div>
-</main>
+</section>
 
 <section id="install">
   <h2>4 · 安装</h2>
@@ -164,7 +166,7 @@
   </ol>
 
   <div class="note"><b>为什么会有这些警告？</b>因为这类开发者工具没有花钱做微软/苹果的「应用商店签名认证」。<strong>只要你是从 <code>deepseek.com</code> 官网下载的，就可以放心继续。</strong>（如果你是从别的网站下的，删掉重下。）</div>
-</main>
+</section>
 
 <section id="first">
   <h2>5 · 第一次打开，做这 3 件事</h2>
@@ -182,7 +184,7 @@
   </div></div></div>
 
   <div class="ok"><b>看到它开始「思考 → 调用工具 → 回你」</b>，就说明装好了，可以正式用了。</div>
-</main>
+</section>
 
 <section id="use">
   <h2>6 · 它可以帮你做什么</h2>
@@ -195,7 +197,7 @@
     <li><strong>批量改东西</strong>：「这个文件夹里所有 txt 里的旧公司名，换成新的」</li>
   </ul>
   <div class="note"><b>它会问你</b>：涉及删除、覆盖、执行命令这类操作时，它会先请求你同意。<strong>看清楚再点同意</strong> —— 这也是它的设计：不替你擅自做主。</div>
-</main>
+</section>
 
 <section id="faq">
   <h2>7 · 常见问题</h2>
@@ -211,7 +213,7 @@
   <div class="qa"><b>装坏了怎么办？</b><p>Mac：把「应用程序」里的它拖到废纸篓。Windows：设置 → 应用 → 卸载。想连记录一起清掉，就顺手删掉 <code>.dsh</code> 文件夹。</p></div>
 
   <div class="qa"><b>需要开通什么「API」吗？</b><p>不用。第一次打开按提示登录账号就能用，界面里会让你选模型，选默认的就行。</p></div>
-</main>
+</section>
 
 <section id="next">
   <h2>8 · 装好之后：手机上也能用</h2>
@@ -223,7 +225,7 @@
   </ul>
   <a class="btn ghost" href="https://dsh-pocket.docs.notta.uk/">看进阶说明（面向懂一点技术的人）</a>
   <p class="muted small">这一步完全可选。先把电脑端用顺，再考虑手机。</p>
-</main>
+</section>
 
 </main>
 
