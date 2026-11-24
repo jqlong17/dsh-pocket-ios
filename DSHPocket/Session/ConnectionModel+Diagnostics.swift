@@ -249,7 +249,7 @@ extension ConnectionModel {
         diagnostics.capture(enterMs: enterMs)
         // 把探测器结果镜像到模型上：`probeRunner` 是 @ObservationIgnored 的嵌套对象，
         // 它的内部改动不会让设置页刷新（实测：遥测有 26ms，界面一直写「检测中」）。
-        MainActor.assumeIsolated {
+        onMainSync {
             probeResults = probeRunner.results
             probeLatency = probeRunner.latencyHistory
         }
@@ -308,7 +308,7 @@ extension ConnectionModel {
 
    /// 帧率统计快照（MainActor 隔离，避免跨隔离域读 @Observable 属性）。
    func frameStats() -> (ratio: Double, intervalMs: Double) {
-        MainActor.assumeIsolated {
+        onMainSync {
             ((frameMonitor.slowFrameRatio * 1000).rounded() / 1000,
              (frameMonitor.averageIntervalMs * 10).rounded() / 10)
         }
@@ -317,12 +317,12 @@ extension ConnectionModel {
 
    /// 测试模式是否开启。遥测里带上它，分析时能区分「采样稀疏」和「真没数据」。
    func probeTestMode() -> Bool {
-        MainActor.assumeIsolated { probeRunner.testMode }
+        onMainSync { probeRunner.testMode }
    }
 
    /// 探测时认为的网络类型。诊断用：能直接看出「为什么走的是 TCP 而不是 HTTP」。
    func probeNetworkLabel() -> String {
-        MainActor.assumeIsolated {
+        onMainSync {
             switch probeRunner.networkClass {
             case .wifi: return "wifi"
             case .cellular: return "cellular"
@@ -332,10 +332,10 @@ extension ConnectionModel {
    }
 
    func probeSnapshot() -> [[String: Any]] {
-        // `ConnectionModel` 没标 @MainActor，但这些方法实际都在主线程调用
-        // （采样器走 `MainActor.run`）。`assumeIsolated` 把这个事实告诉编译器，
-        // 比给整条调用链加 @MainActor 干净（那样会连锁报错）。
-        MainActor.assumeIsolated {
+        // `probeRunner` 是 @MainActor 的，而 `ConnectionModel` 不是。
+        // 这里用 `onMainSync`：在主线程就直接跑，不在就同步切过去 ——
+        // 不像 `assumeIsolated` 那样在非主线程直接崩（见 AppSupport 里的说明）。
+        onMainSync {
         let runner = probeRunner
         return savedEndpoints.map { endpoint in
             var row: [String: Any] = [

@@ -296,3 +296,26 @@ enum ConnectionVault {
         return String(data: data, encoding: .utf8)
     }
 }
+
+/// 在主 actor 上同步执行一段代码。
+///
+/// 为什么不是 `MainActor.assumeIsolated`：那个是**断言**「我已经在主线程」，
+/// 前提不成立就 `fatalError`（EXC_BREAKPOINT / SIGTRAP）。系统回调（BGTask、
+/// URLSession delegate、通知、定时器）都不保证在主线程，用它就是在赌 ——
+/// 2026-11-24 线上崩溃两次，根源就是后台刷新里这么用了。
+///
+/// 为什么不是 `DispatchQueue.main.sync`：已经在主线程时它会**死锁**。
+///
+/// 这个封装兼顾两者：在主线程就直接跑（不切、不锁），不在就同步切过去。
+/// 仅用于诊断/遥测这类「读一点状态、绝不能崩」的场景；真正的业务逻辑应该用
+/// `Task { @MainActor in }` 或把整条调用链标 `@MainActor`。
+///
+/// - Warning: 若主线程正在**同步等待**调用方，会死锁。诊断路径不满足该条件
+///   （采样器是定时器、上报是 fire-and-forget），因此安全。
+@inline(__always)
+func onMainSync<T>(_ body: @MainActor () -> T) -> T {
+    if Thread.isMainThread {
+        return MainActor.assumeIsolated(body)
+    }
+    return DispatchQueue.main.sync { MainActor.assumeIsolated(body) }
+}
