@@ -2,7 +2,6 @@
 
 import SwiftUI
 import Security
-import Textual
 import DSHKit
 import VisionKit
 import AVFoundation
@@ -310,8 +309,8 @@ struct ConversationView: View {
                 }
                 // 系统级「用户正在滚动」信号。DragGesture 有 6pt 门槛，
                 // 而"轻微上划"（3-5pt）触发不了它 —— 那正是「滑一下就被弹回」漏掉的一段。
-                .onScrollPhaseChange { _, newPhase in
-                    switch newPhase {
+                .pocketScrollPhaseChange { phase in
+                    switch phase {
                     case .interacting:
                         // 手指一碰列表就说明意图是"看别处"，立即停止跟随。
                         hasSwipedUp = true
@@ -320,13 +319,11 @@ struct ConversationView: View {
                         userDragging = true
                     case .idle:
                         userDragging = false
-                    default:
+                    case .other:
                         break
                     }
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, topOffset in
+                .pocketScrollGeometryChange(.topOffset) { topOffset in
                     guard topOffset < 80,
                           model.hasMoreOlder,
                           !model.isLoadingOlder,
@@ -335,9 +332,7 @@ struct ConversationView: View {
                     olderCooldownUntil = Date().addingTimeInterval(1.5)
                     model.loadOlderMessages()
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentSize.height - geometry.containerSize.height - geometry.contentOffset.y
-                } action: { _, distance in
+                .pocketScrollGeometryChange(.distanceFromBottom) { distance in
                     guard Date() >= suppressAutoScrollUntil else { return }
                     // 判定全部交给 DSHKit：只有贴底才跟随，手指在屏上不抢。
                     let atBottom = ScrollFollowPolicy.isAtBottom(distanceFromBottom: distance)

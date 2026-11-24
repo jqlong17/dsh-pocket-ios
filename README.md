@@ -14,7 +14,7 @@
   </a>
 </p>
 
-> **iPhone / iPad，iOS 18+。** 界面支持简体中文与 English（跟随系统）。
+> **iPhone / iPad，iOS 17+。** 界面支持简体中文与 English（跟随系统）。
 
 **电脑端（插件）：**
 

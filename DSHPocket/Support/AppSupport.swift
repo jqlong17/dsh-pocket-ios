@@ -17,7 +17,6 @@ func timingLog(_ message: String) {
 
 import SwiftUI
 import Security
-import Textual
 import DSHKit
 import VisionKit
 import AVFoundation

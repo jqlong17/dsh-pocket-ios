@@ -12,7 +12,6 @@
 		A10000000000000000000001 /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* DSHPocketApp.swift */; };
 		A10000000000000000000013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* Assets.xcassets */; };
 		A10000000000000000000015 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* PrivacyInfo.xcprivacy */; };
-		B10000000000000000000001 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = B10000000000000000000002 /* Textual */; };
 		B20000000000000000000003 /* DSHKit in Frameworks */ = {isa = PBXBuildFile; productRef = B20000000000000000000002 /* DSHKit */; };
 		52984328C331F10CC61F708D /* DSHPocketApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5545D03116094EC74D7CBD0A /* DSHPocketApp.swift */; };
 		6C008D78DD977ECC7B3913E2 /* CompletionNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB1A6B9FB357E266C42F477A /* CompletionNotifier.swift */; };
@@ -91,7 +90,6 @@
 		A1B2C3D4E5F60718293A4B91 /* AppSettingsSheet+Connection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B90 /* AppSettingsSheet+Connection.swift */; };
 		3D7339D6EDB6C92CFCC6D9AE /* AttachmentThumbnail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B78B4F581F4025F6DCD0CE /* AttachmentThumbnail.swift */; };
 		7807E750A245A1EC3A5BDB29 /* CameraPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663AD79AC0134C7169F385DB /* CameraPicker.swift */; };
-		E2A840F9AEBBF6B5A9C8582E /* ChatHeadingStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8193327E178E1257F6CC333 /* ChatHeadingStyle.swift */; };
 		90984CA731993641DCEB398A /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C85905E6E369E84E7C80FB1 /* ConnectView.swift */; };
 		BC90A71909B1D99CBED23F44 /* ConnectedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54B07D653E7B1C8C92ED0142 /* ConnectedView.swift */; };
 		9E58C252F26C924B519140EF /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958811678C6EF9B1A9D2BB6A /* ConversationView.swift */; };
@@ -100,6 +98,9 @@
 		CB0A391E4F0194952C8E9B7C /* JobsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A5F8C2C7F36BC3A4E7E488 /* JobsSheet.swift */; };
 		E6732FA8E413309D51A28762 /* JobsToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */; };
 		D7EF773183C225646B24F241 /* MarkdownBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0832D571327AD53E414826A8 /* MarkdownBody.swift */; };
+		A1B2C3D4E5F60718293AE002 /* PocketScrollGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293AE001 /* PocketScrollGeometry.swift */; };
+		A1B2C3D4E5F60718293AD002 /* PocketScrollPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293AD001 /* PocketScrollPhase.swift */; };
+		A1B2C3D4E5F60718293AC002 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293AC001 /* MarkdownRenderer.swift */; };
 		4A6AA3335B6E69E63966CFC5 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */; };
 		C0FFEEEE5DD64A9DE68999F9 /* ConversationTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */; };
 		FD2A9A265E7378A226522B5A /* ModelPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */; };
@@ -207,7 +208,6 @@
 		A1B2C3D4E5F60718293A4B90 /* AppSettingsSheet+Connection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppSettingsSheet+Connection.swift"; sourceTree = "<group>"; };
 		91B78B4F581F4025F6DCD0CE /* AttachmentThumbnail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentThumbnail.swift; sourceTree = "<group>"; };
 		663AD79AC0134C7169F385DB /* CameraPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPicker.swift; sourceTree = "<group>"; };
-		D8193327E178E1257F6CC333 /* ChatHeadingStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHeadingStyle.swift; sourceTree = "<group>"; };
 		1C85905E6E369E84E7C80FB1 /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		54B07D653E7B1C8C92ED0142 /* ConnectedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedView.swift; sourceTree = "<group>"; };
 		958811678C6EF9B1A9D2BB6A /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
@@ -216,6 +216,9 @@
 		67A5F8C2C7F36BC3A4E7E488 /* JobsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsSheet.swift; sourceTree = "<group>"; };
 		DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobsToolbarButton.swift; sourceTree = "<group>"; };
 		0832D571327AD53E414826A8 /* MarkdownBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownBody.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293AE001 /* PocketScrollGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketScrollGeometry.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293AD001 /* PocketScrollPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketScrollPhase.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293AC001 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
 		7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRow.swift; sourceTree = "<group>"; };
 		C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTimeline.swift; sourceTree = "<group>"; };
 		9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerSheet.swift; sourceTree = "<group>"; };
@@ -249,7 +252,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B10000000000000000000001 /* Textual in Frameworks */,
 				B20000000000000000000003 /* DSHKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -396,7 +398,6 @@
 				A1B2C3D4E5F60718293A4B90 /* AppSettingsSheet+Connection.swift */,
 				91B78B4F581F4025F6DCD0CE /* AttachmentThumbnail.swift */,
 				663AD79AC0134C7169F385DB /* CameraPicker.swift */,
-				D8193327E178E1257F6CC333 /* ChatHeadingStyle.swift */,
 				1C85905E6E369E84E7C80FB1 /* ConnectView.swift */,
 				54B07D653E7B1C8C92ED0142 /* ConnectedView.swift */,
 				958811678C6EF9B1A9D2BB6A /* ConversationView.swift */,
@@ -415,6 +416,9 @@
 				67A5F8C2C7F36BC3A4E7E488 /* JobsSheet.swift */,
 				DBBC23AFAB0E588CC0A27C47 /* JobsToolbarButton.swift */,
 				0832D571327AD53E414826A8 /* MarkdownBody.swift */,
+				A1B2C3D4E5F60718293AE001 /* PocketScrollGeometry.swift */,
+				A1B2C3D4E5F60718293AD001 /* PocketScrollPhase.swift */,
+				A1B2C3D4E5F60718293AC001 /* MarkdownRenderer.swift */,
 				7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */,
 				C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */,
 				9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */,
@@ -448,7 +452,6 @@
 			);
 			name = DSHPocket;
 			packageProductDependencies = (
-				B10000000000000000000002 /* Textual */,
 				B20000000000000000000002 /* DSHKit */,
 			);
 			productName = DSHPocket;
@@ -511,7 +514,6 @@
 			};
 			buildConfigurationList = A1000000000000000000000E /* Build configuration list for PBXProject "DSHPocket" */;
 			packageReferences = (
-				B10000000000000000000003 /* XCRemoteSwiftPackageReference "textual" */,
 				B20000000000000000000001 /* XCLocalSwiftPackageReference "DSHKit" */,
 			);
 			compatibilityVersion = "Xcode 14.0";
@@ -540,22 +542,9 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		B10000000000000000000003 /* XCRemoteSwiftPackageReference "textual" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/gonzalezreal/textual";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		B10000000000000000000002 /* Textual */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B10000000000000000000003 /* XCRemoteSwiftPackageReference "textual" */;
-			productName = Textual;
-		};
 		B20000000000000000000002 /* DSHKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B20000000000000000000001 /* XCLocalSwiftPackageReference "DSHKit" */;
@@ -680,7 +669,6 @@
 				A1B2C3D4E5F60718293A4B91 /* AppSettingsSheet+Connection.swift in Sources */,
 				3D7339D6EDB6C92CFCC6D9AE /* AttachmentThumbnail.swift in Sources */,
 				7807E750A245A1EC3A5BDB29 /* CameraPicker.swift in Sources */,
-				E2A840F9AEBBF6B5A9C8582E /* ChatHeadingStyle.swift in Sources */,
 				90984CA731993641DCEB398A /* ConnectView.swift in Sources */,
 				BC90A71909B1D99CBED23F44 /* ConnectedView.swift in Sources */,
 				9E58C252F26C924B519140EF /* ConversationView.swift in Sources */,
@@ -689,6 +677,9 @@
 				CB0A391E4F0194952C8E9B7C /* JobsSheet.swift in Sources */,
 				E6732FA8E413309D51A28762 /* JobsToolbarButton.swift in Sources */,
 				D7EF773183C225646B24F241 /* MarkdownBody.swift in Sources */,
+				A1B2C3D4E5F60718293AE002 /* PocketScrollGeometry.swift in Sources */,
+				A1B2C3D4E5F60718293AD002 /* PocketScrollPhase.swift in Sources */,
+				A1B2C3D4E5F60718293AC002 /* MarkdownRenderer.swift in Sources */,
 				4A6AA3335B6E69E63966CFC5 /* MessageRow.swift in Sources */,
 				C0FFEEEE5DD64A9DE68999F9 /* ConversationTimeline.swift in Sources */,
 				FD2A9A265E7378A226522B5A /* ModelPickerSheet.swift in Sources */,
@@ -712,7 +703,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -725,7 +716,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 			};
@@ -771,7 +762,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.ruska.dsh-pocket-ios.uitests";
@@ -788,7 +779,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.ruska.dsh-pocket-ios.uitests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

@@ -2,7 +2,6 @@
 
 import SwiftUI
 import Security
-import Textual
 import DSHKit
 import VisionKit
 import AVFoundation
@@ -332,14 +331,10 @@ struct ConnectedView: View {
         .safeAreaInset(edge: .bottom) { searchBar }
         // 搜索框在底部固定条里，不在 List 内部，scrollDismissesKeyboard 管不到；
         // 改听 List 自己的滚动阶段：一开滚就收键盘。
-        .onScrollPhaseChange { _, phase in
-            guard searchFocused else { return }
-            switch phase {
-            case .tracking, .interacting, .decelerating:
-                searchFocused = false
-            default:
-                break
-            }
+        .pocketScrollPhaseChange { phase in
+            // 只要不是「静止」，就说明用户开始滚了 → 收键盘。
+            guard searchFocused, phase != .idle else { return }
+            searchFocused = false
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
