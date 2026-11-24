@@ -24,6 +24,12 @@ struct MessageRow: View {
     /// Markdown 富文本是滚动掉帧的主要成本（实测滚动时 20ms/帧 = 50fps），
     /// 把更早的消息降级成纯文本能把「同时参与绘制的富文本行数」压到常数级。
     var isCompact: Bool = false
+    /// 气泡宽度上限：由列表容器量出来的行宽减去 44（气泡左侧的最小留白）。
+    ///
+    /// 为什么必须显式传进来：消息行是 `HStack { Spacer(minLength: 44); 气泡 }`，
+    /// 气泡拿不到"自己可以用多宽"。以前缩略图是固定 88pt 的 `HStack`，5 张合计 464pt，
+    /// 直接把整页撑开、发送按钮被推出屏幕（2026-11-24 真机反馈）。
+    var maxBubbleWidth: CGFloat = 340
     @State private var previewItem: PreviewImageItem?
     @State private var copied = false
     /// 只在"复制成功"时递增，避免图标恢复时再触发一次触感。
@@ -316,21 +322,59 @@ struct MessageRow: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// 用户消息缩略图的尺寸与间距（换行计算与渲染必须用同一组数字）。
+    private static let thumbnailSize: CGFloat = 88
+    private static let thumbnailSpacing: CGFloat = 6
+    /// 气泡内边距：水平 13（带图气泡）。缩略图可用宽度要扣掉它。
+    private static let imageBubbleHorizontalPadding: CGFloat = 13
+
+    private var thumbnailAvailableWidth: CGFloat {
+        max(Self.thumbnailSize,
+            maxBubbleWidth - Self.imageBubbleHorizontalPadding * 2)
+    }
+
     /// 用户消息的图片缩略图（气泡内左下角，小尺寸）。
+    ///
+    /// 按可用宽度换行：5 张 88pt 的图在 iPhone 上排成 3 + 2 两行，
+    /// 而不是排成一条 464pt 的长行把整页撑爆（见 `ThumbnailWrapLayout` 的注释）。
     @ViewBuilder
     private var userImageThumbnails: some View {
-        HStack(spacing: 6) {
-            if !message.localImages.isEmpty {
-                ForEach(Array(message.localImages.enumerated()), id: \.offset) { _, image in
-                    Image(uiImage: image).resizable().scaledToFill()
-                        .frame(width: 88, height: 88)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .contentShape(Rectangle())
-                        .onTapGesture { previewItem = PreviewImageItem(image: image) }
-                }
-            } else {
-                ForEach(message.images) { ref in
-                    AttachmentThumbnail(ref: ref, model: model, size: 88)
+        if !message.localImages.isEmpty {
+            wrappedThumbnailRows(count: message.localImages.count) { index in
+                let image = message.localImages[index]
+                Image(uiImage: image).resizable().scaledToFill()
+                    .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+                    .onTapGesture { previewItem = PreviewImageItem(image: image) }
+            }
+        } else if !message.images.isEmpty {
+            wrappedThumbnailRows(count: message.images.count) { index in
+                AttachmentThumbnail(ref: message.images[index], model: model, size: Self.thumbnailSize)
+            }
+        }
+    }
+
+    /// 把 N 个缩略图按行排开（每行几个由 `ThumbnailWrapLayout` 按可用宽度算）。
+    @ViewBuilder
+    private func wrappedThumbnailRows<Content: View>(
+        count: Int,
+        @ViewBuilder content: @escaping (Int) -> Content
+    ) -> some View {
+        // 行数在渲染前一次算清；用 `Array(0..<count)` 而不是下标切片，
+        // 是为了让 `ForEach` 的 id 稳定（下标即图片顺序）。
+        let rows = ThumbnailWrapLayout.rows(
+            Array(0..<count),
+            availableWidth: thumbnailAvailableWidth,
+            itemSize: Self.thumbnailSize,
+            spacing: Self.thumbnailSpacing
+        )
+        VStack(alignment: .leading, spacing: Self.thumbnailSpacing) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: Self.thumbnailSpacing) {
+                    ForEach(row, id: \.self) { index in
+                        content(index)
+                    }
                 }
             }
         }
@@ -443,6 +487,10 @@ struct MessageRow: View {
                         }
                     }
                 }
+                // 兜底：气泡内容再宽也不能超过「行宽 - 44」，否则会把整页撑宽、
+                // 把底部输入栏的发送按钮推出屏幕（2026-11-24）。这里只封顶、不强制撑满，
+                // 所以短消息的气泡仍然贴着内容收紧。
+                .frame(maxWidth: maxBubbleWidth, alignment: .leading)
                 if !message.isUser { Spacer(minLength: 44) }
             }
             if message.isPending, let state = model.pendingSendState(for: message) {

@@ -88,6 +88,37 @@ StructuredText(markdown: text)
 - 上传图发送时本地先显示 `localImages` 缩略图，同样可点开全屏。
 - 保存失败（权限被拒）用底部 toast 提示。
 
+### 多图消息把整页宽度撑爆（2026-11-24）
+
+**现象**：一条消息带 5 张图时，整个对话页被撑得超出屏幕——标题、气泡、表格全部左移被裁，
+**底部输入栏的发送按钮被推到屏幕右侧之外**（真机反馈「iOS 端甚至看不到发送按钮」）。
+
+**原因**：用户气泡里的缩略图是 `HStack(spacing: 6)` 套固定 88pt 的图：
+`5 × 88 + 4 × 6 = 464pt`，而 iPhone 一屏内容宽约 361pt。`HStack` 对固定宽度子视图**不会收缩**，
+`Spacer(minLength: 44)` 又被压到最小，这一行的最小宽度 ≈ 534pt。消息列表内层 `VStack`
+把这个宽度上报出去，`ScrollView` 的整页宽度被撑开；输入栏按撑宽后的页宽布局，发送按钮就出屏了。
+**一处超宽内容毁掉的是整页布局，不只是那个气泡。**
+
+**处理**（缺一不可）：
+
+1. 缩略图**按行换行**，每行几个由可用宽度算（`DSHKit` 的 `ThumbnailWrapLayout`，纯逻辑可单测）：
+   `columns = floor((availableWidth + spacing) / (itemSize + spacing))`，至少 1 列。
+2. 可用宽度**必须从容器量**（`ConversationView` 在 `ScrollView` 上 `onGeometryChange` 取宽度），
+   不能量气泡自己——气泡宽度随内容变化，会绕回同一个溢出。
+3. 气泡再封一层 `.frame(maxWidth: maxBubbleWidth, alignment: .leading)` 兜底：
+   `maxBubbleWidth = min(720, 容器宽) - 32(列表 padding) - 44(Spacer 最小留白)`
+   （`DSHKit` 的 `BubbleWidthPolicy`）。只封顶、不强制撑满，短消息仍然贴着内容收紧。
+
+**不要做**：
+
+- 不要用横向 `ScrollView` 包多图（纵向列表里嵌套横向滚动会错位，见上文第 2 条）。
+- 不要用自定义 `FlowLayout: Layout`——它在 `HStack` 里的 ideal width 只能返回「一张图」或
+  「一整行」，前者让气泡永远单列，后者继续撑爆；要修好还是得传可用宽度，却多一个不可单测的布局类型。
+- 不要只加 `.clipped()`：内容仍超宽，整页照样被撑开。
+
+**验证**：`DSH_DEMO=1 DSH_OPEN=demo-4`（临时把示例改成 5 张图）→ 缩略图 3+2 两行、
+页面不左移、发送按钮可见。截图：`/tmp/final-5img.png`（修复后）。
+
 ## 进入会话定位最新消息
 
 **现象**：偶发进入会话后停在某些历史消息，而不是最新消息。

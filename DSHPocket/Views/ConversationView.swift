@@ -60,6 +60,11 @@ struct ConversationView: View {
     /// 复制后的短暂提示文字（2 秒消失）。nil 表示不显示。
     @State private var copiedToast: String?
     @State private var showingModelPicker = false
+    /// 列表容器宽度（气泡封顶用；不封顶会把整页撑宽、发送按钮被推出屏幕）。
+    @State private var listContentWidth: CGFloat = 0
+
+    /// 气泡宽度上限（换算见 DSHKit `BubbleWidthPolicy`，有单测）。
+    private var maxBubbleWidth: CGFloat { BubbleWidthPolicy.maxBubbleWidth(containerWidth: listContentWidth) }
 
     private var unreadReplies: Int {
         guard let mark = unreadSinceSequence else { return 0 }
@@ -119,7 +124,9 @@ struct ConversationView: View {
                                 // 只有「最近 3 条消息」跑完整 Markdown，更早的降级成纯文本。
                                 // 用户明确说不关注更早的（2026-11-21）；实测滚动时每帧 20ms，
                                 // 富文本行数是主要成本，压到常数级就能回到 60fps。
-                                MessageRow(message: message, model: model, isCompact: isCompactMessage(entry))
+                                MessageRow(message: message, model: model,
+                                           isCompact: isCompactMessage(entry),
+                                           maxBubbleWidth: maxBubbleWidth)
                                     .id(entry.id).padding(.top, topGap)
                             } else if let failure = entry.failure {
                                 TurnFailureRow(failure: failure).id(entry.id).padding(.top, topGap)
@@ -189,6 +196,12 @@ struct ConversationView: View {
                     }
                 }
                 .defaultScrollAnchor(.bottom)
+                // 量列表宽度：气泡的最大宽度 = 行宽 - 32（列表左右 padding）- 44（气泡左侧最小留白）。
+                // 必须在**容器**上量，不能量气泡自己：气泡是自适应宽度，量出来会让「可用宽度」
+                // 随内容变化，多图消息正好绕回原来的溢出问题。
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                    listContentWidth = width
+                }
                 .scrollDismissesKeyboard(.interactively)
                 .simultaneousGesture(TapGesture().onEnded {
                     composerFocused = false
