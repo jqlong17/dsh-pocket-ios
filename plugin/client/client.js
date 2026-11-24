@@ -78,6 +78,15 @@ window.__ModuleLoader__.load({
       var loading = loadingState[0];
       var setLoading = loadingState[1];
 
+      // 本模式真正可用的地址。
+      //
+      // 不能用 `status.address || status.httpsUrl`：`httpsUrl` 永远是 **Tailscale** 的
+      // 固定域名，而 Cloudflare / 局域网 / EasyTier 模式下 address 可能暂时为空（隧道启动中），
+      // 那样面板会把 tailscale 域名显示在「Cloudflare」下面 —— 用户看到的就是
+      // 「选了 Cloudflare，地址却是 *.ts.net」（2026-11-24 反馈）。
+      var addressForMode = status
+        ? (status.address || (status.mode === "tailscale" ? status.httpsUrl : null))
+        : null;
       var showPinState = React.useState(false);
       var showPin = showPinState[0];
       var setShowPin = showPinState[1];
@@ -252,12 +261,12 @@ window.__ModuleLoader__.load({
               : null,
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 2 } }, makeT(currentLang())("固定地址", "Fixed address")),
             React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
-              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, ((status && (status.address || status.httpsUrl))
+              React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, (addressForMode
               || (loading ? makeT(currentLang())("检测中…", "Checking…")
                 : status && status.state === "starting" ? makeT(currentLang())("正在启动，稍候…", "Starting, please wait…")
                 : status && status.state === "error" ? makeT(currentLang())("获取失败", "Failed")
                 : makeT(currentLang())("当前方式还没有地址", "No address for this mode yet")))),
-              React.createElement("button", { type: "button", onClick: function () { copy(status && (status.address || status.httpsUrl), "url"); }, style: chipStyle }, copied === "url" ? makeT(currentLang())("已复制", "Copied") : makeT(currentLang())("复制", "Copy"))),
+              React.createElement("button", { type: "button", onClick: function () { copy(addressForMode, "url"); }, style: chipStyle }, copied === "url" ? makeT(currentLang())("已复制", "Copied") : makeT(currentLang())("复制", "Copy"))),
             React.createElement("div", { style: { fontSize: 11, opacity: 0.55, marginBottom: 4 } }, makeT(currentLang())("访问密码（手动登录用）", "Access PIN (manual login)")),
             React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
               React.createElement("code", { style: { fontSize: 13, letterSpacing: 0.5, minWidth: 68 } }, showPin ? ((status && status.pin) || "—") : mask),
