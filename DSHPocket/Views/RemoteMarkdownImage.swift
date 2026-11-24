@@ -15,7 +15,7 @@ import ImageIO
 import UserNotifications
 
 
-/// 消息 Markdown 渲染：交给 Textual（MarkdownUI 作者的新库，原生支持跨视图文本选择）。
+/// 消息 Markdown 渲染：交给 `MarkdownRenderer`（自包含，不依赖第三方）。
 /// 远程 Markdown 图片（相对 cwd 的本地截图通过 `api/file` 读取）。
 struct RemoteMarkdownImage: View {
     let url: URL

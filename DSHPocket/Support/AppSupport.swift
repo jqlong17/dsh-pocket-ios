@@ -48,7 +48,8 @@ enum ConversationViewLifetime {
 }
 
 
-/// Textual 没有公开清除选区的 API：直接定位当前第一响应者的文本输入视图，
+/// SwiftUI 没有公开清除选区的 API（渲染器是自包含的，也没有 Textual 的协调层）：
+/// 直接定位当前第一响应者的文本输入视图，
 /// 把它选中的范围置空（不重建视图，避免列表闪动/跳到底部）。
 enum TextSelectionDismisser {
     static func clear() {

@@ -179,7 +179,7 @@ struct ConversationView: View {
                     )
                 }
                 .onPreferenceChange(ConversationHeightKey.self) { _ in
-                    // 行高异步变化（Textual 表格/图片晚渲染）会让内容变高；只要仍在跟随最新，
+                    // 行高异步变化（Markdown 表格/图片晚渲染）会让内容变高；只要仍在跟随最新，
                     // 就补一次贴底，避免"最后一条消息下方留出空白"。
                     // 展开/收起「过程」后的 0.5 秒内不贴底，否则点击会被拽到底部。
                     guard Date() >= suppressAutoScrollUntil else { return }

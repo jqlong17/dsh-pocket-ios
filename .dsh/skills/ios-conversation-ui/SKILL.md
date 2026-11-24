@@ -1,6 +1,6 @@
 ---
 name: ios-conversation-ui
-description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdown 渲染（MarkdownUI）、表格/图片/键盘交互、滚动与重叠问题。修改 iOS 对话样式或排查布局/渲染异常前先读本 skill；新的 iOS 样式问题与解法也补充到这里。
+description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdown 渲染（自包含 MarkdownRenderer）、文本选择、表格/图片/键盘交互、滚动与重叠问题。修改 iOS 对话样式或排查布局/渲染异常前先读本 skill；新的 iOS 样式问题与解法也补充到这里。
 ---
 
 # DSH Pocket iOS 对话样式
@@ -13,7 +13,7 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 
 | 能力 | 用的组件 | 备注 |
 | --- | --- | --- |
-| Markdown 渲染（GFM：表格/列表/任务列表/代码块/引用） | **Textual**（SPM，`gonzalezreal/textual`，锁 `from 0.1.0`） | MarkdownUI 的继任者；**原生跨视图文本选择**；要求 iOS 18+；`Package.resolved` 已提交 |
+| Markdown 渲染（GFM：表格/列表/任务列表/代码块/引用） | **自包含 `MarkdownRenderer`**（块解析在 DSHKit `MarkdownBlockParser`，行内格式用 Foundation `AttributedString(markdown:)`） | 2026-11-24 为支持 iOS 17 移除 Textual（`3a8f22b`）；**无第三方依赖**；选择靠「合并文本块」，见下文 |
 | 图片选择 / 拍照 | 系统 `PhotosPicker` + `UIImagePickerController` | 权限文案在 Info.plist |
 | 图片保存 | `PHPhotoLibrary` + `NSPhotoLibraryAddUsageDescription` | |
 | 分享 | 系统 `ShareLink` | |
@@ -31,17 +31,53 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
 - 整体列宽：`maxWidth: 720` 居中，适配 iPad（iPhone 上自然铺满）。
 - 不要给气泡再加内层背景；Markdown 主题自带背景会叠出"白底套灰泡"。
 
-## Markdown 渲染（Textual）
+## Markdown 渲染（自包含 `MarkdownRenderer`，2026-11-24 起）
 
-`MarkdownBody` 使用 `StructuredText(markdown:)` + `.textual.textSelection(.enabled)` + `.textual.structuredTextStyle(.gitHub)`，标题用自定义 `ChatHeadingStyle`。
+`MarkdownBody` 只是薄封装（超长内容折叠 + `Equatable`），真正的渲染在 `MarkdownRenderer`：
 
-- **为什么从 MarkdownUI 迁移**：MarkdownUI 的已知限制（[issue #264](https://github.com/gonzalezreal/swift-markdown-ui/issues/264)）——每个段落/块是独立 `Text`，只能按段落选中，无法跨行选择。作者的新库 Textual 用 SwiftUI Text 管线重生，支持跨视图选择。
-- **部署目标因此升到 iOS 18**（Textual 所有版本都要求 iOS 18；iOS 18 与 17 支持相同机型，代价可接受）。不要再降回 17，除非放弃 Textual。
-- 表格：`.gitHub` 风格自带边框，列多时会压缩换行（与 MarkdownUI 类似），**仍不要**在消息列表里套横向滚动。
-- 标题字号用 `ChatHeadingStyle` 的 `fontScales = [1.0, 0.97, 0.94, 0.91, 0.88, 0.85]`（Textual 基准 `.body` = 17pt，
-  来自 2026-11-09 反馈：移动端标题要与正文接近，不能太大）：实际 H1 17 / H2 16.5 / H3 16 / H4 15.5 / H5 15 / H6 14.5；
-  权重统一 semibold，间距 `fontScaled(top: 0.9, bottom: 0.35)`。改标题大小只动这个数组。
-- 代码块由 Textual 内置语法高亮，样式通过 `structuredTextStyle` 控制，不要自己写高亮。
+```
+MarkdownBlockParser.blocks(from:)   →  MarkdownTextRuns.group(...)      →  视图
+（DSHKit，按行切块）                    （DSHKit，连续文本块合成一段）         每个 .text = 一个 Text
+                                                                        其余 = 独立视图
+```
+
+- **为什么不用 Textual**：它所有版本都声明 `.iOS(.v18)`；2026-11-24 的 `3a8f22b` 为了支持
+  iOS 17 把它移除了，连 `swiftui-math` 一起去掉。已知损失：代码块没有语法高亮、
+  表格更朴素、复杂嵌套（列表套列表/引用套代码）按平铺处理。
+- 行内格式交给 Foundation：`AttributedString(markdown:options: .inlineOnlyPreservingWhitespace)`
+  ——粗体/斜体/行内代码/链接都能解析，且保留原始空白。
+- **链接必须显式改前景色 + 下划线**：SwiftUI 默认用 accent 渲染链接，绿色气泡里 accent 也是绿色，
+  链接会直接融进背景（2026-11-24 用户发邮箱，看起来像空气泡）。
+- 标题字号：H1/H2 = `.title3.weight(.semibold)`，H3 及以下 = `.headline`。
+  不要写死 pt 字号（交互规范禁止 `.system(size:)`）。
+- 表格是 `MarkdownTable`（SwiftUI `VStack`/`HStack`/`Text`），不追求 GitHub 那套边框；
+  列多时压缩换行，**不要**在消息列表里套横向滚动。
+
+## 文本选择（跨行 / 跨块）
+
+**现象**（2026-11-24 用户反馈，截图 `docs/selection-bug.jpg`）：长按拖拽只能选中一两行，
+选不了整段回复，列表项之间也连不起来。
+
+**原因**：SwiftUI 的 `.textSelection(.enabled)` 只让**每个 `Text` 各自**可选
+（[Apple 文档](https://developer.apple.com/documentation/swiftui/view/textselection(_:)) 原文是
+"make **each** contained text view selectable"），SwiftUI 没有跨视图选择。
+早先「一块一个 `Text`」的渲染方式，等于把可选范围切成了每个段落/每个列表项。
+
+**处理**：连续的**文本类块**（段落/标题/列表项/引用）由 `MarkdownTextRuns.group` 合成一个 run，
+拼成**一个** `AttributedString` 放进**一个** `Text`，选择才能一路连过去。
+代码块/表格/图片/分隔线保持独立视图，同时是**选择边界**（这是结构决定的，不是缺陷）。
+
+**代价（有意接受，别再当 bug 报）**：
+
+- 引用竖条用每行 `▍` 前缀重建：独立的竖条视图会把选择切断；
+- 列表项换行后，续行不再悬挂缩进（文本流里做不了 `NSParagraphStyle` 的悬挂缩进，SwiftUI `Text` 会忽略它）；
+- 块间距从 `VStack(spacing: 10)` 变成空行；连续列表项/连续引用行仍用单换行保持紧凑。
+
+**不要做**：
+
+- 不要为了「每块独立样式」再把文本块拆成多个 `Text`——选择会立刻退回单行。
+- 不要用 `Text("a") + Text("b")` 拼：等价但没法按 range 控制字体。
+- 不要把代码块也塞进 AttributedString：会丢掉底色与横向滚动，代码块本来就能长按单独选中。
 
 ## 布局稳定性（重点，血泪经验）
 
@@ -53,7 +89,7 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
    - **2026-11-21 二次实验（结论不变，但原因更清楚）**：滚动帧率埋点显示 `VStack` 滚动时 21-25ms/帧（40-48fps），
      数据层重排只 0.1ms —— 怀疑是「24 条全部参与合成」，于是换 `LazyVStack` 重试。
      **结果：滚动出现明显异常（行重叠/跳动），且帧率并未改善到 60fps。已回滚。**
-   - **根因**：`Textual` 的 Markdown 行高与**容器实际宽度**耦合；`LazyVStack` 按缓存高度布局，
+   - **根因（当时用 Textual）**：行高与**容器实际宽度**耦合；`LazyVStack` 按缓存高度布局，
      宽度/内容变化导致缓存失效 → 错位。同赛道的 Orbis（`docs/参考项目/orbis`）能用 `LazyVStack`，
      是因为它**自己算行高**（`transcript.rows` 预分组），不是让 Textual 现量。
    - **所以：要虚拟化必须自己做行高，不能只换容器。**
@@ -61,26 +97,16 @@ description: DSH Pocket iOS 对话界面样式经验库：消息气泡、Markdow
      见 `ConversationView.fullRenderRecentCount`）。用户实测体感明显更顺。
 2. **不要在纵向消息列表里嵌套横向 `ScrollView`**（例如给宽表格做横向滚动）。iOS 26 上会出现"表格被缩放/叠到别的消息上"的错位绘制。宽表格宁可让它自适应换行。
 3. **行高变化时不要用带动画的 scrollTo**：`proxy.scrollTo(id, anchor: .bottom)` 直接调用，不要包 `withAnimation`。
-4. **`.textSelection(.enabled)` 是有意保留的**（为了复制部分文字）：它曾与错位问题一起出现，但真正根因是上面的容器/嵌套滚动。如果以后又出现气泡重叠，再考虑去掉它作为排查手段。
+4. **`.textSelection(.enabled)` 是有意保留的**（为了复制部分文字）：它曾与错位问题一起出现，但真正根因是上面的容器/嵌套滚动。如果以后又出现气泡重叠，先怀疑容器/嵌套滚动，再考虑去掉它作为排查手段。跨块选择见「文本选择」一节。
 5. 修改后再排查重叠，先确认真机跑的是新进程：`devicectl install` 不会重启 App，要 `terminate` 后重新 `launch`（或让用户手动强制退出）。曾有多次"改了没效果"其实是旧进程。
 
 排查顺序（由外到内）：容器（VStack/LazyVStack）→ 嵌套滚动 → 动画/选择层 → 单行内容（Markdown/表格/图片）。
 
-**Textual 自定义标题样式的顺序坑（2026-11-09 实测）**：`.textual.structuredTextStyle(.gitHub)` 内部会 `environment(\.headingStyle, style.headingStyle)`，如果 `.textual.headingStyle(自定义)` 写在它**之后**（更外层），会被内置 headingStyle 覆盖，改字号完全不生效。必须写成：
-
-```swift
-StructuredText(markdown: text)
-    .textual.headingStyle(ChatHeadingStyle())   // 必须在 structuredTextStyle 之前
-    .textual.structuredTextStyle(.gitHub)
-```
-
-另外 `fontScale` 是乘在 `.gitHub` 默认标题字号（H1≈24pt）上的，要压到正文 17pt 附近需要 ~0.7 的系数。
-
 ## 表格
 
-- MarkdownUI 表格实现是 SwiftUI `Grid`（`TableView.swift`），列宽由内容决定、**没有横向滚动**；列多时会压缩换行、行高变大。
+- `MarkdownTable` 用 `HStack` 等分列宽，列由内容决定、**没有横向滚动**；列多时会压缩换行、行高变大。
 - 项目结论：≤3 列体验最好；≥4 列在手机上无完美解（横向滚动会引入嵌套滚动问题），接受换行即可。
-- 表格内边距、边框、隔行底色由主题控制；如需调整，改 `.table` / `.tableCell` 块样式，不要自己写表格视图。
+- 表格样式集中在 `MarkdownTable` 里（背景 tint 0.04、描边 0.12、单元格 `.footnote`），改版式只动这一个类型。
 
 ## 图片
 
@@ -123,7 +149,7 @@ StructuredText(markdown: text)
 
 **现象**：偶发进入会话后停在某些历史消息，而不是最新消息。
 
-**原因**：历史是异步加载的，Markdown/Textual 渲染、表格重排、图片/过程行到达都会让内容高度
+**原因**：历史是异步加载的，Markdown 渲染、表格重排、图片/过程行到达都会让内容高度
 在"滚动执行完"之后继续增长；`scrollTo` 只执行一次必然可能滚在旧位置。`.defaultScrollAnchor(.bottom)`
 只影响首次布局，不负责后续高度变化。
 
@@ -199,7 +225,7 @@ scrollTick/liveTask/token/turnSeqs/发送状态），`ConnectionModel` 只保留
 
 - 点「回到底部」后的补滚必须可被用户滚动取消：`scrollGeneration` 捕获后，**force 也不能豁免**
   generation 校验；补滚次数限制为 [0, 0.15]，否则立刻上滑会被再次拉回底部（已用 XCUITest 覆盖）。
-- 行高异步变化（Textual 表格/图片晚渲染）会让内容变高、底部留白；用 `followsLatest`（用户上滑
+- 行高异步变化（Markdown 表格/图片晚渲染）会让内容变高、底部留白；用 `followsLatest`（用户上滑
   置 false，回底/点箭头置 true）在高度变化时补贴底，而不是只靠几何 `isAtBottom`。
 - 已知：长回复首次渲染后仍可能短暂留白，待后续用 contentOffset 校准。
 
@@ -280,7 +306,9 @@ App 被杀、重进会话、或本地 pending 气泡被清掉，就会出现"消
 
 ## 文本选择与复制
 
-- **部分/跨行复制**：Textual 的 `.textual.textSelection(.enabled)` 支持**跨段落/跨块**选择（这是迁移的核心理由）。长按文字出现选择手柄，可跨行、跨列表选中后复制。
+- **部分/跨行复制**：`MarkdownBody` 上挂了 `.textSelection(.enabled)`；连续的文本块被合并进**一个** `Text`
+  （见「文本选择（跨行/跨块）」），所以长按拖拽能跨行、跨列表项、跨引用连续选中，
+  到代码块/表格/图片处停住。
 - **整条复制**：消息头部（"DSH/你"旁边）的小图标按钮，点击把整条 Markdown 写入 `UIPasteboard`。
 - **不要给整行加 `.contextMenu`**：它会拦截长按，导致文本选择无法触发（踩过）。整条复制放头部按钮，长按留给文本选择。
 - 图片不参与复制（需要时走全屏预览里的保存/分享）。
@@ -317,19 +345,19 @@ xcrun devicectl device process launch --device <UDID> com.ruska.dsh-pocket-ios
 
 **现象**：把消息列表换成 UIKit（UICollectionView / UITableView + `UIHostingConfiguration` 承载 SwiftUI `MessageRow`，或内嵌 `UIHostingController`）后，滚动时**气泡里的文字会"滚动"/重排/抖动**，气泡背景与文字不同步；手工测量行高还会出现行重叠。
 
-**原因**：我们的消息行是 **Textual 的 `StructuredText`（复杂 Markdown/表格/代码块）**，不是轻量 SwiftUI 文本：
-- UIKit cell 复用 + `UIHostingConfiguration` 下，行高由 UIKit 估算/测量，Textual 完成布局的时机晚于 cell 尺寸确定 → 滚动中反复重排；
+**原因（当时的渲染器是 Textual）**：我们的消息行是 **复杂 Markdown/表格/代码块**，不是轻量 SwiftUI 文本：
+- UIKit cell 复用 + `UIHostingConfiguration` 下，行高由 UIKit 估算/测量，Markdown 渲染完成布局的时机晚于 cell 尺寸确定 → 滚动中反复重排；
 - 手动 `UIHostingController.sizeThatFits` 测量也会低估（表格/图片晚布局），导致行高偏小、内容被裁剪或与下一行重叠；
-- Element X 能安全使用翻转 UITableView + `UIHostingConfiguration`，是因为它的消息行是轻量 SwiftUI/AttributedString 渲染，不是 Textual 这种重排版组件。
+- Element X 能安全使用翻转 UITableView + `UIHostingConfiguration`，是因为它的消息行是轻量 SwiftUI/AttributedString 渲染，不是这种多视图拼装的 Markdown 渲染。
 
 **处理（结论）**：
 - **默认保留 SwiftUI `VStack` 消息列表**（虽然无法做像素级锚定，但文字渲染稳定）；
 - UIKit 列表代码保留在分支 `feat/uikit-message-list`，仅通过 `DSH_LIST=uikit`（DEBUG）实验开关启用，不要默认开启；
 - 以后若要"彻底解决长历史性能"，只有两条路：
   1. 接受 SwiftUI VStack + 分页（现状），做局部性能优化；
-  2. 把消息渲染从 Textual 换成 **UIKit 原生（TextKit/AttributedString）**，列表与渲染都用 UIKit —— 工作量大（约 1–2 周），需单独评估。
+  2. 把消息渲染换成 **UIKit 原生（TextKit/AttributedString）**，列表与渲染都用 UIKit —— 工作量大（约 1–2 周），需单独评估。
 
-**不要做**：不要再用"UICollectionView/UITableView + 自适应行高 + Textual(SwiftUI) 行"的组合去修重叠；调 `estimatedRowHeight`、预测量、延迟 apply 都只能缓解，不能根治。
+**不要做**：不要再用"UICollectionView/UITableView + 自适应行高 + SwiftUI Markdown 行"的组合去修重叠；调 `estimatedRowHeight`、预测量、延迟 apply 都只能缓解，不能根治。
 
 ## 扩展约定
 

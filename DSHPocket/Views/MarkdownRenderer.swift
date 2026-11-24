@@ -14,6 +14,16 @@ import UIKit
 ///   粗体、斜体、行内代码、链接都能解析，不需要第三方；
 /// - **块级结构**（标题、列表、引用、分隔线、代码块、表格、图片）自己按行判断。
 ///
+/// ## 可选择的文本必须是一个 `Text`（2026-11-24）
+///
+/// `.textSelection(.enabled)` 只让**每个 `Text` 各自**可选，SwiftUI 没有跨视图选择。
+/// 所以连续的文本类块（段落/标题/列表/引用）由 `MarkdownTextRuns` 分组后合并成
+/// **一个** `AttributedString` 放进一个 `Text`，拖拽选择才能跨行、跨列表项、跨引用。
+///
+/// 代价（已在 `spec/2026-11-24-1855-select-across-blocks.md` 记录）：
+/// 引用竖条变成每行前缀 `▍`（独立的竖条视图会把选择切断）；列表换行后续行
+/// 不与正文对齐（文本流里做不了悬挂缩进）。
+///
 /// 与 Textual 相比的已知损失（用户可感知）：
 /// - 代码块没有语法高亮（Textual 走 JavaScriptCore + Prism，复刻没意义）；
 /// - 表格样式更朴素；
@@ -30,42 +40,82 @@ struct MarkdownRenderer: View, Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(MarkdownBlockParser.blocks(from: text).enumerated()), id: \.offset) { _, block in
-                blockView(block)
+            ForEach(Array(MarkdownTextRuns.group(MarkdownBlockParser.blocks(from: text)).enumerated()),
+                    id: \.offset) { _, run in
+                switch run {
+                case .text(let blocks):
+                    // 一个 run = 一个 Text = 一段连续的可选择文本。
+                    Text(mergedText(blocks))
+                case .block(let block):
+                    blockView(block)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// 把一个 run 里的文本块拼成一个 AttributedString（样式写进各自的 range）。
+    private func mergedText(_ blocks: [MarkdownBlock]) -> AttributedString {
+        var result = AttributedString()
+        var previous: MarkdownBlock?
+        for block in blocks {
+            result.append(AttributedString(MarkdownTextRuns.separator(previous: previous, current: block)))
+            result.append(attributed(block))
+            previous = block
+        }
+        return result
+    }
+
+    /// 单个文本块的富文本。
+    private func attributed(_ block: MarkdownBlock) -> AttributedString {
+        switch block {
+        case .heading(let level, let text):
+            var heading = inlineAttributed(text)
+            apply(font: level <= 2 ? .title3.weight(.semibold) : .headline, to: &heading)
+            return heading
+
+        case .paragraph(let text):
+            return inlineAttributed(text)
+
+        case .listItem(let marker, let text, let depth):
+            var line = AttributedString(String(repeating: "  ", count: max(0, depth)))
+            var markerText = AttributedString("\(marker) ")
+            markerText.foregroundColor = foreground.opacity(0.6)
+            line.append(markerText)
+            line.append(inlineAttributed(text))
+            return line
+
+        case .quote(let text):
+            // 引用竖条在「每行一个 `▍` 前缀」里重建：独立的竖条视图会切断选择。
+            var quote = AttributedString()
+            let lines = text.components(separatedBy: "\n")
+            for (index, raw) in lines.enumerated() {
+                if index > 0 { quote.append(AttributedString("\n")) }
+                var bar = AttributedString("▍ ")
+                bar.foregroundColor = foreground.opacity(0.45)
+                quote.append(bar)
+                var body = inlineAttributed(raw)
+                body.foregroundColor = foreground.opacity(0.75)
+                quote.append(body)
+            }
+            return quote
+
+        case .code, .table, .image, .divider:
+            // 这些块不进文本流（是选择边界），由 `blockView` 单独渲染。
+            return AttributedString()
+        }
+    }
+
+    private func apply(font: Font, to attributed: inout AttributedString) {
+        for run in attributed.runs {
+            attributed[run.range].font = font
+        }
+    }
+
+    /// 代码块 / 表格 / 图片 / 分隔线：独立视图（同时也是选择边界）。
     @ViewBuilder
     private func blockView(_ block: MarkdownBlock) -> some View {
         switch block {
-        case .heading(let level, let text):
-            inline(text)
-                .font(level <= 2 ? .title3.weight(.semibold) : .headline)
-                .padding(.top, level <= 2 ? 6 : 2)
-
-        case .paragraph(let text):
-            inline(text)
-
-        case .listItem(let marker, let text, let depth):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(marker)
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(foreground.opacity(0.6))
-                inline(text)
-            }
-            .padding(.leading, CGFloat(depth) * 14)
-
-        case .quote(let text):
-            HStack(alignment: .top, spacing: 8) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(foreground.opacity(0.25))
-                    .frame(width: 3)
-                inline(text)
-                    .foregroundStyle(foreground.opacity(0.75))
-            }
-
         case .code(let code):
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(code)
@@ -85,6 +135,10 @@ struct MarkdownRenderer: View, Equatable {
 
         case .divider:
             Divider().opacity(0.4).padding(.vertical, 2)
+
+        case .heading, .paragraph, .listItem, .quote:
+            // 文本类块由 `mergedText(_:)` 处理，不会走到这里。
+            EmptyView()
         }
     }
 
@@ -97,12 +151,14 @@ struct MarkdownRenderer: View, Equatable {
     /// accent 也是绿色 —— 链接文字直接融进背景（真机现象：用户发了一个邮箱地址，
     /// 气泡看起来是「空的」，其实是链接看不清，2026-11-24 反馈）。
     /// 所以这里把所有 run 的前景色统一成气泡前景色，链接另加下划线来区分。
-    private func inline(_ text: String) -> Text {
+    private func inlineAttributed(_ text: String) -> AttributedString {
         guard var attributed = try? AttributedString(
             markdown: text,
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) else {
-            return Text(text).foregroundColor(foreground)
+            var plain = AttributedString(text)
+            plain.foregroundColor = foreground
+            return plain
         }
         for run in attributed.runs {
             let isLink = run.link != nil || run.attachment != nil
@@ -112,7 +168,7 @@ struct MarkdownRenderer: View, Equatable {
                 attributed[run.range].underlineStyle = .single
             }
         }
-        return Text(attributed)
+        return attributed
     }
 }
 
@@ -170,5 +226,3 @@ struct MarkdownTable: View {
         .padding(.vertical, 6)
     }
 }
-
-// MARK: - 解析
