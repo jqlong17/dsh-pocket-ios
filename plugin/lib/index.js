@@ -7,8 +7,10 @@
  * 3) 扫码建连走一次性 token：`?pair=<token>` → POST /dsh-pocket-ios/pair 换 dsh-auth cookie；
  * 4) 通过 webServer 暴露 `/dsh-pocket-ios/*` 给设置页卡片与 App。
  */
-import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
+import { expiredPath, rotatePlan, shouldRotate } from './log-rotate.js'
+import { encodeJson } from './json-encode.js'
 import { listPeerSessions, sayToPeer } from './peer-client.js'
 import { registerRemoteTools } from './remote-tools.js'
 import net from 'node:net'
@@ -731,7 +733,19 @@ function deviceTokenFrom(req, urlObject) {
 async function logLine(line) {
   try {
     await mkdir(LOG_DIR, { recursive: true })
-    await appendFile(join(LOG_DIR, 'tailscale.log'), `${new Date().toISOString()} ${line}\n`)
+    const file = join(LOG_DIR, 'tailscale.log')
+    // 轮转：单文件超过上限就切，保留最近几份。
+    // 背景：这份日志曾涨到 41 MB / 70 万行（一次循环刷写），没有轮转会一直长。
+    try {
+      const { size } = await stat(file)
+      if (shouldRotate(size)) {
+        for (const step of rotatePlan(file)) {
+          try { await rename(step.from, step.to) } catch { /* 不存在就跳过 */ }
+        }
+        try { await rm(expiredPath(file), { force: true }) } catch { /* 无所谓 */ }
+      }
+    } catch { /* 文件还不存在 */ }
+    await appendFile(file, `${new Date().toISOString()} ${line}\n`)
   } catch { /* 日志失败不影响主流程 */ }
 }
 
@@ -1393,8 +1407,12 @@ async function readBody(req) {
 }
 
 function send(res, status, payload) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(payload))
+  // 自有端点按需 gzip：客户端 URLSession 自动解压，透明。
+  // 注意：会话历史走 DSH 的 /api/*（插件只 pipe），那部分压缩在别处做。
+  const acceptEncoding = res.req?.headers?.['accept-encoding']
+  const { body, headers } = encodeJson(payload, acceptEncoding)
+  res.writeHead(status, headers)
+  res.end(body)
 }
 
 
