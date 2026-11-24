@@ -31,7 +31,12 @@ enum BackgroundRefresh {
                 task.setTaskCompleted(success: false)
                 return
             }
-            MainActor.assumeIsolated {
+            // **不能用 MainActor.assumeIsolated**：BGTaskScheduler 的处理器在自己的
+            // 后台队列上调用，而 assumeIsolated 在非主线程会直接 fatalError
+            // （EXC_BREAKPOINT / SIGTRAP）。2026-11-24 线上崩溃两次就是这个：
+            // 启动 7 分钟后 iOS 触发后台刷新 → 立刻崩。
+            // 正确做法是跳到主 actor 上执行，让状态更新发生在主线程。
+            Task { @MainActor in
                 handle(refreshTask)
             }
         }
