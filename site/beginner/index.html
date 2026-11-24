@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>零基础用上 DeepSeek Harness · 装在自己电脑上的 AI 助手</title>
+<meta name="description" content="不用懂技术也能装：把 DeepSeek 的 AI 助手装到你自己电脑上。数据留在本机，看得懂、装得上、用得起来。">
+<style>
+  :root{
+    --ink:#12181f; --muted:#5b6673; --line:#e6e9ee; --bg:#f7f8fa;
+    --brand:#1a7f64; --brand-soft:#e8f5f0; --warn:#a2581c; --warn-soft:#fdf3e7;
+    --card:#fff; --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --ink:#e9edf2; --muted:#9aa6b2; --line:#28313a; --bg:#0e1216; --card:#161c22; --brand:#4ec9a4; --brand-soft:#12241f; --warn:#e0a25f; --warn-soft:#241a10; }
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:17px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    padding:0 0 env(safe-area-inset-bottom);
+  }
+  .wrap{ max-width:680px; margin:0 auto; padding:0 20px; }
+  header.hero{ padding:44px 0 26px; }
+  .kicker{ color:var(--brand); font-weight:600; font-size:14px; letter-spacing:.02em; }
+  h1{ font-size:29px; line-height:1.32; margin:10px 0 12px; letter-spacing:-.01em; }
+  .lead{ color:var(--muted); font-size:16.5px; margin:0 0 18px; }
+  .pill{ display:inline-block; background:var(--brand-soft); color:var(--brand); border-radius:999px; padding:5px 12px; font-size:13px; font-weight:600; }
+  nav.toc{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin:8px 0 28px; }
+  nav.toc b{ display:block; font-size:13px; color:var(--muted); font-weight:600; margin-bottom:8px; }
+  nav.toc a{ display:block; color:var(--ink); text-decoration:none; padding:7px 0; border-bottom:1px solid var(--line); font-size:15.5px; }
+  nav.toc a:last-child{ border-bottom:0; }
+  nav.toc a span{ color:var(--brand); font-weight:600; margin-right:8px; }
+  section{ margin:0 0 34px; }
+  h2{ font-size:21px; margin:0 0 12px; letter-spacing:-.01em; }
+  h3{ font-size:17px; margin:20px 0 8px; }
+  p{ margin:0 0 12px; }
+  ul,ol{ margin:0 0 14px; padding-left:22px; }
+  li{ margin:6px 0; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; margin:14px 0; }
+  .step{ display:flex; gap:12px; align-items:flex-start; }
+  .num{ flex:0 0 26px; width:26px; height:26px; border-radius:50%; background:var(--brand); color:#fff; font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:3px; }
+  .step .body{ flex:1 1 auto; min-width:0; }
+  .step .body b{ display:block; margin-bottom:2px; }
+  .muted{ color:var(--muted); }
+  .small{ font-size:14.5px; }
+  .note{ background:var(--warn-soft); border-left:3px solid var(--warn); border-radius:8px; padding:12px 14px; margin:14px 0; font-size:15px; }
+  .note b{ color:var(--warn); }
+  .ok{ background:var(--brand-soft); border-left:3px solid var(--brand); border-radius:8px; padding:12px 14px; margin:14px 0; font-size:15px; }
+  .ok b{ color:var(--brand); }
+  a.btn{ display:block; text-align:center; background:var(--brand); color:#fff; text-decoration:none; font-weight:600; padding:14px 16px; border-radius:12px; margin:10px 0; }
+  a.btn.ghost{ background:transparent; color:var(--brand); border:1.5px solid var(--brand); }
+  a{ color:var(--brand); }
+  code{ font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14.5px; background:var(--brand-soft); color:var(--brand); padding:2px 6px; border-radius:6px; }
+  .qa{ border-top:1px solid var(--line); padding:14px 0; }
+  .qa:first-of-type{ border-top:0; }
+  .qa b{ display:block; margin-bottom:4px; }
+  .qa p{ margin:0; color:var(--muted); font-size:15.5px; }
+  footer{ color:var(--muted); font-size:14px; padding:28px 0 50px; border-top:1px solid var(--line); margin-top:34px; }
+  footer a{ color:var(--muted); }
+  .toc-inline{ font-size:14.5px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<header class="hero wrap">
+  <div class="kicker">给完全不懂技术的人看</div>
+  <h1>把 AI 助手装在<strong>你自己的电脑</strong>上</h1>
+  <p class="lead">不用网页、不用 App 商店。装一次，以后双击就能用。你的对话、文件、记忆都在自己机器里，不上传、不训练。</p>
+  <span class="pill">约 10 分钟 · 不需要会写代码</span>
+
+  <nav class="toc">
+    <b>目录</b>
+    <a href="#what"><span>1</span>它到底是什么</a>
+    <a href="#why"><span>2</span>为什么要自己装，而不是用网页版</a>
+    <a href="#need"><span>3</span>你需要准备什么</a>
+    <a href="#install"><span>4</span>安装（Mac / Windows）</a>
+    <a href="#first"><span>5</span>第一次打开，做这 3 件事</a>
+    <a href="#use"><span>6</span>它可以帮你做什么</a>
+    <a href="#faq"><span>7</span>常见问题</a>
+    <a href="#next"><span>8</span>装好之后：手机上也能用</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+<section id="what">
+  <h2>1 · 它到底是什么</h2>
+  <p><strong>DeepSeek Harness</strong>（简称 <strong>DSH</strong>）是 DeepSeek 官方出的一个<strong>能装在自己电脑上的 AI 助手程序</strong>。</p>
+  <p>你可以把它想成「<strong>一个住在你电脑里的实习生</strong>」：</p>
+  <ul>
+    <li>你让它读你电脑上的文件，它就去读；</li>
+    <li>你让它整理表格、写文档、改代码，它直接在你电脑上操作；</li>
+    <li>它记得你之前交代过的事，这些记录<strong>存在你自己的硬盘里</strong>。</li>
+  </ul>
+  <p class="muted small">「Harness」这个词是给开发者看的（意思是「驾驭模型的外壳」）。你不用记它，用的时候只当它是一个软件就行。</p>
+</main>
+
+<section id="why">
+  <h2>2 · 为什么要自己装，而不是用网页版</h2>
+  <p>大部分在线 AI 产品是这么工作的：<strong>你输入的内容 → 上传到它的服务器 → 存在它那里 → 有时会用来改进模型</strong>。</p>
+  <p>这带来两个现实问题：</p>
+  <ol>
+    <li><strong>数据不在你手里。</strong>多年积累的对话、你的工作习惯、你上传的文件，都在别人服务器上。</li>
+    <li><strong>「记忆」越多，越值得担心。</strong>现在很多产品主打「记住你」，记得越详细，一旦泄露或被用于训练，影响就越大。</li>
+  </ol>
+
+  <div class="card">
+    <p class="toc-inline"><strong>说清楚一件事：</strong>不同产品的隐私政策差别很大，有的明确承诺不用于训练，有的会。这里不点名任何产品 —— 建议你对自己在用的每一个 AI 产品，都去看一眼它的隐私条款里「是否用于模型改进」那一条。</p>
+  </div>
+
+  <p><strong>装在自己电脑上的区别是：</strong></p>
+  <ul>
+    <li><strong>对话记录</strong>存在你电脑的一个文件夹里；</li>
+    <li><strong>文件</strong>不离开你的电脑（它只是在你本机读写）；</li>
+    <li><strong>发给模型的</strong>只有你这一轮真的要说的话 —— 跟你在网页版聊天本质一样，但<strong>历史记录不会堆积在别人那里</strong>；</li>
+    <li>想删就删：卸载或删掉那个文件夹，就没了。</li>
+  </ul>
+
+  <div class="ok"><b>一句话总结</b><br>它不是「更安全的 AI」，而是<strong>把「你的资料存在哪」这件事，从别人家搬回你自己家</strong>。</div>
+</main>
+
+<section id="need">
+  <h2>3 · 你需要准备什么</h2>
+  <div class="card">
+    <div class="step"><div class="num">1</div><div class="body"><b>一台电脑</b>
+      <p class="small muted" style="margin:4px 0 0">Mac（近几年的都行，Apple 芯片或 Intel）或 Windows 10/11。手机上装不了，这是电脑软件。</p>
+    </div></div>
+  </div>
+  <div class="card">
+    <div class="step"><div class="num">2</div><div class="body"><b>一个 DeepSeek 账号</b>
+      <p class="small muted" style="margin:4px 0 0">就是你在 DeepSeek 网页版用的那个账号，同一个就行。没有的话去官网注册，手机号即可。</p>
+    </div></div>
+  </div>
+  <div class="card">
+    <div class="step"><div class="num">3</div><div class="body"><b>能上网</b>
+      <p class="small muted" style="margin:4px 0 0">安装和用的时候都要联网（因为要跟模型通信）。没有网的时候，它能打开，但没法对话。</p>
+    </div></div>
+  </div>
+  <div class="note"><b>不用准备的：</b>不用会命令行、不用买服务器、不用懂「模型」「API」这些词。</div>
+</main>
+
+<section id="install">
+  <h2>4 · 安装</h2>
+  <p>先去官网下载页：<a href="https://www.deepseek.com/download/">deepseek.com/download</a>，找到 <strong>DeepSeek Harness（桌面端）</strong>。</p>
+
+  <a class="btn" href="https://download.deepseek.com/desktop/dsh-latest-macos-arm64.dmg">下载 Mac 版（.dmg）</a>
+  <a class="btn" href="https://download.deepseek.com/desktop/dsh-latest-windows-x64.exe">下载 Windows 版（.exe）</a>
+
+  <h3>Mac 上怎么装</h3>
+  <ol>
+    <li>双击下载好的 <code>.dmg</code> 文件。</li>
+    <li>弹出的窗口里，把左边的图标<strong>拖到右边的「应用程序」文件夹</strong>。</li>
+    <li>打开「应用程序」，找到 <strong>DeepSeek Harness</strong>，双击。</li>
+  </ol>
+  <div class="note"><b>第一次打开被拦住了？</b>系统提示「无法验证开发者」是正常的（因为它不是从 App Store 装的）。<br>去 <strong>系统设置 → 隐私与安全性</strong>，页面往下拉，会看到一行「已阻止打开 DeepSeek Harness」，点旁边的<strong>「仍要打开」</strong>，再输入你的电脑密码即可。</div>
+
+  <h3>Windows 上怎么装</h3>
+  <ol>
+    <li>双击下载好的 <code>.exe</code> 文件。</li>
+    <li>如果弹出蓝色的「Windows 已保护你的电脑」，点<strong>「更多信息」→「仍要运行」</strong>。</li>
+    <li>一路「下一步」装完，桌面会出现图标，双击打开。</li>
+  </ol>
+
+  <div class="note"><b>为什么会有这些警告？</b>因为这类开发者工具没有花钱做微软/苹果的「应用商店签名认证」。<strong>只要你是从 <code>deepseek.com</code> 官网下载的，就可以放心继续。</strong>（如果你是从别的网站下的，删掉重下。）</div>
+</main>
+
+<section id="first">
+  <h2>5 · 第一次打开，做这 3 件事</h2>
+
+  <div class="card"><div class="step"><div class="num">1</div><div class="body"><b>登录</b>
+    <p class="small muted" style="margin:4px 0 0">按界面提示登录 DeepSeek 账号（和网页版同一个）。登录后它会显示可用模型。</p>
+  </div></div></div>
+
+  <div class="card"><div class="step"><div class="num">2</div><div class="body"><b>选一个「工作区」文件夹</b>
+    <p class="small muted" style="margin:4px 0 0">工作区 = 它被允许读写的文件夹。建议<strong>新建一个空文件夹</strong>（比如桌面上的「AI 工作区」），把要它处理的文件放进去。<strong>不要一上来就选整个硬盘或「桌面」</strong>，先小范围用熟。</p>
+  </div></div></div>
+
+  <div class="card"><div class="step"><div class="num">3</div><div class="body"><b>说一句话试试</b>
+    <p class="small muted" style="margin:4px 0 0">在输入框里打：<br><code>帮我看看这个文件夹里有什么，用一段话总结</code></p>
+  </div></div></div>
+
+  <div class="ok"><b>看到它开始「思考 → 调用工具 → 回你」</b>，就说明装好了，可以正式用了。</div>
+</main>
+
+<section id="use">
+  <h2>6 · 它可以帮你做什么</h2>
+  <p>它能做的不只是聊天 —— 它会在你电脑上<strong>真的动手</strong>：</p>
+  <ul>
+    <li><strong>整理文件</strong>：「把这些照片按日期分到月份文件夹里」</li>
+    <li><strong>做表格</strong>：「把这个 CSV 里 3 月的订单挑出来，做成汇总表」</li>
+    <li><strong>写文档</strong>：「根据这堆会议记录，写一份周报」</li>
+    <li><strong>看代码</strong>：「这个项目为什么跑不起来，帮我找原因」</li>
+    <li><strong>批量改东西</strong>：「这个文件夹里所有 txt 里的旧公司名，换成新的」</li>
+  </ul>
+  <div class="note"><b>它会问你</b>：涉及删除、覆盖、执行命令这类操作时，它会先请求你同意。<strong>看清楚再点同意</strong> —— 这也是它的设计：不替你擅自做主。</div>
+</main>
+
+<section id="faq">
+  <h2>7 · 常见问题</h2>
+
+  <div class="qa"><b>要不要钱？</b><p>软件本身免费（开源的）。但用到的模型按 DeepSeek 的计费规则算，具体以官网为准。日常问答花费很低。</p></div>
+
+  <div class="qa"><b>我的数据到底在哪？</b><p>对话记录在你电脑的 <code>~/.dsh</code> 文件夹里（Mac）或用户目录下的 <code>.dsh</code>（Windows）。你让它读的文件本身不会「上传」，只是在本机被读取。</p></div>
+
+  <div class="qa"><b>它会不会自己删我的文件？</b><p>删除、覆盖这类操作前它会请求确认。你也可以一开始就只给它一个小文件夹的权限。</p></div>
+
+  <div class="qa"><b>和网页版 DeepSeek 有什么区别？</b><p>网页版能聊天、能问问题。装在你电脑上的这个，<strong>能直接操作你的文件</strong>，而且<strong>记录留在本地</strong>。</p></div>
+
+  <div class="qa"><b>装坏了怎么办？</b><p>Mac：把「应用程序」里的它拖到废纸篓。Windows：设置 → 应用 → 卸载。想连记录一起清掉，就顺手删掉 <code>.dsh</code> 文件夹。</p></div>
+
+  <div class="qa"><b>需要开通什么「API」吗？</b><p>不用。第一次打开按提示登录账号就能用，界面里会让你选模型，选默认的就行。</p></div>
+</main>
+
+<section id="next">
+  <h2>8 · 装好之后：手机上也能用</h2>
+  <p>用熟之后，你可能会想「躺在沙发上接着用电脑上的那个会话」。这个需求有一个自己做的连接器插件 <strong>dsh-pocket-ios</strong>，配套一个 iOS App：</p>
+  <ul>
+    <li>电脑上装插件，手机扫码就连上；</li>
+    <li>手机只是「远程屏幕」，会话还是跑在你自己电脑上；</li>
+    <li>需要一台 iPhone（iOS 17 及以上）。</li>
+  </ul>
+  <a class="btn ghost" href="https://dsh-pocket.docs.notta.uk/">看进阶说明（面向懂一点技术的人）</a>
+  <p class="muted small">这一步完全可选。先把电脑端用顺，再考虑手机。</p>
+</main>
+
+</main>
+
+<footer class="wrap">
+  <p>本页是给非技术用户的入门说明，与 DeepSeek 官方无关；软件与文档的官方来源请以
+  <a href="https://www.deepseek.com/download/">deepseek.com</a> 与
+  <a href="https://deepseek-harness.github.io/deepseek-harness/">官方文档</a> 为准。</p>
+  <p>DeepSeek Harness 处于「开发者预览」阶段，界面可能随版本变化；如与你看到的不一致，以软件内实际界面为准。</p>
+</footer>
+
+</body>
+</html>
