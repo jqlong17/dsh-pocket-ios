@@ -11,6 +11,7 @@ import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } fro
 import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
 import { expiredPath, rotatePlan, shouldRotate } from './log-rotate.js'
 import { encodeJson } from './json-encode.js'
+import { needsRepoint, parseServeStatus } from './serve-status.js'
 import { listPeerSessions, sayToPeer } from './peer-client.js'
 import { registerRemoteTools } from './remote-tools.js'
 import net from 'node:net'
@@ -777,13 +778,19 @@ async function tailscale(args) {
  * 现在漏传会直接变成 undefined 并在日志里立刻暴露。
  */
 async function ensureTailscaleServe(port) {
-  // ① 已配好就不动（避免每次切模式都重写配置）
+  // ① 只有「地址存在且指向当前端口」才复用。
+  //
+  // 以前只判断有没有地址：端口从 3091 回落到 3092 后，serve 仍指向 3091，
+  // 二维码里的地址连不到插件，App 报「二维码已过期」（2026-11-25 实锤）。
   try {
     const out = await tailscale(['serve', 'status'])
-    const match = out.match(/https:\/\/[^\s)]+/)
-    if (match) {
-      await logLine(`serve 已就绪: ${match[0]}`)
-      return { ok: true, url: match[0].replace(/\/$/, ''), reused: true }
+    const parsed = parseServeStatus(out)
+    if (parsed.url && !needsRepoint(parsed, port)) {
+      await logLine(`serve 已就绪: ${parsed.url}（端口 ${parsed.port}）`)
+      return { ok: true, url: parsed.url, reused: true }
+    }
+    if (parsed.url) {
+      await logLine(`serve 指向 ${parsed.port}，当前端口是 ${port}，重新指向`)
     }
   } catch (error) {
     await logLine(`serve status 读取失败: ${error?.message ?? error}`)
