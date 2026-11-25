@@ -35,6 +35,8 @@
 | 发送主流程 | `DSHPocket/Session/ConnectionModel+Send.swift` · `sendMessage` | `requestId` 生成一次、存 outbox，重试复用（不会重复发） |
 | 离线队列 | `DSHPocket/Session/ConnectionModel.swift` · `outboxEntries` | 断网时暂存，恢复后重放 |
 | 发送态集合 | `DSHPocket/Session/ConnectionModel.swift` · `queuedSendRpcIds` / `ackedSendRpcIds` / `failedSendRpcIds` | 三套 id 分别表示 排队/确认/失败 |
+| 失败消息删除 | `DSHPocket/Session/ConnectionModel+Outbox.swift` · `discardFailedMessage` | 仅失败态；清气泡 + 发件箱条目 + 排队图片，重启/补发都不会复活 |
+| 待发状态行 | `DSHPocket/Views/PendingSendStatusView.swift` · `PendingSendStatusView` | 发送中/已发出/失败（重发 + 删除）/待联网 |
 
 ## 3. 对话与渲染
 

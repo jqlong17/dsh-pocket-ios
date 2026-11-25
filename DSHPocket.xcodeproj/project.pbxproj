@@ -44,6 +44,7 @@
 		D1CFA11E0000000000000018 /* DiagnosticSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000017 /* DiagnosticSamples.swift */; };
 		D1CFA11E000000000000001A /* ConnectScanCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000019 /* ConnectScanCard.swift */; };
 		D1CFA11E000000000000001C /* ConnectHeaderCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000001B /* ConnectHeaderCard.swift */; };
+		D1CFA11E0000000000000050 /* PendingSendStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000004F /* PendingSendStatusView.swift */; };
 		D1CFA11E000000000000001E /* QuestionInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000001D /* QuestionInbox.swift */; };
 		D1CFA11E0000000000000020 /* ConnectionValueTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000001F /* ConnectionValueTypes.swift */; };
 		D1CFA11E0000000000000022 /* SessionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E0000000000000021 /* SessionAPI.swift */; };
@@ -162,6 +163,7 @@
 		D1CFA11E0000000000000017 /* DiagnosticSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticSamples.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000019 /* ConnectScanCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectScanCard.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000001B /* ConnectHeaderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectHeaderCard.swift; sourceTree = "<group>"; };
+		D1CFA11E000000000000004F /* PendingSendStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingSendStatusView.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000001D /* QuestionInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionInbox.swift; sourceTree = "<group>"; };
 		D1CFA11E000000000000001F /* ConnectionValueTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionValueTypes.swift; sourceTree = "<group>"; };
 		D1CFA11E0000000000000021 /* SessionAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAPI.swift; sourceTree = "<group>"; };
@@ -420,6 +422,7 @@
 				A1B2C3D4E5F60718293AD001 /* PocketScrollPhase.swift */,
 				A1B2C3D4E5F60718293AC001 /* MarkdownRenderer.swift */,
 				7150D5E3BA61AB6FAD794AA7 /* MessageRow.swift */,
+				D1CFA11E000000000000004F /* PendingSendStatusView.swift */,
 				C0FFEE4C658121E9E2596919 /* ConversationTimeline.swift */,
 				9367A5FF84D0A679D06E6B2E /* ModelPickerSheet.swift */,
 				8BEC0EA5DD2D218509214308 /* PocketCodeScanner.swift */,
@@ -681,6 +684,7 @@
 				A1B2C3D4E5F60718293AD002 /* PocketScrollPhase.swift in Sources */,
 				A1B2C3D4E5F60718293AC002 /* MarkdownRenderer.swift in Sources */,
 				4A6AA3335B6E69E63966CFC5 /* MessageRow.swift in Sources */,
+				D1CFA11E0000000000000050 /* PendingSendStatusView.swift in Sources */,
 				C0FFEEEE5DD64A9DE68999F9 /* ConversationTimeline.swift in Sources */,
 				FD2A9A265E7378A226522B5A /* ModelPickerSheet.swift in Sources */,
 				71AE157ACDBA5E36D9D80C78 /* PocketCodeScanner.swift in Sources */,

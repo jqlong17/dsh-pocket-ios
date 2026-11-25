@@ -6,11 +6,12 @@ final class DemoFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launchDemo(session: String = "demo-1") -> XCUIApplication {
+    private func launchDemo(session: String = "demo-1", failedMessage: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["DSH_DEMO"] = "1"
         app.launchEnvironment["DSH_RESET"] = "1"
         app.launchEnvironment["DSH_OPEN"] = session
+        if failedMessage { app.launchEnvironment["DSH_DEMO_FAILED"] = "1" }
         app.launch()
         return app
     }
@@ -55,6 +56,37 @@ final class DemoFlowUITests: XCTestCase {
     }
 
 
+
+    /// 发送失败的消息要能删除：确认后气泡消失，不再只能重发。
+    /// 回归：2026-11-25 用户反馈「失败的消息会一直存在，除非点重新发送」。
+    func testDeleteFailedMessage() {
+        let app = launchDemo(failedMessage: true)
+        let delete = app.buttons["pending-delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 15), "失败消息没有删除按钮")
+        XCTAssertTrue(app.staticTexts["发送失败"].exists)
+
+        delete.tap()
+        let confirmDelete = app.alerts.buttons["删除"].firstMatch
+        XCTAssertTrue(confirmDelete.waitForExistence(timeout: 5), "删除确认弹窗未出现")
+        confirmDelete.tap()
+
+        XCTAssertFalse(app.staticTexts["发送失败"].waitForExistence(timeout: 3),
+                       "确认删除后失败消息仍在")
+        XCTAssertFalse(app.buttons["pending-delete"].exists, "删除按钮应随失败消息一起消失")
+    }
+
+    /// 删除确认可以取消：失败气泡与重发入口必须原样保留。
+    func testDeleteFailedMessageCanCancel() {
+        let app = launchDemo(failedMessage: true)
+        let delete = app.buttons["pending-delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 15), "失败消息没有删除按钮")
+        delete.tap()
+        let cancel = app.alerts.buttons["取消"].firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5), "删除确认弹窗未出现")
+        cancel.tap()
+        XCTAssertTrue(app.staticTexts["发送失败"].exists, "取消删除后失败消息不应消失")
+        XCTAssertTrue(app.buttons["pending-resend"].exists, "取消删除后重发入口应仍在")
+    }
 
     /// 发送后输入框必须清空（回归：偶发残留已发送文字）。
     func testSendClearsComposer() {
