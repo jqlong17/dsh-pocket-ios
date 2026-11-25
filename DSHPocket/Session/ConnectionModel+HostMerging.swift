@@ -58,7 +58,10 @@ extension ConnectionModel {
                 group.addTask { @MainActor in
                     guard let url = try? Self.serverURL(from: endpoint.address) else { return (endpoint, false) }
                     let started = Date()
-                    let ok = await self.probeSessionsFast(at: url, timeout: timeout)
+                    // 局域网要么毫秒级回应，要么根本不在这个网里：给它更短的超时，
+                    // 免得在外面时白等满 3 秒（2026-11-25 反馈切 Tailscale 要 5 秒）。
+                    let effective = endpoint.kind == .lan ? min(timeout, 1.2) : timeout
+                    let ok = await self.probeSessionsFast(at: url, timeout: effective)
                     let ms = Int(Date().timeIntervalSince(started) * 1000)
                     // 计时落盘：切换快不快，看这几行就够（DiagFileLog 可 devicectl 拷出）。
                     DiagFileLog.log("probe \(endpoint.kind.label) ok=\(ok) \(ms)ms")
