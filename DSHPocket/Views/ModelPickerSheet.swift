@@ -39,7 +39,9 @@ struct ModelPickerSheet: View {
                 }
             }
             .task {
-                if model.modelGroups.isEmpty { await model.loadModelCatalog() }
+                // 每次都刷新：模型清单取决于「现在连的是哪台 DSH」，
+                // 只在为空时加载会出现「换了机器但列表还是旧的」（2026-11-25 反馈）。
+                await model.loadModelCatalog()
             }
         }
         .id(languageRevision)

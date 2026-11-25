@@ -377,6 +377,7 @@ extension ConnectionModel {
             DiagFileLog.log("switch picked \(fast.kind.label) after \(Int(Date().timeIntervalSince(switchStarted) * 1000))ms")
             if await switchConnection(to: fast.address, verified: true) {
                 DiagFileLog.log("switch done in \(Int(Date().timeIntervalSince(switchStarted) * 1000))ms")
+                invalidateModelCatalog()   // 模型清单是每台机器各自的配置
                 currentHostId = hostId
                 persistHosts()
                 persistCurrentHostId()

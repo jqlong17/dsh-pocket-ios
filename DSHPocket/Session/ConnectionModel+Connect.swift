@@ -193,6 +193,7 @@ extension ConnectionModel {
             // 先记下机器名再落盘：分组按机器名归并，晚一步就会多建一台主机，
             // 于是同一台 DSH 的局域网与 Cloudflare 地址被拆成两台（2026-11-25 实测）。
             captureMachineName(from: pairResponse)
+            invalidateModelCatalog()
             persistConnectedState()
             if ConnectionVault.loadDeviceToken(for: connection.serverAddress) != nil {
                 recordDiagnostic("已保存长期设备凭证（下次 DSH 重启免扫码）")

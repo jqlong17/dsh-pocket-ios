@@ -121,6 +121,15 @@ extension ConnectionModel {
         }
     }
 
+    /// 换了一台 DSH 之后必须失效：模型清单**是每台机器各自的配置**，
+    /// 不清空就会继续显示上一台机器的模型（2026-11-25 用户反馈「为什么只有三个模型」）。
+    @MainActor
+    func invalidateModelCatalog() {
+        modelGroups = []
+        selectedModelLabel = nil
+        recordDiagnostic("模型清单已失效（切换机器）")
+    }
+
     @MainActor
     func loadModelCatalog() async {
         guard !isDemoMode else { return }
