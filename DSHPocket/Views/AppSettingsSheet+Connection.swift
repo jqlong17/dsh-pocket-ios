@@ -65,10 +65,6 @@ extension AppSettingsSheet {
         // 之前把 if 直接插在 HStack 的修饰符链中间，导致 contentShape 无处可挂。
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
-                    .font(.body)
-                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary.opacity(0.4))
-                    .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(host.name).font(.body.weight(.medium))
@@ -91,22 +87,16 @@ extension AppSettingsSheet {
                 if switchingTo == host.id {
                     ProgressView().controlSize(.small)
                 } else if isCurrent {
+                    if model.connection.isConnected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityLabel(L10n.t("当前连接的机器"))
+                    }
                     Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
                         .font(.caption)
                         .foregroundStyle(model.connection.isConnected ? Color.accentColor : Color.secondary)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard host.id != model.currentHostId, switchingTo == nil else { return }
-                switchingTo = host.id
-                Task {
-                    let ok = await model.switchHost(to: host.id)
-                    switchingTo = nil
-                    if !ok {
-                        switchError = L10n.t("连不上 ") + host.name
-                            + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
-                    }
                 }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -135,5 +125,21 @@ extension AppSettingsSheet {
                 }
             }
         }
+          // 整块可点可滑：以前 contentShape 只盖住上半行，点地址行没反应，
+          // 用户反馈「切换区域太小」（2026-11-25）。46pt 满足 HIG 最小点按尺寸。
+          .frame(minHeight: 46, alignment: .leading)
+          .contentShape(Rectangle())
+          .onTapGesture {
+              guard host.id != model.currentHostId, switchingTo == nil else { return }
+              switchingTo = host.id
+              Task {
+                  let ok = await model.switchHost(to: host.id)
+                  switchingTo = nil
+                  if !ok {
+                      switchError = L10n.t("连不上 ") + host.name
+                          + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
+                  }
+              }
+          }
     }
 }

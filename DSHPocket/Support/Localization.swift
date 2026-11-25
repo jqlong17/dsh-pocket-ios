@@ -74,6 +74,7 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "当前连接的机器": "Currently connected machine",
         "同一台机器再扫一次是加地址（局域网 / Tailscale / Cloudflare 会自动并入那台主机）；扫新机器先连上才切换——连不上会留在原来那台，并明确提示，不会静默切换到别的地址。": "Scanning the same machine again adds another address (LAN / Tailscale / Cloudflare merge into that host). A new machine is switched to only after connecting succeeds — on failure you stay on the current machine with an explicit message; we never silently switch to another address.",
         "扫码添加机器或连接方式": "Scan to add a machine or address",
         "同一台机器再扫一次是加地址（局域网 / Tailscale / Cloudflare 会自动并入那台主机）；扫新机器不必先断开，先连上才切过去，连不上会保持现在的连接。": "Scanning the same machine again adds another address (LAN / Tailscale / Cloudflare merge into that host). Adding a new machine does not require disconnecting first — it switches only after connecting, and keeps your current connection if it fails.",
