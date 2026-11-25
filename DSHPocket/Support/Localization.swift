@@ -74,6 +74,7 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "知道了": "OK",
         "删除整台": "Delete host",
         "删除这条地址？": "Delete this address?",
         "删除这台主机？": "Delete this host?",

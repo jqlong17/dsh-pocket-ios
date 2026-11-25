@@ -17,152 +17,54 @@ extension AppSettingsSheet {
     }
 
 
-    /// 勾选框列宽：主机行与地址子行共用同一列，保证左侧边缘对齐。
-    private var hostCheckColumn: CGFloat { 26 }
-
-    /// 一条地址：勾选框 + 连接方式 + 地址。
-    ///
-    /// 以前这里放的是「用这条」文字按钮，用户以为只是一行说明（2026-11-25 反馈）。
-    /// 改成勾选框：**当前这条打勾，其余是空框**，整行可点即可切换，不再需要文字提示。
-    @ViewBuilder
-    func addressSubRow(_ endpoint: SavedEndpoint, isActive: Bool) -> some View {
-        // 用 onTapGesture 而不是外层 Button：SwiftUI 里按钮套按钮时，
-        // 内层（删除）永远收不到点击——实测点了没反应（2026-11-25）。
-        HStack(spacing: 10) {
-                Image(systemName: isActive ? "checkmark.square.fill" : "square")
-                    .font(.body)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
-                    .frame(width: hostCheckColumn, alignment: .center)
-                Text(endpoint.kind.label)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 46, alignment: .leading)
-                Text(endpoint.address)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(isActive ? .primary : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 4)
-                if !isActive {
-                    Button {
-                        pendingEndpointDelete = endpoint
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(L10n.t("删除这条地址"))
-                    .accessibilityIdentifier("endpoint-delete-\(endpoint.address)")
-                }
-            }
-        .frame(minHeight: 36)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !isActive else { return }
-            Task { await model.switchToEndpoint(endpoint) }
-        }
-        .accessibilityAddTraits(isActive ? [.isSelected] : [])
-        .contextMenu {
-            Button(role: .destructive) {
-                model.removeEndpoint(endpoint.address)
-            } label: {
-                Label(L10n.t("删除这条地址"), systemImage: "trash")
-            }
-        }
-    }
-
-    /// 主机一行：勾选框 + 名字 + 地址数 + 当前用的那条地址。
-    ///
-    /// 交互约定：整行（勾选框 + 文案 + 右侧状态）都可点即切换；左滑可删除/重命名。
-    /// 当前主机的地址子行铺在下面，**与主机名左对齐**（缩进一列勾选框的宽度）。
+    /// 主机一行：**与连接页共用 HostRowView**（结构一致，2026-11-25）。
+    /// 设置页额外提供左滑动作（这里是 List，连接页不是）。
     @ViewBuilder
     func hostRow(_ host: DSHHost) -> some View {
         let isCurrent = host.id == model.connectedHost?.id
-        VStack(alignment: .leading, spacing: 2) {
-            Button {
-                guard host.id != model.currentHostId, switchingTo == nil else { return }
-                switchingTo = host.id
-                Task {
-                    let ok = await model.switchHost(to: host.id)
-                    switchingTo = nil
-                    if !ok {
-                        switchError = L10n.t("连不上 ") + host.name
-                            + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
-                    }
-                }
+        HostRowView(
+            model: model,
+            host: host,
+            isCurrent: isCurrent,
+            isSwitching: switchingTo == host.id,
+            showsAddresses: isCurrent,
+            onTap: { switchTo(host) },
+            onRename: {
+                renamingHostId = host.id
+                renameHostText = host.name
+            },
+            onDeleteHost: { pendingHostDelete = host },
+            onDeleteEndpoint: { endpoint in pendingEndpointDelete = endpoint },
+            onSelectEndpoint: { endpoint in
+                Task { await model.switchToEndpoint(endpoint) }
+            }
+        )
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                pendingHostDelete = host
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: isCurrent ? "checkmark.square.fill" : "square")
-                        .font(.body)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary.opacity(0.5))
-                        .frame(width: hostCheckColumn, alignment: .center)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(host.name).font(.body.weight(.medium))
-                            if host.endpoints.count > 1 {
-                                Text(L10n.tf("%d 条地址", host.endpoints.count))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        if let endpoint = host.preferredEndpoint {
-                            Text("\(endpoint.address) · \(endpoint.kind.label)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    Spacer(minLength: 6)
-                    if switchingTo == host.id {
-                        // 明确写出「正在切换」：只转圈会让人以为卡住了（2026-11-25 反馈）。
-                        HStack(spacing: 5) {
-                            ProgressView().controlSize(.small)
-                            Text(L10n.t("正在切换…"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if isCurrent {
-                        Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
-                            .font(.caption)
-                            .foregroundStyle(model.connection.isConnected ? Color.accentColor : Color.secondary)
-                    }
-                }
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
+                Label(L10n.t("删除整台"), systemImage: "trash")
             }
-            .buttonStyle(.plain)
-            .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    // 不再直接删：整台删除会带走它下面所有地址，必须让用户看清影响。
-                    pendingHostDelete = host
-                } label: {
-                    Label(L10n.t("删除整台"), systemImage: "trash")
-                }
-                Button {
-                    renamingHostId = host.id
-                    renameHostText = host.name
-                } label: {
-                    Label(L10n.t("重命名"), systemImage: "pencil")
-                }
-                .tint(.blue)
+            Button {
+                renamingHostId = host.id
+                renameHostText = host.name
+            } label: {
+                Label(L10n.t("重命名"), systemImage: "pencil")
             }
+            .tint(.blue)
+        }
+    }
 
-            // 当前主机的地址铺在它下面，缩进一列勾选框：左边缘与主机名对齐。
-            // 不只在「当前主机」下展开地址：用户要切换到另一台机器时，
-            // 也必须能看见并直接选它的某一条地址（否则只能整台试，局域网不通就干等）。
-            if host.endpoints.count > 1 {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(host.endpoints) { endpoint in
-                        addressSubRow(endpoint, isActive: endpoint.address == model.connection.serverAddress)
-                            .padding(.leading, hostCheckColumn + 10)
-                    }
-                }
-                .padding(.bottom, 6)
+    /// 点主机即切换；失败明示，不静默回退。
+    private func switchTo(_ host: DSHHost) {
+        guard host.id != model.currentHostId, switchingTo == nil else { return }
+        switchingTo = host.id
+        Task {
+            let ok = await model.switchHost(to: host.id)
+            switchingTo = nil
+            if !ok {
+                switchError = L10n.t("连不上 ") + host.name
+                    + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
             }
         }
     }

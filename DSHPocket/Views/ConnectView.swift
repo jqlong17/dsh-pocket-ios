@@ -25,6 +25,10 @@ struct ConnectView: View {
     @State private var renamingHost: DSHHost?
     @State private var renameText = ""
     @State private var deletingHost: DSHHost?
+    /// 正在切换的主机（行内显示「正在切换…」）。
+    @State private var switchingHostId: String?
+    /// 待确认删除的单条地址（与设置页行为一致）。
+    @State private var pendingEndpointDelete: SavedEndpoint?
     @State private var scanHint: String?
 
 
@@ -130,9 +134,43 @@ struct ConnectView: View {
         } message: { host in
             Text("\(host.name)：\(host.endpoints.count) 条地址")
         }
+          .alert(L10n.t("删除这条地址？"), isPresented: Binding(
+              get: { pendingEndpointDelete != nil },
+              set: { if !$0 { pendingEndpointDelete = nil } }
+          ), presenting: pendingEndpointDelete) { endpoint in
+              Button(L10n.t("删除"), role: .destructive) {
+                  model.removeEndpoint(endpoint.address)
+                  pendingEndpointDelete = nil
+              }
+              Button(L10n.t("取消"), role: .cancel) { pendingEndpointDelete = nil }
+          } message: { endpoint in
+              Text(endpoint.address)
+          }
+          .alert(L10n.t("切换失败"), isPresented: Binding(
+              get: { scanHint != nil },
+              set: { if !$0 { scanHint = nil } }
+          )) {
+              Button(L10n.t("知道了"), role: .cancel) { scanHint = nil }
+          } message: {
+              Text(scanHint ?? "")
+          }
     }
 
     /// 标题卡已拆到 ConnectHeaderCard.swift。
+    /// 点一台主机即切换；失败必须明示，不静默回退（延用设置页的约定）。
+    private func connect(to host: DSHHost) {
+        guard host.id != model.connectedHost?.id, switchingHostId == nil else { return }
+        switchingHostId = host.id
+        Task {
+            let ok = await model.switchHost(to: host.id)
+            switchingHostId = nil
+            if !ok {
+                scanHint = L10n.t("连不上 ") + host.name
+                    + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
+            }
+        }
+    }
+
     private var header: some View { ConnectHeaderCard() }
 
       private var savedEndpointsCard: some View {
@@ -150,73 +188,31 @@ struct ConnectView: View {
               .padding(.top, 12)
               .padding(.bottom, 6)
 
-              // 按主机列出：一个名字 = 一台机器。点它即切换，内部自动挑最优地址。
-              // 之前这里列的是地址，一台机器有两条地址就会显示成两行，和设置页对不上。
-              ForEach(Array(model.hosts.enumerated()), id: \.element.id) { index, host in
-                  if index > 0 {
-                      Divider().padding(.leading, 52)
-                  }
-                  Button {
-                      Task { await model.switchHost(to: host.id) }
-                  } label: {
-                      HStack(spacing: 12) {
-                          Image(systemName: host.preferredEndpoint?.kind == .lan ? "wifi" : "globe")
-                              .font(.subheadline.weight(.medium))
-                              .foregroundStyle(brand)
-                              .frame(width: 26, height: 26)
-                              .background(brand.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
-                          VStack(alignment: .leading, spacing: 1) {
-                              HStack(spacing: 5) {
-                                  Text(host.name)
-                                      .font(.footnote.weight(.semibold))
-                                      .foregroundStyle(.primary)
-                                  if host.endpoints.count > 1 {
-                                      Text(L10n.tf("%d 条地址", host.endpoints.count))
-                                          .font(.caption2)
-                                          .foregroundStyle(.secondary)
-                                  }
-                              }
-                              if let endpoint = host.preferredEndpoint {
-                                  Text("\(endpoint.address) · \(endpoint.kind.label)")
-                                      .font(.footnote)
-                                      .foregroundStyle(.secondary)
-                                      .lineLimit(1)
-                                      .truncationMode(.middle)
-                              }
-                          }
-                          Spacer(minLength: 8)
-                          Button {
-                              renamingHost = host
-                              renameText = host.name
-                          } label: {
-                              Image(systemName: "pencil")
-                                  .font(.caption)
-                                  .foregroundStyle(.secondary)
-                                  .frame(width: 28, height: 28)
-                          }
-                          .buttonStyle(.plain)
-                          .accessibilityLabel(L10n.t("重命名这台主机"))
-                          Button {
-                              deletingHost = host
-                          } label: {
-                              Image(systemName: "trash")
-                                  .font(.caption)
-                                  .foregroundStyle(.secondary)
-                                  .frame(width: 28, height: 28)
-                          }
-                          .buttonStyle(.plain)
-                          .accessibilityLabel(L10n.t("删除这台主机"))
-                          .accessibilityIdentifier("host-delete-\(host.name)")
-                          if host.id == model.currentHostId {
-                              Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
-                          }
-                      }
-                      .padding(.horizontal, 14)
-                      .padding(.vertical, 10)
-                      .contentShape(Rectangle())
-                  }
-                  .buttonStyle(.plain)
-              }
+            // 与设置页共用 HostRowView：同一个东西只有一种长相。
+            // 连接页不是 List，所以不带左滑动作，改用行内按钮。
+            ForEach(Array(model.hosts.enumerated()), id: \.element.id) { index, host in
+                if index > 0 {
+                    Divider().padding(.leading, 52)
+                }
+                HostRowView(
+                    model: model,
+                    host: host,
+                    isCurrent: host.id == model.connectedHost?.id,
+                    isSwitching: host.id == switchingHostId,
+                    showsAddresses: host.id == model.connectedHost?.id,
+                    onTap: { connect(to: host) },
+                    onRename: {
+                        renamingHost = host
+                        renameText = host.name
+                    },
+                    onDeleteHost: { deletingHost = host },
+                    onDeleteEndpoint: { endpoint in pendingEndpointDelete = endpoint },
+                    onSelectEndpoint: { endpoint in
+                        Task { await model.switchToEndpoint(endpoint) }
+                    }
+                )
+                .padding(.horizontal, 14)
+            }
 
               Text(L10n.t("一台机器的多个地址会自动挑最优（局域网优先）。扫码可新增主机。"))
                   .font(.caption2)
