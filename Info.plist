@@ -35,6 +35,8 @@
 	<string>连接到运行 DSH Pocket 的电脑，以查看和控制 DeepSeek Harness。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>保存会话中的图片到相册。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>从相册选择图片添加到对话。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
