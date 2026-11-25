@@ -39,7 +39,13 @@ export async function findCloudflared() {
       return candidate
     } catch { /* 继续找 */ }
   }
-  // 2) 再试常见路径（GUI 启动的进程 PATH 往往不含 Homebrew）
+  // 2) 插件自己管理的缓存（上次下过就在这里）。以前漏了这条，
+  //    每次都判定「没装」→ 重新下载，面板一直显示正在下载（2026-11-25）。
+  try {
+    await access(managedBinaryPath(), constants.X_OK)
+    return managedBinaryPath()
+  } catch { /* 没缓存 */ }
+  // 3) 再试常见路径（GUI 启动的进程 PATH 往往不含 Homebrew）
   for (const candidate of FALLBACK_PATHS) {
     try {
       await access(candidate, constants.X_OK)
@@ -122,7 +128,10 @@ export class CloudflareTunnel {
     await this.stop()
 
     // 首次使用会自动下载（约 20MB，多源 + 分块）；已装则直接复用
-    this.phase = 'locating'
+    // 只有**真的没缓存**才算「定位/下载」；缓存命中直接进入启动。
+    // 否则面板每次重启都显示「正在下载 cloudflared」，其实二进制早就在本地
+    // （2026-11-25 用户反馈「为什么每次重启都要重新下载」）。
+    this.phase = (await findCloudflared()) ? 'starting' : 'locating'
     let bin
     try {
       bin = await ensureCloudflaredBinary({

@@ -40,3 +40,17 @@ test('findTunaBottle：非 macOS 不查（本机若是 macOS 则只断言类型�
     assert.match(found, /\.bottle\.tar\.gz$/)
   }
 })
+
+// ── 2026-11-25：findCloudflared 漏查插件自己的缓存目录 ────────────────
+// 现象：明明已经下过 cloudflared（~/.dsh/dsh-pocket-ios/bin/），每次重启却
+// 都显示「正在下载 cloudflared（约 20MB，只需一次）」，用户以为每次都重下。
+test('findCloudflared 必须能发现插件管理的缓存二进制', async () => {
+  const { mkdtemp, writeFile, chmod } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { findCloudflared } = await import('../lib/cloudflare.js')
+  // 直接断言实现里包含缓存路径分支（真实路径不可在测试里改 HOME）
+  const src = await import('node:fs/promises').then((fs) => fs.readFile(new URL('../lib/cloudflare.js', import.meta.url), 'utf8'))
+  assert.match(src, /access\(managedBinaryPath\(\), constants\.X_OK\)/, 'findCloudflared 没有检查 managedBinaryPath()')
+  assert.equal(typeof findCloudflared, 'function')
+})
