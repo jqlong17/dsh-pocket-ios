@@ -49,5 +49,8 @@ export function resolvePairBase(input) {
  */
 export function decideAfterProbe(mode, probeResult) {
   if (mode !== 'cloudflare') return 'ok'
-  return probeResult.ok ? 'ready' : 'wait'
+  // 探测不通**不再阻塞出码**：之前回 'wait' 让面板无限重试，而探测本身可能因
+  // 网络抖动被 abort（实测 1.5s 超时被取消），用户看到「正在生成二维码…」一直转。
+  // 改为照常出码，只把探测结果写进日志；真扫不通用户会重试一次。
+  return probeResult.ok ? 'ready' : 'warn'
 }

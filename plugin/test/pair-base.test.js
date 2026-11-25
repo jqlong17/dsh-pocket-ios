@@ -26,8 +26,10 @@ test('Cloudflare 地址可达 → 可以出码', () => {
   assert.equal(decideAfterProbe('cloudflare', { ok: true }), 'ready')
 })
 
-test('Cloudflare 地址不可达 → 等一会儿再出（避免首次扫码必失败）', () => {
-  assert.equal(decideAfterProbe('cloudflare', { ok: false }), 'wait')
+test('Cloudflare 地址不可达 → 仍出码，只标记 warn（不再无限重试）', () => {
+  // 回归：2026-11-25 面板卡在「正在生成二维码…」——探测被 1.5s 超时 abort，
+  // 回 wait 让面板无限重试。现在探测只作提示，不阻塞出码。
+  assert.equal(decideAfterProbe('cloudflare', { ok: false }), 'warn')
 })
 
 test('其它模式不做可达性判断', () => {

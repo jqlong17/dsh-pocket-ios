@@ -2238,16 +2238,12 @@ function guessProto(req, host) {
               return
             }
             if (status.mode === 'cloudflare' && status.address) {
-              // 新建的 quick 隧道要几秒才对外生效：探一次（1.5s 上限），不通就让面板稍候重试。
+              // 探测失败不再阻塞出码：CF 边缘响应可能 2-3 秒，1.5s 的超时会被 abort，
+              // 面板就一直转「正在生成二维码…」（2026-11-25 实测）。现在只记日志、照常出码。
               const target = `${status.address.replace(/\/$/, '')}/`
-              const reach = await probe(target, { timeoutMs: 1500 })
+              const reach = await probe(target, { timeoutMs: 5000 })
               if (!reach.ok) {
-                await logLine(`隧道地址暂不可达（${reach.status ?? reach.error}），让面板重试`)
-                send(res, 200, {
-                  type: 'server-response', rpcId,
-                  result: { ok: true, value: { retry: true, reason: 'propagating', message: '隧道刚建好，正在等它生效…' } },
-                })
-                return
+                await logLine(`隧道地址暂不可达（${reach.status ?? reach.error}），仍照常出码`)
               }
             }
           // 决策交给纯函数（lib/pair-base.js），可被测试钉住：
