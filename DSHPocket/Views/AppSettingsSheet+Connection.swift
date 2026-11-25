@@ -140,7 +140,9 @@ extension AppSettingsSheet {
             }
 
             // 当前主机的地址铺在它下面，缩进一列勾选框：左边缘与主机名对齐。
-            if isCurrent, host.endpoints.count > 1 {
+            // 不只在「当前主机」下展开地址：用户要切换到另一台机器时，
+            // 也必须能看见并直接选它的某一条地址（否则只能整台试，局域网不通就干等）。
+            if host.endpoints.count > 1 {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(host.endpoints) { endpoint in
                         addressSubRow(endpoint, isActive: endpoint.address == model.connection.serverAddress)
