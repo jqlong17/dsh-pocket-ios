@@ -130,6 +130,9 @@ extension ConnectionModel {
     func connect() async {
         connection.errorMessage = nil
         connection.addressNeedsRescan = false
+        // 扫码/输入地址会先把 serverAddress 改成新地址。失败时必须回滚，
+        // 否则界面会出现「已连接 + 新地址」这种假状态，掩盖了没连上的事实。
+        connectRollback = (connection.serverAddress, connection.isConnected)
         let url: URL
         do {
             url = try Self.serverURL(from: connection.serverAddress)
@@ -180,6 +183,7 @@ extension ConnectionModel {
             connection.isConnected = true
             connection.errorMessage = nil
             connection.addressNeedsRescan = false
+            connectRollback = nil
             PinKeychain.clear()
             // 凭证落盘统一走 persistConnectedState：地址、cookie、设备凭证一个都不能漏。
             // 之前配对分支只存了后两者，导致「扫码连上 → 重装 → 又要求扫码」。
@@ -320,6 +324,21 @@ extension ConnectionModel {
     func applyConnectError(_ error: Error, context: ConnectFailureMessage.Context = .general) {
         let failure = ConnectFailureMessage(error: error, context: context)
         connection.addressNeedsRescan = failure.needsRescan
+        // 明确回滚：不静默切到别的地址，也不假装还连在新地址上。
+        // 之前有旧连接就说明白「仍连着哪台」，没有就置为未连接——两种都必须让用户看见。
+        if let rollback = connectRollback {
+            let failedAddress = connection.serverAddress
+            connection.serverAddress = rollback.address
+            connection.isConnected = rollback.wasConnected
+            connectRollback = nil
+            if rollback.wasConnected {
+                connection.errorMessage = failure.text + "\n（未切换：仍在 " + DSHURL.redactedAddress(rollback.address) + "）"
+            } else {
+                connection.errorMessage = failure.text
+            }
+            recordDiagnostic("连接失败已回滚：\(DSHURL.redactedAddress(failedAddress)) → \(DSHURL.redactedAddress(rollback.address))")
+            return
+        }
         connection.errorMessage = failure.text
         recordDiagnostic("连接失败 [\(failure.kind.label)]：\(ConnectFailureMessage.diagnosticText(error))")
     }

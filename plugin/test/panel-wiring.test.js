@@ -57,3 +57,19 @@ test('二维码地址与状态地址取自同一来源（pairBaseRef 兜底）',
   const block = lines.slice(firstLine('var addressForMode') - 1, firstLine('var addressForMode') + 8).join('\n')
   assert.match(block, /pairBaseRef\.current/, 'addressForMode 没有用二维码地址兜底')
 })
+
+// ── 机器名必须出现在两个通道上（2026-11-25 分组失败的根因）────────────
+const indexPath = new URL('../lib/index.js', import.meta.url)
+const indexSource = readFileSync(indexPath, 'utf8')
+
+test('modeStatus 必须返回 machineName（App 的 refreshMachineName 读它）', () => {
+  // 回归：换到 modeStatus 后漏了 machineName，App 拿不到机器名，
+  // 同一台 Mac 的局域网/Tailscale/Cloudflare 被拆成三台主机。
+  const baseBlock = indexSource.slice(indexSource.indexOf('const base = {'), indexSource.indexOf('const base = {') + 400)
+  assert.match(baseBlock, /machineName:\s*osHostname\(\)/, 'modeStatus 的 base 没有 machineName')
+})
+
+test('send() 必须给每个响应带上 x-dsh-machine 头（配对/换票时就能读到）', () => {
+  const sendBlock = indexSource.slice(indexSource.indexOf('function send(res, status, payload)'), indexSource.indexOf('function send(res, status, payload)') + 600)
+  assert.match(sendBlock, /headers\['x-dsh-machine'\]\s*=\s*osHostname\(\)/, 'send() 没有带 x-dsh-machine')
+})

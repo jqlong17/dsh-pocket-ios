@@ -56,6 +56,10 @@ final class ConnectionModel {
     /// 当前连的那台 DSH 的机器名（插件报的 hostname）。
     /// 用来把「同一台机器的多个地址」在设置里归成一组；取不到就是 nil。
     @ObservationIgnored var currentMachineName: String?
+    /// 连接失败时要回滚到的地址与连接状态。
+    /// 扫码/输入地址会先把 serverAddress 改成新地址，失败不回滚就会出现
+    /// 「已连接 + 新地址」的假状态（2026-11-25 用户要求：失败必须可见，不许静默降级）。
+    @ObservationIgnored var connectRollback: (address: String, wasConnected: Bool)?
     @ObservationIgnored var lastRenderEntryCount: Int = 0
     /// 合并前 / 合并后的消息条数（诊断「按 turn 合并」是否生效）。
     @ObservationIgnored var lastRawMessageCount: Int = 0

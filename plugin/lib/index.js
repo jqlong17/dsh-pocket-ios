@@ -1158,6 +1158,10 @@ async function modeStatus() {
   // 之前只在 tailscaleStatus 里返回，切到 modeStatus 后漏了 → 面板显示「—」（用户反馈）。
   const pin = await readPin()
   const base = {
+    // 机器身份：App 用它把同一台机器的局域网/Tailscale/Cloudflare 地址归成一台。
+    // 以前只在旧的 tailscaleStatus() 里返回，换到 modeStatus 后漏了 → App 拿不到机器名，
+    // 每次新地址都建一台主机（2026-11-25 实测：同一台 Mac 出现 DSH 1/3/4）。
+    machineName: osHostname(),
     mode: currentMode,
     label: MODE_LABELS[currentMode],
     modes,
@@ -1451,6 +1455,10 @@ function send(res, status, payload) {
   // 注意：会话历史走 DSH 的 /api/*（插件只 pipe），那部分压缩在别处做。
   const acceptEncoding = res.req?.headers?.['accept-encoding']
   const { body, headers } = encodeJson(payload, acceptEncoding)
+  // 机器名：每个自有响应都带。App 在配对/换票那一刻就要读到它，
+  // 否则会先建出一台新主机（2026-11-25 实测）。
+  headers['x-dsh-machine'] = osHostname()
+  headers['access-control-expose-headers'] = 'x-dsh-machine'
   res.writeHead(status, headers)
   res.end(body)
 }
