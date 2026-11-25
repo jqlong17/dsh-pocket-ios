@@ -17,37 +17,41 @@ extension AppSettingsSheet {
     }
 
 
-    /// 当前主机下的一条地址：类型 + 地址；正在用的标「使用中」，其余可点或删。
+    /// 勾选框列宽：主机行与地址子行共用同一列，保证左侧边缘对齐。
+    private var hostCheckColumn: CGFloat { 26 }
+
+    /// 一条地址：勾选框 + 连接方式 + 地址。
     ///
-    /// 不用左滑：这些是嵌套在主机行里的子行，滑动容易和父行冲突，
-    /// 所以删除给一个明确的小按钮。
+    /// 以前这里放的是「用这条」文字按钮，用户以为只是一行说明（2026-11-25 反馈）。
+    /// 改成勾选框：**当前这条打勾，其余是空框**，整行可点即可切换，不再需要文字提示。
     @ViewBuilder
     func addressSubRow(_ endpoint: SavedEndpoint, isActive: Bool) -> some View {
-        HStack(spacing: 8) {
-            Text(endpoint.kind.label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .leading)
-            Text(endpoint.address)
-                .font(.caption.monospaced())
-                .foregroundStyle(isActive ? .primary : .secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 4)
-            if isActive {
-                Text(L10n.t("使用中"))
+        Button {
+            guard !isActive else { return }
+            Task { await model.switchToEndpoint(endpoint) }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isActive ? "checkmark.square.fill" : "square")
+                    .font(.body)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .frame(width: hostCheckColumn, alignment: .center)
+                Text(endpoint.kind.label)
                     .font(.caption2)
-                    .foregroundStyle(Color.accentColor)
-            } else {
-                Button {
-                    Task { await model.switchToEndpoint(endpoint) }
-                } label: {
-                    Text(L10n.t("用这条")).font(.caption2)
-                }
-                .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 46, alignment: .leading)
+                Text(endpoint.address)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(isActive ? .primary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 4)
             }
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
         .contextMenu {
             Button(role: .destructive) {
                 model.removeEndpoint(endpoint.address)
@@ -57,48 +61,63 @@ extension AppSettingsSheet {
         }
     }
 
-    /// 主机一行：名字 + 地址数 + 当前用的那条地址。
+    /// 主机一行：勾选框 + 名字 + 地址数 + 当前用的那条地址。
+    ///
+    /// 交互约定：整行（勾选框 + 文案 + 右侧状态）都可点即切换；左滑可删除/重命名。
+    /// 当前主机的地址子行铺在下面，**与主机名左对齐**（缩进一列勾选框的宽度）。
     @ViewBuilder
     func hostRow(_ host: DSHHost) -> some View {
         let isCurrent = host.id == model.connectedHost?.id
-        // 外层 VStack：主行(可点/可滑) + 当前主机的地址子行。
-        // 之前把 if 直接插在 HStack 的修饰符链中间，导致 contentShape 无处可挂。
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(host.name).font(.body.weight(.medium))
-                        if host.endpoints.count > 1 {
-                            Text(L10n.tf("%d 条地址", host.endpoints.count))
-                                .font(.caption2)
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                guard host.id != model.currentHostId, switchingTo == nil else { return }
+                switchingTo = host.id
+                Task {
+                    let ok = await model.switchHost(to: host.id)
+                    switchingTo = nil
+                    if !ok {
+                        switchError = L10n.t("连不上 ") + host.name
+                            + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: isCurrent ? "checkmark.square.fill" : "square")
+                        .font(.body)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary.opacity(0.5))
+                        .frame(width: hostCheckColumn, alignment: .center)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(host.name).font(.body.weight(.medium))
+                            if host.endpoints.count > 1 {
+                                Text(L10n.tf("%d 条地址", host.endpoints.count))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let endpoint = host.preferredEndpoint {
+                            Text("\(endpoint.address) · \(endpoint.kind.label)")
+                                .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                     }
-                    if let endpoint = host.preferredEndpoint {
-                        // 地址 + 连接方式：用户问「现在走的是哪种」时，答案就在这一行。
-                        Text("\(endpoint.address) · \(endpoint.kind.label)")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    Spacer(minLength: 6)
+                    if switchingTo == host.id {
+                        ProgressView().controlSize(.small)
+                    } else if isCurrent {
+                        Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
+                            .font(.caption)
+                            .foregroundStyle(model.connection.isConnected ? Color.accentColor : Color.secondary)
                     }
                 }
-                Spacer(minLength: 6)
-                if switchingTo == host.id {
-                    ProgressView().controlSize(.small)
-                } else if isCurrent {
-                    if model.connection.isConnected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(Color.accentColor)
-                            .accessibilityLabel(L10n.t("当前连接的机器"))
-                    }
-                    Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
-                        .font(.caption)
-                        .foregroundStyle(model.connection.isConnected ? Color.accentColor : Color.secondary)
-                }
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
                     model.removeHost(id: host.id)
@@ -114,32 +133,16 @@ extension AppSettingsSheet {
                 .tint(.blue)
             }
 
-            // 当前主机的地址铺在它下面：只有「现在这台怎么连」需要看到多条，
-            // 别的机器不展开，否则列表立刻变长一倍。
+            // 当前主机的地址铺在它下面，缩进一列勾选框：左边缘与主机名对齐。
             if isCurrent, host.endpoints.count > 1 {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(host.endpoints) { endpoint in
                         addressSubRow(endpoint, isActive: endpoint.address == model.connection.serverAddress)
-                            .padding(.leading, 38)
+                            .padding(.leading, hostCheckColumn + 10)
                     }
                 }
+                .padding(.bottom, 6)
             }
         }
-          // 整块可点可滑：以前 contentShape 只盖住上半行，点地址行没反应，
-          // 用户反馈「切换区域太小」（2026-11-25）。46pt 满足 HIG 最小点按尺寸。
-          .frame(minHeight: 46, alignment: .leading)
-          .contentShape(Rectangle())
-          .onTapGesture {
-              guard host.id != model.currentHostId, switchingTo == nil else { return }
-              switchingTo = host.id
-              Task {
-                  let ok = await model.switchHost(to: host.id)
-                  switchingTo = nil
-                  if !ok {
-                      switchError = L10n.t("连不上 ") + host.name
-                          + L10n.t("，已保持原连接不变。检查那台机器的 DSH 是否在运行。")
-                  }
-              }
-          }
     }
 }
