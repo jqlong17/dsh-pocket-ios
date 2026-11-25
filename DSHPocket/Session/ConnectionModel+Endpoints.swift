@@ -351,6 +351,8 @@ extension ConnectionModel {
     func switchHost(to hostId: String) async -> Bool {
         guard let host = hosts.first(where: { $0.id == hostId }) else { return false }
         if host.id == currentHostId, connection.isConnected { return true }
+        let switchStarted = Date()
+        DiagFileLog.log("switch begin host=\(host.name) endpoints=\(host.endpoints.count)")
         // 先并发探一遍：哪条通就用哪条，避免在不通的地址上等超时。
         for endpoint in host.endpoints {
             if let url = try? Self.serverURL(from: endpoint.address) {
@@ -358,7 +360,9 @@ extension ConnectionModel {
             }
         }
         if let fast = await firstReachableEndpoint(among: host.endpoints) {
-            if await switchConnection(to: fast.address) {
+            DiagFileLog.log("switch picked \(fast.kind.label) after \(Int(Date().timeIntervalSince(switchStarted) * 1000))ms")
+            if await switchConnection(to: fast.address, verified: true) {
+                DiagFileLog.log("switch done in \(Int(Date().timeIntervalSince(switchStarted) * 1000))ms")
                 currentHostId = hostId
                 persistHosts()
                 persistCurrentHostId()
@@ -477,7 +481,7 @@ extension ConnectionModel {
     /// cookie 由 URLSession 按 host 自动匹配（见 ConnectionVault），不需要也不该
     /// 在这里手动搬凭证。
     @MainActor
-    func switchConnection(to address: String) async -> Bool {
+    func switchConnection(to address: String, verified: Bool = false) async -> Bool {
         let target = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != connection.serverAddress else { return true }
         guard let url = try? Self.serverURL(from: target) else {
@@ -492,11 +496,17 @@ extension ConnectionModel {
         // 401 时再用**目标地址**的设备凭证换一次新票，然后重试。
         // 之前漏了这两步，表现就是「切换永远失败」。
         ConnectionVault.restoreAuthCookies(to: url, address: target)
-        if !(await probeSessions(at: url)) {
-            guard await tryRefreshAuth(for: target), await probeSessions(at: url) else {
-                recordDiagnostic("切换目标不可用，保持当前连接：\(DSHURL.redactedAddress(target))")
-                return false
+        // verified=true：调用方（switchHost）刚用并发探测确认过这条通，不必再探一遍。
+        // 这一步以前要白等一个 RTT，是切 host 总耗时的一部分（2026-11-25）。
+        if !verified {
+            let probeStarted = Date()
+            if !(await probeSessions(at: url)) {
+                guard await tryRefreshAuth(for: target), await probeSessions(at: url) else {
+                    recordDiagnostic("切换目标不可用，保持当前连接：\(DSHURL.redactedAddress(target))")
+                    return false
+                }
             }
+            DiagFileLog.log("switch probe(serial) \(Int(Date().timeIntervalSince(probeStarted) * 1000))ms")
         }
 
         // ② 验证通过，才切

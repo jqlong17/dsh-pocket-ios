@@ -57,7 +57,12 @@ extension ConnectionModel {
             for endpoint in endpoints {
                 group.addTask { @MainActor in
                     guard let url = try? Self.serverURL(from: endpoint.address) else { return (endpoint, false) }
-                    return (endpoint, await self.probeSessionsFast(at: url, timeout: timeout))
+                    let started = Date()
+                    let ok = await self.probeSessionsFast(at: url, timeout: timeout)
+                    let ms = Int(Date().timeIntervalSince(started) * 1000)
+                    // 计时落盘：切换快不快，看这几行就够（DiagFileLog 可 devicectl 拷出）。
+                    DiagFileLog.log("probe \(endpoint.kind.label) ok=\(ok) \(ms)ms")
+                    return (endpoint, ok)
                 }
             }
             for await (endpoint, ok) in group {
