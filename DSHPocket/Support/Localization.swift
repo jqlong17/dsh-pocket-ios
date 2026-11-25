@@ -74,6 +74,10 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "删除整台": "Delete host",
+        "删除这条地址？": "Delete this address?",
+        "删除这台主机？": "Delete this host?",
+        "%@ 下的 %d 条地址会一起删除。只想删一条，请在地址行上单独删除。": "All %d addresses under %@ will be deleted too. To remove only one, use the delete button on that address row.",
         "正在切换…": "Switching…",
         "当前连接的机器": "Currently connected machine",
         "同一台机器再扫一次是加地址（局域网 / Tailscale / Cloudflare 会自动并入那台主机）；扫新机器先连上才切换——连不上会留在原来那台，并明确提示，不会静默切换到别的地址。": "Scanning the same machine again adds another address (LAN / Tailscale / Cloudflare merge into that host). A new machine is switched to only after connecting succeeds — on failure you stay on the current machine with an explicit message; we never silently switch to another address.",
