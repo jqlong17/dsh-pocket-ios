@@ -46,4 +46,42 @@ extension ConnectionModel {
             recordDiagnostic("合并了同机器的主机：\(hosts.first(where: { $0.endpoints == merged })?.name ?? "?")")
         }
     }
+
+    /// 并发探测一组地址，返回第一个可用的（Happy Eyeballs 思路）。
+    ///
+    /// 为什么不再串行：以前切 host 是「逐条探 + 失败再换票 + 再探」，
+    /// 每条都要等默认超时；局域网不通时要等几十秒，界面就像卡住（2026-11-25 反馈）。
+    /// 现在各地址同时探，谁先通就用谁，单条探针 3 秒超时。
+    func firstReachableEndpoint(among endpoints: [SavedEndpoint], timeout: TimeInterval = 3) async -> SavedEndpoint? {
+        await withTaskGroup(of: (SavedEndpoint, Bool).self) { group in
+            for endpoint in endpoints {
+                group.addTask { @MainActor in
+                    guard let url = try? Self.serverURL(from: endpoint.address) else { return (endpoint, false) }
+                    return (endpoint, await self.probeSessionsFast(at: url, timeout: timeout))
+                }
+            }
+            for await (endpoint, ok) in group {
+                if ok {
+                    group.cancelAll()
+                    return endpoint
+                }
+            }
+            return nil
+        }
+    }
+
+    /// 带超时的会话探测：用「任务竞速」而不是改 URLSession 配置，
+    /// 因为 DSHClient 的传输层不接受自定义 session，而默认超时太长（切换场景不需要等）。
+    func probeSessionsFast(at url: URL, timeout: TimeInterval) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await self.probeSessions(at: url) }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
 }

@@ -346,15 +346,19 @@ extension ConnectionModel {
 
     /// 按主机切换：在它的地址里挑最优的一条（局域网优先），逐个试，第一个成功即完成。
     @MainActor
+
+
     func switchHost(to hostId: String) async -> Bool {
         guard let host = hosts.first(where: { $0.id == hostId }) else { return false }
         if host.id == currentHostId, connection.isConnected { return true }
-        let ordered = host.endpoints.sorted { a, b in
-            if (a.kind == .lan) != (b.kind == .lan) { return a.kind == .lan }
-            return a.lastUsedAt > b.lastUsedAt
+        // 先并发探一遍：哪条通就用哪条，避免在不通的地址上等超时。
+        for endpoint in host.endpoints {
+            if let url = try? Self.serverURL(from: endpoint.address) {
+                ConnectionVault.restoreAuthCookies(to: url, address: endpoint.address)
+            }
         }
-        for endpoint in ordered {
-            if await switchConnection(to: endpoint.address) {
+        if let fast = await firstReachableEndpoint(among: host.endpoints) {
+            if await switchConnection(to: fast.address) {
                 currentHostId = hostId
                 persistHosts()
                 persistCurrentHostId()
@@ -506,7 +510,7 @@ extension ConnectionModel {
 
     /// 用指定地址探一次会话列表：能拉到就说明网络、登录态、DSH 三者都正常。
     @MainActor
-    private func probeSessions(at url: URL) async -> Bool {
+    func probeSessions(at url: URL) async -> Bool {
         do {
             _ = try await DSHClient(baseURL: url).sessions()
             return true

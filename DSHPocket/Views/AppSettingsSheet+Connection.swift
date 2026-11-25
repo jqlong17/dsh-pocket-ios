@@ -106,7 +106,13 @@ extension AppSettingsSheet {
                     }
                     Spacer(minLength: 6)
                     if switchingTo == host.id {
-                        ProgressView().controlSize(.small)
+                        // 明确写出「正在切换」：只转圈会让人以为卡住了（2026-11-25 反馈）。
+                        HStack(spacing: 5) {
+                            ProgressView().controlSize(.small)
+                            Text(L10n.t("正在切换…"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } else if isCurrent {
                         Text(model.connection.isConnected ? L10n.t("已连接") : L10n.t("未连接"))
                             .font(.caption)
