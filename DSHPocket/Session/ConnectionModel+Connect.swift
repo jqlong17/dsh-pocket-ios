@@ -108,6 +108,9 @@ extension ConnectionModel {
             sessionStore.sessions = try await fetchSessions()
             connection.isConnected = true
             connection.errorMessage = nil
+            // 恢复成功后补一次机器名：分组依赖它，这条路径以前从不学习，
+            // 于是「不打开设置就永远不合组」（2026-11-25 实测）。
+            Task { @MainActor in await backfillMachineNames() }
             recordDiagnostic("用已保存的登录态恢复：\(DSHURL.redactedAddress(address))")
             return true
         } catch {

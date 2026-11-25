@@ -146,12 +146,45 @@ extension ConnectionModel {
     /// 那样它们会各自成一组，看起来比改动前还乱。这里在打开设置时静默补一次。
     @MainActor
     func backfillMachineNames() async {
-        let pending = savedEndpoints.filter { $0.machine == nil }
+        // 逐个「还不知道机器名」的主机，问它首选地址一次（响应头带 x-dsh-machine）。
+        //
+        // 之前这里遍历的是 savedEndpoints（旧扁平列表），而分组用的是 hosts；
+        // 结果列表里有机器名的主机一个也没被补上 → 同一台机器永远合不到一起
+        // （2026-11-25 实测：真机存档里 3 台主机的 machine 全是 nil）。
+        let pending = hosts.filter { ($0.machine ?? "").isEmpty }
         guard !pending.isEmpty else { return }
-        for endpoint in pending.prefix(6) {
-            // 只换票、不切连接；失败就跳过，下次再试。
+        for host in pending {
+            guard let endpoint = host.preferredEndpoint,
+                  let base = try? Self.serverURL(from: endpoint.address) else { continue }
+            // 先试换票（顺带把 cookie 刷新），失败也要继续——有些地址 cookie 还有效。
             _ = await tryRefreshAuth(for: endpoint.address)
+            if let machine = await fetchMachineName(at: base) {
+                learnMachine(machine, for: endpoint.address)
+            }
         }
+    }
+
+    /// 直接问一次插件拿机器名（读响应头，不解析 body）。
+    @MainActor
+    func fetchMachineName(at base: URL) async -> String? {
+        var request = URLRequest(url: base.appending(path: "dsh-pocket-ios/tailscale.status"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 6
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpShouldHandleCookies = true
+        let envelope: [String: Any] = [
+            "type": "client-request",
+            "rpcId": UUID().uuidString,
+            "method": "tailscale.status",
+            "payload": ["args": [:] as [String: Any]],
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: envelope) else { return nil }
+        request.httpBody = body
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              let name = http.value(forHTTPHeaderField: "x-dsh-machine"),
+              !name.isEmpty else { return nil }
+        return name
     }
 
     /// 删掉 HTTPCookieStorage 里的认证 cookie（只删 dsh-auth 开头，不动设备凭证与其它 cookie）。
