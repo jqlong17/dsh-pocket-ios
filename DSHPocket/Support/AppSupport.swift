@@ -254,6 +254,13 @@ enum ConnectionVault {
         delete(service: deviceService(address))
     }
 
+    /// 只清某条地址的登录态（cookie + device），**不动**「当前地址」记录。
+    /// 删除一台主机时用：它的其它地址也要清，但当前在用的那条地址不能被顺带抹掉。
+    static func clearEndpointCredentials(address: String) {
+        delete(service: cookieService(address))
+        delete(service: deviceService(address))
+    }
+
     /// 只清登录 cookie（认证失效时用，避免拿废凭证反复失败）。
     static func clearAuthCookies(for address: String) {
         delete(service: cookieService(address))

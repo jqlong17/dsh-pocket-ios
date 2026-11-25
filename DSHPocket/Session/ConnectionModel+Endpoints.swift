@@ -332,13 +332,27 @@ extension ConnectionModel {
     @MainActor
     func removeHost(id: String) {
         guard let host = hosts.first(where: { $0.id == id }) else { return }
+        let wasCurrent = (host.id == currentHostId)
+        let removingCurrentAddress = host.endpoints.contains { $0.address == connection.serverAddress }
+
+        // 整台删除：**每一条**地址的凭证和探测历史都要清。
+        // 只清「当前正在用的那条」会留下残留——重新添加同名主机时可能带出早就删掉的
+        // 局域网地址，或拿着旧 cookie 得到 401，表现就是「切过去连不上」（2026-11-25 反馈）。
         for endpoint in host.endpoints {
-            if endpoint.address == connection.serverAddress {
-                ConnectionVault.clear(address: endpoint.address)
-                UserDefaults.standard.removeObject(forKey: Self.savedServerAddressKey)
-            }
+            ConnectionVault.clearEndpointCredentials(address: endpoint.address)
+            probeLatency.removeValue(forKey: endpoint.address)
         }
+        if removingCurrentAddress {
+            ConnectionVault.clear(address: connection.serverAddress)
+            UserDefaults.standard.removeObject(forKey: Self.savedServerAddressKey)
+        }
+
         hosts.removeAll { $0.id == id }
+        if wasCurrent {
+            // 删的是当前主机：必须真的断开，否则会停在「已连接但没有主机」的状态。
+            disconnect()
+            connection.serverAddress = ""
+        }
         if currentHostId == id { currentHostId = hosts.first?.id }
         persistHosts()
         persistCurrentHostId()
