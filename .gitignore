@@ -53,3 +53,10 @@ plugin/node_modules/
 # 其它本地缓存
 *.log
 .DS_Store
+
+# 证书与私钥（2026-11-26 移除误提交的 TLS 私钥）
+*.key
+*.p8
+*.p12
+*.pem
+*.crt
