@@ -793,6 +793,7 @@ async function ensureTailscaleServe(port) {
     }
     if (parsed.url) {
       await logLine(`serve 指向 ${parsed.port}，当前端口是 ${port}，重新指向`)
+        await logLine(`serve 重指向: ${parsed.port} → ${port}`)
     }
   } catch (error) {
     await logLine(`serve status 读取失败: ${error?.message ?? error}`)
@@ -812,8 +813,8 @@ async function ensureTailscaleServe(port) {
   }
 
   // ③ 轮询确认（证书签发通常 1-3 秒）
-  for (let i = 0; i < 6; i++) {
-    await new Promise((r) => setTimeout(r, 1000))
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 300))
     try {
       const out = await tailscale(['serve', 'status'])
       const match = out.match(/https:\/\/[^\s)]+/)
@@ -2171,6 +2172,9 @@ function guessProto(req, host) {
         }
 
         if (endpoint === 'mode.set') {
+            // 分段计时：面板切连接方式慢的时候，靠这几行定位具体阶段。
+            const modeSetStarted = Date.now()
+            const modeSetLog = (stage) => void logLine(`mode.set ${stage} +${Date.now() - modeSetStarted}ms`)
           const args = body?.payload?.args ?? body?.payload ?? body?.args ?? body ?? {}
           const next = String(args.mode ?? '')
           if (!MODES.includes(next)) {
@@ -2185,10 +2189,12 @@ function guessProto(req, host) {
           // 切回 Cloudflare：取消空闲停止，复用仍在运行的隧道。
           if (next === 'cloudflare') cancelCloudflareStop()
           await saveMode(next)
+            modeSetLog(`saved ${next}`)
           await logLine(`mode -> ${next}`)
           // 切到 Tailscale 时顺手把 serve 打开，用户不用再开终端敲命令。
           if (next === 'tailscale') {
             const serve = await ensureTailscaleServe(proxyPort)
+              modeSetLog(`serve ok=${serve.ok} url=${serve.url ?? serve.error}`)
             await logLine(`切到 tailscale 后 ensureServe: ${serve.ok ? serve.url : serve.error}`)
 
             // 把 serve 的真实地址写回 tailscale.json（覆盖用）。
@@ -2215,6 +2221,7 @@ function guessProto(req, host) {
           // Cloudflare 的隧道是异步的，这里只能回轻量状态（address=null），前端轮询补；
           // 其它方式状态查询只要 ~200ms，直接回完整状态 —— 否则面板要等下一次轮询（2 秒）
           // 才把地址显示出来，切换显得很慢（2026-11-25 反馈）。
+          modeSetLog('about to respond')
           const value = next === 'cloudflare'
             ? { mode: next, label: MODE_LABELS[next], modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })), address: null, qr: null, state: 'starting' }
             : await modeStatus()
