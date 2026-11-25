@@ -37,6 +37,14 @@ else
   tail -6 /tmp/preflight-shellvars.log | sed 's/^/      /'
 fi
 
+step 'iOS：本地化棘轮（不许新增未翻译文案）'
+if python3 scripts/check-l10n.py >/tmp/preflight-l10n.log 2>&1; then
+  ok "$(grep -m1 '字面量' /tmp/preflight-l10n.log | sed 's/^ *//')"
+else
+  bad '新增了没有英文映射的文案'
+  tail -6 /tmp/preflight-l10n.log | sed 's/^/      /'
+fi
+
 step '插件：语法检查'
 for f in plugin/lib/*.js plugin/client/client.js; do
   if node --check "$f" >/dev/null 2>&1; then :; else bad "语法错误：$f"; fi

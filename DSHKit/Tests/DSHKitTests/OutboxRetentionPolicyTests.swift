@@ -10,6 +10,12 @@ final class OutboxRetentionPolicyTests: XCTestCase {
         XCTAssertTrue(OutboxRetentionPolicy.canRemove(cause: .userCancelled))
     }
 
+    /// 用户点「删除」是明确的丢弃意图：允许删，但必须是**新的** cause，
+    /// 不能沿用 `.sendFailed`（自动路径永远不删失败正文）。
+    func testUserDiscardedAllowsRemoval() {
+        XCTAssertTrue(OutboxRetentionPolicy.canRemove(cause: .userDiscarded))
+    }
+
     func testNetworkFailureKeepsText() {
         XCTAssertFalse(OutboxRetentionPolicy.canRemove(cause: .networkFailure))
     }

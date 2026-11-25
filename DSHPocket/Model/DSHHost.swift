@@ -1,5 +1,6 @@
 // DSHHost
 
+import DSHKit
 import Foundation
 
 /// 一台 DSH 主机。
@@ -83,7 +84,9 @@ extension DSHHost {
 
     private static func nextName(used: inout Set<String>) -> String {
         var n = 1
-        while used.contains("DSH \(n)") { n += 1 }
-        return "DSH \(n)"
+        // 与 ConnectionModel+Endpoints 共用同一份命名逻辑（DSHKit 里带测试）：
+        // 只比完全相等的名字会漏掉「DSH 2 阿里云」，从而复用已经用过的编号。
+        _ = used
+        return HostNaming.nextName(existing: Array(used))
     }
 }

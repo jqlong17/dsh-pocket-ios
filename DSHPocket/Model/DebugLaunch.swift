@@ -26,6 +26,8 @@ enum DebugLaunch {
     static var showConnect: Bool { environment["DSH_CONNECT"] == "1" }
     static var attachPath: String? { environment["DSH_ATTACH"] ?? value(for: "--dsh-attach") }
     static var demoMode: Bool { environment["DSH_DEMO"] == "1" }
+    /// 调试/UI 测试：演示会话里带一条发送失败的消息，用来验证「重发 / 删除」。
+    static var demoFailedMessage: Bool { environment["DSH_DEMO_FAILED"] == "1" }
     /// 截图/演示用：隐藏「演示模式」状态行，让界面更接近真实使用。
     static var hideDemoBanner: Bool { environment["DSH_HIDE_DEMO_BANNER"] == "1" }
     /// 截图用：打开会话后自动展开所有「过程」。

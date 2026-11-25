@@ -70,6 +70,18 @@ final class OutboxTests: XCTestCase {
         XCTAssertFalse(outbox.contains(rpcId: "r1"))
     }
 
+    /// 用户主动删除失败消息后，重建发件箱（模拟杀 App 重开）不能再把它补回来。
+    func testRemovedEntryStaysGoneAfterReload() {
+        let storage = InMemoryOutboxStorage()
+        let first = Outbox(storage: storage)
+        first.add(rpcId: "r-fail", sessionId: "s1", text: "失败", mode: .queue, now: 1_000)
+        first.remove(rpcIds: ["r-fail"])
+
+        let reloaded = Outbox(storage: storage)
+        XCTAssertFalse(reloaded.contains(rpcId: "r-fail"))
+        XCTAssertTrue(reloaded.pending(sessionId: "s1").isEmpty)
+    }
+
     func testPendingIsScopedToSession() {
         let outbox = makeOutbox()
         outbox.add(rpcId: "r1", sessionId: "s1", text: "a", mode: .queue, now: 1_000)

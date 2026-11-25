@@ -380,14 +380,6 @@ struct MessageRow: View {
         }
     }
 
-    private func pendingStateColor(_ state: PendingSendState) -> Color {
-        switch state {
-        case .failed: return Color.red.opacity(0.85)
-        case .queued: return Color.orange
-        default: return Color.secondary
-        }
-    }
-
     var body: some View {
         VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
             // 8 → 4：真机反馈消息头里图标之间偏散。
@@ -494,28 +486,7 @@ struct MessageRow: View {
                 if !message.isUser { Spacer(minLength: 44) }
             }
             if message.isPending, let state = model.pendingSendState(for: message) {
-                HStack(spacing: 5) {
-                    switch state {
-                    case .sending:
-                        ProgressView().scaleEffect(0.55).frame(width: 11, height: 11)
-                        Text(L10n.t("发送中…"))
-                    case .acked(let steered):
-                        Image(systemName: steered ? "arrow.triangle.branch" : "clock").font(.caption2)
-                        Text(steered ? L10n.t("已引导，正在继续") : L10n.t("已发出，等待处理"))
-                    case .failed:
-                        Image(systemName: "exclamationmark.circle").font(.caption2)
-                        Text(L10n.t("发送失败"))
-                        Button(L10n.t("重新发送")) { model.retryPendingMessage(message) }
-                            .buttonStyle(.borderless)
-                            .font(.caption2.weight(.semibold))
-                    case .queued:
-                        Image(systemName: "wifi.slash").font(.caption2)
-                        Text(L10n.t("等待联网后一并发送"))
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(pendingStateColor(state))
-                .padding(.horizontal, 4)
+                PendingSendStatusView(message: message, model: model, state: state)
             }
         }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
         .fullScreenCover(item: $previewItem) { item in

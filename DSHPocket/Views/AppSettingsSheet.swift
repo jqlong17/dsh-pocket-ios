@@ -79,7 +79,7 @@ struct AppSettingsSheet: View {
                                 .font(.body)
                                 .foregroundStyle(.tint)
                                 .frame(width: 28)
-                            Text(L10n.t("扫码添加另一台"))
+                            Text(L10n.t("扫码添加机器或连接方式"))
                             Spacer(minLength: 6)
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -90,7 +90,7 @@ struct AppSettingsSheet: View {
                 } header: {
                     Text(L10n.t("添加"))
                 } footer: {
-                    Text(L10n.t("扫一台新机器不必先断开：先连上才切过去，连不上会保持现在的连接。"))
+                    Text(L10n.t("同一台机器再扫一次是加地址（局域网 / Tailscale / Cloudflare 会自动并入那台主机）；扫新机器不必先断开，先连上才切过去，连不上会保持现在的连接。"))
                 }
 
                 // 当前连接一览：方式 / 状态 / 地址。

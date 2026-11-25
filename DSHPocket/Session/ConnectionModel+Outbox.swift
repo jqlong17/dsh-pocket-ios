@@ -195,6 +195,32 @@ extension ConnectionModel {
         sendMessage(in: session)
     }
 
+    /// 用户主动删除一条**发送失败**的消息：正文与图片一起从本机丢弃，不再补发。
+    ///
+    /// 为什么必须连发件箱一起删：`restoreMissingOutboxMessages()` 会在每次历史刷新/重进会话时
+    /// 按发件箱补回 pending 气泡，只删内存里的气泡，退出再进来它又回来了。
+    /// 只允许失败态——发送中走 `cancelSend`，待联网/已发出各有自己的收口路径。
+    @MainActor
+    func discardFailedMessage(_ message: PocketMessage) {
+        guard message.isPending, let rpcId = message.rpcId,
+              let state = pendingSendState(for: message), case .failed = state,
+              OutboxRetentionPolicy.canRemove(cause: .userDiscarded) else { return }
+        let id = rpcId.lowercased()
+        failedSendRpcIds.remove(rpcId)
+        failedSendRpcIds.remove(id)
+        ackedSendRpcIds.remove(rpcId)
+        queuedSendRpcIds.remove(rpcId)
+        activeConversation?.acknowledgedRpcIds.remove(id)
+        activeConversation?.steeredRpcIds.remove(id)
+        if pendingSendID == message.id { pendingSendID = nil }
+        if pendingSendRpcId?.lowercased() == id { pendingSendRpcId = nil }
+        messages.removeAll { $0.id == message.id }
+        // removeOutbox 会连带回收该 rpcId 的图片目录。
+        removeOutbox(rpcIds: [rpcId])
+        if failedSendRpcIds.isEmpty { conversationError = nil }
+        recordDiagnostic("用户删除发送失败的消息：\(id)")
+    }
+
     /// 网络恢复：按发件箱写入顺序，把所有会话的断网暂存一并补发。
     /// 补发使用原来的 rpcId，成功前不从磁盘删除；服务端历史确认后才移除。
     @MainActor

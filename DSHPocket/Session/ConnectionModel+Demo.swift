@@ -63,6 +63,16 @@ extension ConnectionModel {
         sessionStore.selected = session
         messages = Self.demoMessages(for: session.sessionId)
         steps = Self.demoSteps(for: session.sessionId)
+#if DEBUG
+        // UI 测试/排查用：在演示会话里挂一条失败消息，验证删除与重发入口。
+        if DebugLaunch.demoFailedMessage {
+            let rpcId = "demo-failed-message"
+            messages.append(PocketMessage(pendingText: "这是一条发送失败的消息。",
+                                          rpcId: rpcId,
+                                          sortSequence: messages.map(\.sequence).max()))
+            conversation.failedRpcIds.insert(rpcId)
+        }
+#endif
         // 会话内上限：允许翻历史，但不让压测数据把内存吃爆（退出时另按 24 裁）。
         trimToInSessionLimit()
         isTurnRunning = session.running

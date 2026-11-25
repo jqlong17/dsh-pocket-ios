@@ -74,6 +74,8 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "扫码添加机器或连接方式": "Scan to add a machine or address",
+        "同一台机器再扫一次是加地址（局域网 / Tailscale / Cloudflare 会自动并入那台主机）；扫新机器不必先断开，先连上才切过去，连不上会保持现在的连接。": "Scanning the same machine again adds another address (LAN / Tailscale / Cloudflare merge into that host). Adding a new machine does not require disconnecting first — it switches only after connecting, and keeps your current connection if it fails.",
         "工作区块（卡片）": "Workspace block",
         "工作区图标": "Workspace icon",
         "工作区名称": "Workspace name",
@@ -256,6 +258,9 @@ enum L10n {
         "失败": "Failed",
         "开始于": "Started",
         "重新发送": "Resend",
+        "删除这条发送失败的消息": "Delete this failed message",
+        "删除这条发送失败的消息？": "Delete this failed message?",
+        "消息没有发出，删除后无法恢复。": "The message was not sent. This cannot be undone.",
         "复制整条消息": "Copy message",
         "引用这条消息": "Quote message",
         "取消引用": "Cancel quote",

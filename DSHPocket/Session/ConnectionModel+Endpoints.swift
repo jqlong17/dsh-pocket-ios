@@ -26,12 +26,16 @@ extension ConnectionModel {
            let list = try? JSONDecoder().decode([DSHHost].self, from: data),
            !list.isEmpty {
             hosts = list
+        // 启动就把「同一台机器被拆成多台」的合回去（老数据也会有）
+        mergeDuplicateMachines()
         } else if let data = UserDefaults.standard.data(forKey: Self.savedEndpointsKey),
                   let list = try? JSONDecoder().decode([SavedEndpoint].self, from: data),
                   !list.isEmpty {
             // 迁移：有机器名的按机器名归并，没有的各成一台。
             // 旧键不删——迁移结果不对时还能回退重跑。
             hosts = DSHHost.migrate(from: Self.dedupEndpoints(list))
+        // 启动就把「同一台机器被拆成多台」的合回去（老数据也会有）
+        mergeDuplicateMachines()
             persistHosts()
             recordDiagnostic("迁移为 \(hosts.count) 台主机（原 \(list.count) 条地址）")
         }
@@ -131,16 +135,42 @@ extension ConnectionModel {
                            machine: machine)
         hosts.append(host)
         currentHostId = host.id
+        mergeDuplicateMachines()
         persistHosts()
         persistCurrentHostId()
     }
 
+    /// 把「同一台机器被拆成多台主机」的情况合回去。
+    ///
+    /// 触发场景：早于机器名机制创建的主机 `machine` 是 nil，新地址匹配不上就新建了一台；
+    /// 之后两台都带上同一个机器名，这里把它们合成一台（保留当前连接那台）。
+    func mergeDuplicateMachines() {
+        let groups = HostMerge.duplicateGroups(machines: hosts.map(\.machine))
+        guard !groups.isEmpty else { return }
+        let currentIndex = hosts.firstIndex { $0.id == currentHostId }
+        let lastUsed = hosts.map(\.lastUsedAt)
+        // 从后往前删，避免下标失效
+        for group in groups.reversed() {
+            let keeper = HostMerge.keeper(in: group, currentIndex: currentIndex, lastUsedAt: lastUsed)
+            var merged = hosts[keeper].endpoints
+            for index in group where index != keeper {
+                for endpoint in hosts[index].endpoints where !merged.contains(where: { $0.address == endpoint.address }) {
+                    merged.append(endpoint)
+                }
+                hosts[keeper].lastUsedAt = max(hosts[keeper].lastUsedAt, hosts[index].lastUsedAt)
+            }
+            hosts[keeper].endpoints = merged
+            if let currentIndex, group.contains(currentIndex) { currentHostId = hosts[keeper].id }
+            for index in group.sorted(by: >) where index != keeper { hosts.remove(at: index) }
+            recordDiagnostic("合并了同机器的主机：\(hosts.first(where: { $0.endpoints == merged })?.name ?? "?")")
+        }
+    }
+
     /// 生成主机默认名：DSH 1、DSH 2……（避开已占用的名字）。
     static func nextHostName(_ hosts: [DSHHost]) -> String {
-        let used = Set(hosts.map(\.name))
-        var n = 1
-        while used.contains("DSH \(n)") { n += 1 }
-        return "DSH \(n)"
+        // 逻辑抽到 DSHKit（有测试）：只比对完全相等的名字会漏掉「DSH 2 阿里云」，
+        // 用户改名后新机器又拿到 DSH 2，列表里出现两台同名的（2026-11-25 实测）。
+        HostNaming.nextName(existing: hosts.map(\.name))
     }
 
     /// 取当前这台 DSH 的机器名（插件 tailscale.status 里的 machineName）。
