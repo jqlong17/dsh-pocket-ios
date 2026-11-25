@@ -12,6 +12,8 @@ import { listActiveSessionFiles, readTailEvents } from './session-tail.js'
 import { expiredPath, rotatePlan, shouldRotate } from './log-rotate.js'
 import { encodeJson } from './json-encode.js'
 import { needsRepoint, parseServeStatus } from './serve-status.js'
+import { probe } from './reachability.js'
+import { resolvePairBase } from './pair-base.js'
 import { listPeerSessions, sayToPeer } from './peer-client.js'
 import { registerRemoteTools } from './remote-tools.js'
 import net from 'node:net'
@@ -878,6 +880,37 @@ const MODE_LABELS = {
 let currentMode = 'lan'
 /** Cloudflare quick 隧道（懒创建；同一时刻只跑一个）。 */
 let cloudflareTunnel = null
+
+/**
+ * 切走 Cloudflare 后不立刻停隧道，留一段宽限期。
+ *
+ * 原因：quick 隧道是一次性的，切走就销毁，切回来要重新注册（约 4 秒）且地址会变，
+ * 二维码必须重扫。家里/外面来回切时会很烦。留 10 分钟，期间切回直接复用。
+ */
+const CLOUDFLARE_IDLE_STOP_MS = 10 * 60 * 1000
+let cloudflareStopTimer = null
+
+function cancelCloudflareStop() {
+  if (cloudflareStopTimer) {
+    clearTimeout(cloudflareStopTimer)
+    cloudflareStopTimer = null
+  }
+}
+
+/** 安排「空闲一段时间后停掉隧道」；期间切回来会被 cancel。 */
+function scheduleCloudflareStop(reason) {
+  cancelCloudflareStop()
+  cloudflareStopTimer = setTimeout(async () => {
+    cloudflareStopTimer = null
+    try {
+      await cloudflareTunnel?.stop()
+      await logLine(`cloudflare 空闲 ${CLOUDFLARE_IDLE_STOP_MS / 60000} 分钟，已停止（${reason}）`)
+    } catch (error) {
+      await logLine(`cloudflare 空闲停止失败: ${error?.message ?? error}`)
+    }
+  }, CLOUDFLARE_IDLE_STOP_MS)
+  cloudflareStopTimer.unref?.()
+}
 /** dsh web 的监听端口，apply() 里赋值；modeStatus 用它起隧道。 */
 let dshWebPortRef = null
 
@@ -1170,9 +1203,9 @@ async function modeStatus() {
       state: 'starting',
       error: null,
       phase: snap.phase ?? null,
-      detail: downloading
-        ? `首次使用，正在准备 cloudflared（约 24MB）：${snap.phaseDetail ?? ''}`
-        : '正在启动 Cloudflare 隧道…',
+        detail: downloading
+        ? `正在下载 cloudflared（约 20MB，只需一次）：${snap.phaseDetail ?? ''}`
+        : '正在启动隧道（约 4 秒）…',
     }
   }
 
@@ -1718,7 +1751,7 @@ export function apply(ctx) {
             return
           }
           if (currentMode === 'cloudflare' && requested !== 'cloudflare' && cloudflareTunnel) {
-            await cloudflareTunnel.stop()
+            scheduleCloudflareStop('切换到 ' + requested)
           }
           currentMode = requested
           await saveMode(requested)
@@ -2138,9 +2171,11 @@ function guessProto(req, host) {
           }
           // 互斥：切走之前先把上一种停掉，避免两个隧道进程同时跑
           if (currentMode === 'cloudflare' && next !== 'cloudflare' && cloudflareTunnel) {
-            await cloudflareTunnel.stop()
+            scheduleCloudflareStop('切换到 ' + next)
           }
           currentMode = next
+          // 切回 Cloudflare：取消空闲停止，复用仍在运行的隧道。
+          if (next === 'cloudflare') cancelCloudflareStop()
           await saveMode(next)
           await logLine(`mode -> ${next}`)
           // 切到 Tailscale 时顺手把 serve 打开，用户不用再开终端敲命令。
@@ -2169,8 +2204,12 @@ function guessProto(req, host) {
               }
             }
           }
-          // 立刻回一个轻量状态：切到 cloudflare 时隧道要下载/注册，不能阻塞在这里
-          const value = { mode: next, label: MODE_LABELS[next], modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })), address: null, qr: null, state: 'starting', error: null, phase: null }
+          // Cloudflare 的隧道是异步的，这里只能回轻量状态（address=null），前端轮询补；
+          // 其它方式状态查询只要 ~200ms，直接回完整状态 —— 否则面板要等下一次轮询（2 秒）
+          // 才把地址显示出来，切换显得很慢（2026-11-25 反馈）。
+          const value = next === 'cloudflare'
+            ? { mode: next, label: MODE_LABELS[next], modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })), address: null, qr: null, state: 'starting' }
+            : await modeStatus()
           send(res, 200, { type: 'server-response', rpcId, result: { ok: true, value } })
           return
         }
@@ -2187,23 +2226,44 @@ function guessProto(req, host) {
           pairTokens.set(pairToken, { expiresAt: Date.now() + PAIR_TTL_MS })
           // 按当前连接方式取地址：Cloudflare 用 quick 隧道，Tailscale 用固定地址，
           // 都没有时回退到请求 Host（局域网直连）。
-          const status = await modeStatus()
-          let base = status.address
-          if (!base) {
-            // 回退到**局域网可达**的地址，绝不能用 req.headers.host。
-            // 面板是用户在浏览器里用 http://127.0.0.1:<port> 打开的，那个 host 拼出来的
-            // 二维码在手机上指向手机自己 → 扫了必失败（2026-11-15 实测：三种模式全废）。
-            // 局域网没地址时最后才用 host 兜底（至少本机测试能用）。
-            const lanIp = selectLanIPv4()
-            if (lanIp) {
-              base = `http://${lanIp}:${proxyPort}`
-            } else {
-              // 优先用代理带过来的外部 Host；直连（无代理）时才退回 req.headers.host。
-            const host = String(req.headers['x-dsh-original-host'] ?? req.headers.host ?? '')
-              const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
-              const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
-              base = `${forwardedProto || (isLoopback ? 'http' : 'https')}://${host}`
+            let status = await modeStatus()
+            // 这里必须**立刻返回**，不能等隧道：DSH 的 RPC 有超时，
+            // 一旦阻塞超过它，面板会报 “invalid server-response failure”（2026-11-25 实测）。
+            // 所以：没就绪 / 没探测通过 → 回 { retry: true }，由面板每 2 秒重试。
+            if (status.mode === 'cloudflare' && !status.address) {
+              send(res, 200, {
+                type: 'server-response', rpcId,
+                result: { ok: true, value: { retry: true, reason: 'starting', message: '隧道启动中…' } },
+              })
+              return
             }
+            if (status.mode === 'cloudflare' && status.address) {
+              // 新建的 quick 隧道要几秒才对外生效：探一次（1.5s 上限），不通就让面板稍候重试。
+              const target = `${status.address.replace(/\/$/, '')}/`
+              const reach = await probe(target, { timeoutMs: 1500 })
+              if (!reach.ok) {
+                await logLine(`隧道地址暂不可达（${reach.status ?? reach.error}），让面板重试`)
+                send(res, 200, {
+                  type: 'server-response', rpcId,
+                  result: { ok: true, value: { retry: true, reason: 'propagating', message: '隧道刚建好，正在等它生效…' } },
+                })
+                return
+              }
+            }
+          // 决策交给纯函数（lib/pair-base.js），可被测试钉住：
+          // Cloudflare 没就绪时**绝不回退局域网**，否则用户会以为在测 CF，实际扫到局域网。
+          let base = resolvePairBase({
+            mode: status.mode,
+            address: status.address,
+            lanIp: selectLanIPv4(),
+            port: proxyPort,
+          })
+          if (!base && status.mode !== 'cloudflare') {
+            // 其它方式（局域网/EasyTier）仍有 host 兜底：至少本机测试能用。
+            const host = String(req.headers['x-dsh-original-host'] ?? req.headers.host ?? '')
+            const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim()
+            const isLoopback = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)
+            base = `${forwardedProto || (isLoopback ? 'http' : 'https')}://${host}`
           }
           // **必须走插件自己的 /pair 端点**，不是根路径。
           // 之前生成的是 `${base}/?pair=`，代理会把它当普通请求转发给 DSH，
@@ -2263,6 +2323,20 @@ function guessProto(req, host) {
   try {
     webServer.register(route)
     ctx?.logger?.info?.('dsh-pocket-ios: Tailscale RPC 已挂载 /dsh-pocket-ios/tailscale.status')
+
+    // 启动对齐：如果上次用的是 Tailscale，确认 serve 指向当前端口。
+    // 否则 DSH 重启后端口变了（3091→3093），serve 还指旧端口，二维码必然连不上。
+    void (async () => {
+      try {
+        const saved = await readMode()
+        if (saved === 'tailscale' && proxyPort) {
+          const serve = await ensureTailscaleServe(proxyPort)
+          await logLine(`启动对齐 serve: ${serve.ok ? serve.url : serve.error}`)
+        }
+      } catch (error) {
+        await logLine(`启动对齐 serve 失败: ${error?.message ?? error}`)
+      }
+    })()
   } catch (error) {
     ctx?.logger?.warn?.(`dsh-pocket-ios: 挂载 RPC 失败：${String(error?.message ?? error)}`)
   }

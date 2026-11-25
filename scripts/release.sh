@@ -45,7 +45,7 @@ fi
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
   EXISTING=$(git rev-list -n1 "$TAG" | cut -c1-7)
   echo ""
-  echo "!! tag $TAG 已存在（指向 $EXISTING）。"
+  echo "!! tag $TAG 已存在（指向 ${EXISTING}）。"
   echo "   同一版本号不能重复发布——App Store 也不接受重复 build。"
   echo "   要发新版请改 Info.plist 的版本号（并递增 build）。"
   exit 1
@@ -57,11 +57,11 @@ if [ -n "$PREV_TAG" ]; then
   PREV_BUILD=$(git show "$PREV_TAG:Info.plist" 2>/dev/null | plutil -extract CFBundleVersion raw - 2>/dev/null || echo 0)
   if [ "${BUILD:-0}" -le "${PREV_BUILD:-0}" ] 2>/dev/null; then
     echo ""
-    echo "!! build 号 $BUILD 不大于上一个版本 $PREV_TAG 的 build $PREV_BUILD。"
+    echo "!! build 号 $BUILD 不大于上一个版本 $PREV_TAG 的 build ${PREV_BUILD}。"
     echo "   App Store Connect 会拒绝重复的 build 号。"
     exit 1
   fi
-  echo "   上一个版本 $PREV_TAG 的 build 是 $PREV_BUILD，本次 $BUILD ✓"
+  echo "   上一个版本 $PREV_TAG 的 build 是 ${PREV_BUILD}，本次 $BUILD ✓"
 fi
 
 WORK=$(mktemp -d)

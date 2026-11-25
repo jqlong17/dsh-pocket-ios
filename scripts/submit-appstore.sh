@@ -68,10 +68,10 @@ api() { # api <METHOD> <PATH> [BODY]
 say "查找 build $BUILD ..."
 BUILDS=$(api GET "/builds?filter%5Bapp%5D=$APP_ID&filter%5Bversion%5D=$BUILD&limit=1")
 BUILD_ID=$(printf '%s' "$BUILDS" | python3 -c 'import sys,json;d=json.load(sys.stdin);print((d.get("data") or [{}])[0].get("id",""))')
-[[ -n "$BUILD_ID" ]] || die "找不到 build $BUILD（先上传并等处理完）"
+[[ -n "$BUILD_ID" ]] || die "找不到 build ${BUILD}（先上传并等处理完）"
 STATE=$(printf '%s' "$BUILDS" | python3 -c 'import sys,json;d=json.load(sys.stdin);print((d.get("data") or [{}])[0]["attributes"]["processingState"])')
 say "build id=$BUILD_ID state=$STATE"
-[[ "$STATE" == "VALID" ]] || die "build 状态是 $STATE，不是 VALID"
+[[ "$STATE" == "VALID" ]] || die "build 状态是 ${STATE}，不是 VALID"
 
 # ── 1. 已有同版本草稿则复用，否则新建 ───────────────────────────
 EXIST=$(api GET "/apps/$APP_ID/appStoreVersions?filter%5BversionString%5D=$VERSION&limit=1")
@@ -82,7 +82,7 @@ if [[ -n "$VER_ID" ]]; then
   api PATCH "/appStoreVersions/$VER_ID" \
     "{\"data\":{\"type\":\"appStoreVersions\",\"id\":\"$VER_ID\",\"attributes\":{\"releaseType\":\"AFTER_APPROVAL\"}}}" >/dev/null || true
 else
-  say "新建版本 $VERSION（AFTER_APPROVAL：审核通过自动上架）"
+  say "新建版本 ${VERSION}（AFTER_APPROVAL：审核通过自动上架）"
   CREATED=$(api POST "/appStoreVersions" \
     "{\"data\":{\"type\":\"appStoreVersions\",\"attributes\":{\"platform\":\"IOS\",\"versionString\":\"$VERSION\",\"releaseType\":\"AFTER_APPROVAL\"},\"relationships\":{\"app\":{\"data\":{\"type\":\"apps\",\"id\":\"$APP_ID\"}}}}}")
   VER_ID=$(printf '%s' "$CREATED" | python3 -c 'import sys,json;d=json.load(sys.stdin);print((d.get("data") or {}).get("id",""))')
@@ -97,7 +97,7 @@ api PATCH "/appStoreVersions/$VER_ID/relationships/build" \
 # ── 3. whatsNew（可选）──────────────────────────────────────────
 if [[ -n "$NOTES_FILE" ]]; then
   [[ -f "$NOTES_FILE" ]] || die "找不到说明文件 $NOTES_FILE"
-  say "写入 whatsNew（来源 $NOTES_FILE）"
+  say "写入 whatsNew（来源 ${NOTES_FILE}）"
   LOCS=$(api GET "/appStoreVersions/$VER_ID/appStoreVersionLocalizations")
   printf '%s' "$LOCS" | python3 -c '
 import sys, json, pathlib

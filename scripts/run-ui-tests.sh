@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEVICE="${1:-$(xcrun simctl list devices booted -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(dev["udid"] for runtime in d.values() for dev in runtime if dev.get("state")=="Booted"), end=""))}')"
+DEVICE="${1:-$(xcrun simctl list devices booted -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((v['udid'] for r in d.values() for v in r if v.get('state')=='Booted'), ''))")}"
 if [[ -z "${DEVICE}" ]]; then
   echo "没有已启动的模拟器，请先启动一个 iPhone 模拟器。" >&2
   exit 1

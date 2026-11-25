@@ -51,6 +51,25 @@
 
 **接手旧 spec 先校验格式**：按七段对照，缺段先补（历史 spec 多缺「参考实现」与「预估工时」），测试计划要标 target。
 
+## 1.5 提交前必跑的检查
+
+```bash
+./scripts/preflight.sh          # shell 语法/变量检查 + 插件单测 + iOS 单测 + 架构检查
+./scripts/preflight.sh --live   # 额外检查本机真实状态（tailscale serve 端口一致性）
+```
+
+**背景（2026-11-25 一天内踩的坑）**：
+
+- **「用了没 import」**：`resolvePairBase` 在 `plugin/lib/index.js` 里被调用却忘了 import。
+  `node --check` 过、单测全绿，真跑起来才 `ReferenceError`，面板显示
+  `connection: invalid server-response failure`。→ 现在由 `test/import-wiring.test.js` 拦截。
+- **「`$VAR` 紧跟中文标点」**：`$RESULT）` 会被 bash 当成变量名的一部分，报
+  `unbound variable`。一天踩三次。→ `scripts/check-shell-vars.py` 拦截。
+- **面板白屏**：在 `var ref = React.useRef()` 之前读 `ref.current`（提升为 undefined）。
+  → `test/panel-wiring.test.js` 用行号断言拦截。
+
+**新增插件脚本或面板代码时，先把「能被自动检查的那部分」写成测试，再改实现。**
+
 ## 2. 本仓库的约定
 
 - **`docs/` 一律不入库**（2026-11-21 用户明确）：里面的调研、宣传素材、审核文案、参考项目源码

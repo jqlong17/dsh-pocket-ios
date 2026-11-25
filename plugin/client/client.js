@@ -84,9 +84,19 @@ window.__ModuleLoader__.load({
       // 固定域名，而 Cloudflare / 局域网 / EasyTier 模式下 address 可能暂时为空（隧道启动中），
       // 那样面板会把 tailscale 域名显示在「Cloudflare」下面 —— 用户看到的就是
       // 「选了 Cloudflare，地址却是 *.ts.net」（2026-11-24 反馈）。
-      var addressForMode = status
-        ? (status.address || (status.mode === "tailscale" ? status.httpsUrl : null))
-        : null;
+        // 这两个 ref 必须在 addressForMode 之前声明：addressForMode 会读 pairBaseRef，
+        // var 虽提升但值为 undefined，放在后面会 TypeError 导致整个面板白屏（2026-11-25 实测）。
+        var pairBaseRef = React.useRef(null);
+        var pairRetryRef = React.useRef(0);
+        var pairRetryTimer = React.useRef(null);
+        var addressForMode = status
+          ? (status.address
+             || (status.mode === "tailscale" ? status.httpsUrl : null)
+             // 二维码已经给出地址、但状态还没 ready（隧道刚建好）：显示二维码用的那个，
+             // 避免出现「显示正在启动，其实扫码能进」的矛盾（2026-11-25 实测）。
+             || pairBaseRef.current
+             || null)
+          : null;
       var showPinState = React.useState(false);
       var showPin = showPinState[0];
       var setShowPin = showPinState[1];
@@ -115,6 +125,9 @@ window.__ModuleLoader__.load({
           // 下载/注册拖到超时）。直接拿它渲染会显示「当前方式还没有地址」，
           // 所以立刻再拉一次完整状态。
           setStatus(st || null); setBusy(false);
+          // 切了连接方式，旧二维码必然失效：先清掉，避免用户扫到上一张（地址可能一模一样）
+          setPair({ loading: true, error: null, data: null });
+          if (typeof fastPoll === "function") fastPoll();
           refreshStatus();
           // 切了模式，二维码必须重新生成（Cloudflare / 局域网的地址都不同）
           generatePair();
@@ -133,13 +146,47 @@ window.__ModuleLoader__.load({
         }).catch(function () { setLoading(false); });
       };
 
+        // 切换模式后先密集刷新几次：mode.set 已带完整状态，但地址/二维码可能还在变，
+        // 2 秒一次的轮询会让人觉得「切完要等两秒」（2026-11-25 反馈）。
+        var fastPoll = function () {
+          var n = 0;
+          var t = setInterval(function () {
+            refreshStatus();
+            n += 1;
+            if (n >= 4) { clearInterval(t); }
+          }, 700);
+        };
+
       var generatePair = function () {
         if (!props.rpcCall) return;
         Promise.resolve(props.rpcCall("pair.create", {})).then(unwrapRpc).then(function (data) {
+          var pairUrl = String((data && data.url) || "");
+          pairBaseRef.current = pairUrl ? pairUrl.split("?")[0] : null;
+          // 插件侧不阻塞 RPC：隧道没就绪时回 { retry: true }，这里自己重试。
+          if (data && data.retry) {
+            setPair({ loading: true, error: null, data: null });
+            if (pairRetryTimer.current) { clearTimeout(pairRetryTimer.current); }
+            pairRetryTimer.current = setTimeout(function () { generatePair(); }, 2000);
+            return;
+          }
           setPair({ loading: false, error: null, data: data });
+            pairRetryRef.current = 0;
           setRemaining(data && data.expiresIn ? data.expiresIn : 300);
         }).catch(function (e) {
           var msg = String((e && e.message) || e);
+          // Cloudflare 隧道刚建好时地址还没生效：不当失败，自动重试几次。
+          if (msg.indexOf("等它生效") >= 0 || msg.indexOf("隧道还在启动") >= 0) {
+            var tries = (pairRetryRef.current || 0) + 1;
+            pairRetryRef.current = tries;
+            setPair({ loading: true, error: null, data: null });
+            if (tries <= 10) {
+              if (pairRetryTimer.current) { clearTimeout(pairRetryTimer.current); }
+              pairRetryTimer.current = setTimeout(function () { generatePair(); }, 3000);
+              return;
+            }
+            msg = makeT(currentLang())("隧道一直没生效，请检查网络后重新切换连接方式。", "The tunnel never became reachable — check your network and switch modes again.");
+          }
+          pairRetryRef.current = 0;
           if (msg.indexOf("unknown endpoint") >= 0) msg = makeT(currentLang())("配对服务未就绪：请重启 DSH 后再刷新本页。", "Pairing service not ready: restart DSH and refresh this page.");
           setPair({ loading: false, error: msg, data: null });
         });
@@ -162,6 +209,7 @@ window.__ModuleLoader__.load({
         var poll = setInterval(function () {
           refreshStatus();
         }, 2000);
+
         pollRef.current = poll;
         return function () { clearInterval(timer); if (pollRef.current) clearInterval(pollRef.current); };
       }, []);
@@ -263,7 +311,7 @@ window.__ModuleLoader__.load({
             React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 } },
               React.createElement("div", { style: { fontSize: 12.5, wordBreak: "break-all", flex: "1 1 170px", minWidth: 0 } }, (addressForMode
               || (loading ? makeT(currentLang())("检测中…", "Checking…")
-                : status && status.state === "starting" ? makeT(currentLang())("正在启动，稍候…", "Starting, please wait…")
+                : status && status.state === "starting" ? (status.detail || makeT(currentLang())("正在启动，稍候…", "Starting, please wait…"))
                 : status && status.state === "error" ? makeT(currentLang())("获取失败", "Failed")
                 : makeT(currentLang())("当前方式还没有地址", "No address for this mode yet")))),
               React.createElement("button", { type: "button", onClick: function () { copy(addressForMode, "url"); }, style: chipStyle }, copied === "url" ? makeT(currentLang())("已复制", "Copied") : makeT(currentLang())("复制", "Copy"))),

@@ -8,7 +8,7 @@
 set -uo pipefail
 
 JSONL="${1:-git-checkpoints.jsonl}"
-[[ -f "$JSONL" ]] || { echo "找不到 $JSONL（先打几个检查点再来）" >&2; exit 1; }
+[[ -f "$JSONL" ]] || { echo "找不到 ${JSONL}（先打几个检查点再来）" >&2; exit 1; }
 
 python3 - "$JSONL" << 'PY'
 import json, sys, statistics
