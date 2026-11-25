@@ -183,6 +183,9 @@ extension ConnectionModel {
             PinKeychain.clear()
             // 凭证落盘统一走 persistConnectedState：地址、cookie、设备凭证一个都不能漏。
             // 之前配对分支只存了后两者，导致「扫码连上 → 重装 → 又要求扫码」。
+            // 先记下机器名再落盘：分组按机器名归并，晚一步就会多建一台主机，
+            // 于是同一台 DSH 的局域网与 Cloudflare 地址被拆成两台（2026-11-25 实测）。
+            captureMachineName(from: pairResponse)
             persistConnectedState()
             if ConnectionVault.loadDeviceToken(for: connection.serverAddress) != nil {
                 recordDiagnostic("已保存长期设备凭证（下次 DSH 重启免扫码）")
@@ -291,6 +294,8 @@ extension ConnectionModel {
             sessionStore.sessions = try await fetchSessions()
             connection.isConnected = true
             connection.addressNeedsRescan = false
+            // 同配对路径：先抓机器名，避免同一台机器被拆成两台主机。
+            captureMachineName(from: pluginHTTP)
             persistConnectedState()
             connection.pin = ""
             recordDiagnostic("连接成功：会话 \(sessionStore.sessions.count) 个")

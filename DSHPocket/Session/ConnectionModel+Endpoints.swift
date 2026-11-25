@@ -140,31 +140,6 @@ extension ConnectionModel {
         persistCurrentHostId()
     }
 
-    /// 把「同一台机器被拆成多台主机」的情况合回去。
-    ///
-    /// 触发场景：早于机器名机制创建的主机 `machine` 是 nil，新地址匹配不上就新建了一台；
-    /// 之后两台都带上同一个机器名，这里把它们合成一台（保留当前连接那台）。
-    func mergeDuplicateMachines() {
-        let groups = HostMerge.duplicateGroups(machines: hosts.map(\.machine))
-        guard !groups.isEmpty else { return }
-        let currentIndex = hosts.firstIndex { $0.id == currentHostId }
-        let lastUsed = hosts.map(\.lastUsedAt)
-        // 从后往前删，避免下标失效
-        for group in groups.reversed() {
-            let keeper = HostMerge.keeper(in: group, currentIndex: currentIndex, lastUsedAt: lastUsed)
-            var merged = hosts[keeper].endpoints
-            for index in group where index != keeper {
-                for endpoint in hosts[index].endpoints where !merged.contains(where: { $0.address == endpoint.address }) {
-                    merged.append(endpoint)
-                }
-                hosts[keeper].lastUsedAt = max(hosts[keeper].lastUsedAt, hosts[index].lastUsedAt)
-            }
-            hosts[keeper].endpoints = merged
-            if let currentIndex, group.contains(currentIndex) { currentHostId = hosts[keeper].id }
-            for index in group.sorted(by: >) where index != keeper { hosts.remove(at: index) }
-            recordDiagnostic("合并了同机器的主机：\(hosts.first(where: { $0.endpoints == merged })?.name ?? "?")")
-        }
-    }
 
     /// 生成主机默认名：DSH 1、DSH 2……（避开已占用的名字）。
     static func nextHostName(_ hosts: [DSHHost]) -> String {
