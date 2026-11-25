@@ -26,11 +26,9 @@ extension AppSettingsSheet {
     /// 改成勾选框：**当前这条打勾，其余是空框**，整行可点即可切换，不再需要文字提示。
     @ViewBuilder
     func addressSubRow(_ endpoint: SavedEndpoint, isActive: Bool) -> some View {
-        Button {
-            guard !isActive else { return }
-            Task { await model.switchToEndpoint(endpoint) }
-        } label: {
-            HStack(spacing: 10) {
+        // 用 onTapGesture 而不是外层 Button：SwiftUI 里按钮套按钮时，
+        // 内层（删除）永远收不到点击——实测点了没反应（2026-11-25）。
+        HStack(spacing: 10) {
                 Image(systemName: isActive ? "checkmark.square.fill" : "square")
                     .font(.body)
                     .symbolRenderingMode(.hierarchical)
@@ -46,11 +44,25 @@ extension AppSettingsSheet {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 4)
+                if !isActive {
+                    Button {
+                        pendingEndpointDelete = endpoint
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel(L10n.t("删除这条地址"))
+                    .accessibilityIdentifier("endpoint-delete-\(endpoint.address)")
+                }
             }
-            .frame(minHeight: 36)
-            .contentShape(Rectangle())
+        .frame(minHeight: 36)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isActive else { return }
+            Task { await model.switchToEndpoint(endpoint) }
         }
-        .buttonStyle(.plain)
         .accessibilityAddTraits(isActive ? [.isSelected] : [])
         .contextMenu {
             Button(role: .destructive) {
@@ -126,9 +138,10 @@ extension AppSettingsSheet {
             .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
-                    model.removeHost(id: host.id)
+                    // 不再直接删：整台删除会带走它下面所有地址，必须让用户看清影响。
+                    pendingHostDelete = host
                 } label: {
-                    Label(L10n.t("删除"), systemImage: "trash")
+                    Label(L10n.t("删除整台"), systemImage: "trash")
                 }
                 Button {
                     renamingHostId = host.id

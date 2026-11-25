@@ -19,6 +19,24 @@ extension ConnectionModel {
     @MainActor
     func startDemoMode() {
         isDemoMode = true
+#if DEBUG
+        if DebugLaunch.demoHosts {
+            // 两台机器：A 有三条地址（局域网/CF/Tailscale），B 只有一条。
+            // UI 测试据此断言「删一条不影响他人」。
+            let now = Date().timeIntervalSince1970
+            let a = DSHHost(id: "demo-host-a", name: "DSH 1 Mac", endpoints: [
+                SavedEndpoint(address: "http://192.168.1.10:3093", kind: .lan, lastUsedAt: now),
+                SavedEndpoint(address: "https://demo-a.trycloudflare.com", kind: .publicNetwork, lastUsedAt: now - 1),
+                SavedEndpoint(address: "https://demo-a.ts.net", kind: .publicNetwork, lastUsedAt: now - 2),
+            ], lastUsedAt: now, machine: "demo-mac")
+            let b = DSHHost(id: "demo-host-b", name: "DSH 2 阿里云", endpoints: [
+                SavedEndpoint(address: "https://demo-b.ts.net:8443", kind: .publicNetwork, lastUsedAt: now),
+            ], lastUsedAt: now - 5, machine: "demo-aliyun")
+            hosts = [a, b]
+            currentHostId = a.id
+            connection.serverAddress = "http://192.168.1.10:3093"
+        }
+#endif
         connection.isConnected = true
         connection.isConnecting = false
         connection.errorMessage = nil

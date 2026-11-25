@@ -206,6 +206,7 @@ struct ConnectView: View {
                           }
                           .buttonStyle(.plain)
                           .accessibilityLabel(L10n.t("删除这台主机"))
+                          .accessibilityIdentifier("host-delete-\(host.name)")
                           if host.id == model.currentHostId {
                               Image(systemName: "checkmark.circle.fill").foregroundStyle(brand)
                           }

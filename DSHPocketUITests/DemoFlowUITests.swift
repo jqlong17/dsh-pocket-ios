@@ -6,6 +6,48 @@ final class DemoFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// 演示 + 预置两台主机（A 有三条地址、B 一条），用来验证删除粒度。
+    private func launchDemoHosts(settings: Bool = false) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["DSH_DEMO"] = "1"
+        app.launchEnvironment["DSH_DEMO_HOSTS"] = "1"
+        app.launchEnvironment["DSH_RESET"] = "1"
+        if settings { app.launchEnvironment["DSH_SETTINGS"] = "1" }
+        app.launch()
+        return app
+    }
+
+    /// 删除**一台主机**不能连累另一台（回归：用户以为删的是一条连接，结果整台没了）。
+    func testDeleteOneHostKeepsOtherHost() {
+        let app = launchDemoHosts(settings: true)
+        let rowB = app.staticTexts["DSH 2 阿里云"].firstMatch
+        XCTAssertTrue(rowB.waitForExistence(timeout: 15), "主机 B 没出现")
+        rowB.swipeLeft()
+        let del = app.buttons["删除整台"].firstMatch
+        XCTAssertTrue(del.waitForExistence(timeout: 5), "左滑没有「删除整台」")
+        del.tap()
+        let confirm = app.alerts.buttons["删除"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "删除确认没出现")
+        confirm.tap()
+        XCTAssertFalse(app.staticTexts["DSH 2 阿里云"].waitForExistence(timeout: 3), "主机 B 应被删除")
+        XCTAssertTrue(app.staticTexts["DSH 1 Mac"].exists, "删主机 B 连累了主机 A —— 这就是那个 bug")
+    }
+
+    /// 删除**一条地址**不能连累同一台机器的其它地址。
+    func testDeleteOneAddressKeepsOtherAddresses() {
+        let app = launchDemoHosts(settings: true)
+        let del = app.buttons["endpoint-delete-https://demo-a.ts.net"].firstMatch
+        XCTAssertTrue(del.waitForExistence(timeout: 15), "地址行没有独立的删除按钮")
+        del.tap()
+        let confirm = app.alerts.buttons["删除"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "删除地址没有确认")
+        confirm.tap()
+        XCTAssertFalse(app.buttons["endpoint-delete-https://demo-a.ts.net"].firstMatch.waitForExistence(timeout: 3),
+                       "该地址应被删除")
+        XCTAssertTrue(app.buttons["endpoint-delete-https://demo-a.trycloudflare.com"].firstMatch.exists,
+                      "删一条地址连累了同主机的其它地址")
+    }
+
     private func launchDemo(session: String = "demo-1", failedMessage: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["DSH_DEMO"] = "1"

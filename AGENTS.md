@@ -54,9 +54,13 @@
 ## 1.5 提交前必跑的检查
 
 ```bash
-./scripts/preflight.sh          # shell 语法/变量检查 + 插件单测 + iOS 单测 + 架构检查
-./scripts/preflight.sh --live   # 额外检查本机真实状态（tailscale serve 端口一致性）
+./scripts/preflight.sh            # shell 语法/变量检查 + 插件单测 + iOS 单测 + 架构检查 + 本地化棘轮
+./scripts/preflight.sh --live     # 额外检查本机真实状态（tailscale serve 端口一致性）
+./scripts/preflight.sh --release  # 发版门禁：再加 UI 测试（3-5 分钟，红了不发版）
 ```
+
+**UI 测试从「告警」提为「阻断」（2026-11-25 PM 决策）**：它不在每次提交的默认路径里（太慢），
+但**发版前必须跑 `--release`**，UI 红 = 阻断发版。跳过的用例会单独报出来——跳过等于没测。
 
 **背景（2026-11-25 一天内踩的坑）**：
 

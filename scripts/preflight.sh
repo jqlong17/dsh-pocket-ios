@@ -7,13 +7,20 @@
 # 这类问题只有把检查固定成流程的一部分才能不再复发。
 #
 # 用法：
-#   ./scripts/preflight.sh           只跑静态与单元测试
-#   ./scripts/preflight.sh --live    额外检查本机真实状态（serve 端口一致性）
+#   ./scripts/preflight.sh            只跑静态与单元测试（每次提交）
+#   ./scripts/preflight.sh --live     额外检查本机真实状态（serve 端口一致性）
+#   ./scripts/preflight.sh --release  发版门禁：再加 UI 测试（约 3-5 分钟，慢但必须过）
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 LIVE=0
-[ "${1:-}" = "--live" ] && LIVE=1
+RELEASE=0
+for arg in "$@"; do
+  case "$arg" in
+    --live) LIVE=1 ;;
+    --release) RELEASE=1 ;;
+  esac
+done
 
 pass=0; fail=0
 step() { printf '\n▸ %s\n' "$*"; }
@@ -75,6 +82,18 @@ else
   bad 'check-architecture 失败'
   tail -5 /tmp/preflight-arch.log | sed 's/^/      /'
 fi
+
+  # ── 2.5 发版门禁：UI 测试（阻断）──────────────────────────────────
+  # 决策（2026-11-25）：UI 测试从「告警」提为「阻断」——红了不发版。
+  # 不进每次提交的默认路径（3-5 分钟太慢），只在 --release 时跑。
+  if [ "$RELEASE" -eq 1 ]; then
+    step 'iOS：UI 测试（发版门禁）'
+    if ./scripts/check-ui-tests.sh; then
+      ok 'UI 测试全部通过'
+    else
+      bad 'UI 测试失败（阻断发版）'
+    fi
+  fi
 
 # ── 3. 可选：真实环境检查 ────────────────────────────────────────
 if [ "$LIVE" -eq 1 ]; then

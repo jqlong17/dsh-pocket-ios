@@ -38,6 +38,11 @@ struct AppSettingsSheet: View {
     @State var switchingTo: String?
     /// 切换失败的说明。失败时**不关闭设置、不动当前连接**，只把原因摆出来。
     @State var switchError: String?
+    /// 删除整台主机前必须确认：它会连带删掉这台机器的**所有地址**（2026-11-25 用户反馈：
+    /// 以为删的是一条连接，结果整台没了）。
+    @State var pendingHostDelete: DSHHost?
+    /// 删除单条地址前也要确认（不确认的话，手滑就丢一条可用连接）。
+    @State var pendingEndpointDelete: SavedEndpoint?
     /// 扫码切换用。
     @State private var showingScanner = false
 
@@ -330,6 +335,30 @@ struct AppSettingsSheet: View {
             Button(L10n.t("好"), role: .cancel) { switchError = nil }
         } message: {
             Text(switchError ?? "")
+        }
+        .alert(L10n.t("删除这台主机？"), isPresented: Binding(
+            get: { pendingHostDelete != nil },
+            set: { if !$0 { pendingHostDelete = nil } }
+        ), presenting: pendingHostDelete) { host in
+            Button(L10n.t("删除"), role: .destructive) {
+                model.removeHost(id: host.id)
+                pendingHostDelete = nil
+            }
+            Button(L10n.t("取消"), role: .cancel) { pendingHostDelete = nil }
+        } message: { host in
+            Text(L10n.tf("%@ 下的 %d 条地址会一起删除。只想删一条，请在地址行上单独删除。", host.name, host.endpoints.count))
+        }
+        .alert(L10n.t("删除这条地址？"), isPresented: Binding(
+            get: { pendingEndpointDelete != nil },
+            set: { if !$0 { pendingEndpointDelete = nil } }
+        ), presenting: pendingEndpointDelete) { endpoint in
+            Button(L10n.t("删除"), role: .destructive) {
+                model.removeEndpoint(endpoint.address)
+                pendingEndpointDelete = nil
+            }
+            Button(L10n.t("取消"), role: .cancel) { pendingEndpointDelete = nil }
+        } message: { endpoint in
+            Text(endpoint.address)
         }
         .alert(L10n.t("重命名主机"), isPresented: Binding(
             get: { renamingHostId != nil },
