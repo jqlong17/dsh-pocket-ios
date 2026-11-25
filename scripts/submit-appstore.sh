@@ -132,9 +132,9 @@ api PATCH "/reviewSubmissions/$RS_ID" \
 
 # ── 5. 结果 ─────────────────────────────────────────────────────
 FINAL=$(api GET "/appStoreVersions/$VER_ID?fields%5BappStoreVersions%5D=versionString,appStoreState,releaseType")
-printf '%s' "$FINAL" | python3 -c '
+printf '%s' "$FINAL" | python3 -c "
 import sys, json
-a = json.load(sys.stdin)["data"]["attributes"]
-print(f"  ✅ {a.get(\"versionString\")} · {a.get(\"appStoreState\")} · 发布方式 {a.get(\"releaseType\")}")
-'
+a = json.load(sys.stdin)['data']['attributes']
+print('  ✅', a.get('versionString'), '·', a.get('appStoreState'), '· 发布方式', a.get('releaseType'))
+"
 say "审核通过后会自动上架，无需再手动点「发布」。"
