@@ -117,6 +117,8 @@ struct ComposerBar: View {
                   // 否则回车会吞掉英文候选（2026-11-26 iPad 实测）。Shift+回车仍换行。
                   .onKeyPress(phases: .down) { press in
                       guard press.key == .return else { return .ignored }
+                      // 只写日志、不改行为：确认「回车被谁吃掉」的真实事件顺序
+                      DiagFileLog.log("composer return: marked=\(TextCompositionState.hasMarkedText) shift=\(press.modifiers.contains(.shift)) draftLen=\(model.draft.count)")
                       if TextCompositionState.hasMarkedText { return .ignored }
                       if press.modifiers.contains(.shift) { return .ignored }
                       guard canSend else { return .ignored }
