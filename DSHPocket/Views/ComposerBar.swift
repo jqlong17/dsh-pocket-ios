@@ -139,8 +139,8 @@ struct ComposerBar: View {
         }
         .padding(.horizontal)
           .padding(.top, 10)
-          // iPad 上输入法候选栏紧贴输入框（2026-11-26 反馈）：底部多留 4pt 呼吸
-          .padding(.bottom, 14)
+          // iPad 候选栏仍然紧贴输入框（2026-11-26 二次反馈）：再加到 24pt
+          .padding(.bottom, 24)
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
     }
