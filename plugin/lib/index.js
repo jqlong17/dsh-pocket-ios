@@ -2376,6 +2376,35 @@ function guessProto(req, host) {
 
   startPushWatcher()
 
+    // ── Cloudflare 隧道自愈（2026-11-26）─────────────────────────────
+    // cloudflared 静默退出后，插件内存里仍是「隧道已就绪」，面板/配对继续发同一张地址，
+    // 而该域名已 NXDOMAIN；App 拿旧地址访问会收到 Cloudflare 的 "Origin DNS error" HTML，
+    // 整页 HTML 被当 JSON 解析 → 界面喷一屏 <!doctype html>（用户实测）。
+    // 以前是纯惰性启动（只有面板/配对触发），隧道死了没有入口会重启它。
+    const ensureCloudflareAlive = async (reason) => {
+      try {
+        currentMode = currentMode || await readMode()
+        if (currentMode !== 'cloudflare' || !proxyPort) return
+        const tunnel = cloudflareFor(proxyPort)
+        const snap = tunnel.status()
+        if (snap.state === 'ready' && snap.url) return
+        await logLine(`cloudflare 自愈（${reason}）：状态 ${snap.state}，重新拉起隧道`)
+        void tunnel.start().catch((error) => {
+          void logLine(`cloudflare 自愈拉起失败: ${error?.message ?? error}`)
+        })
+      } catch (error) {
+        void logLine(`cloudflare 自愈异常: ${error?.message ?? error}`)
+      }
+    }
+
+    void ensureCloudflareAlive('启动')
+
+    const cloudflareHealth = setInterval(() => { void ensureCloudflareAlive('定时检查') }, 60_000)
+    cloudflareHealth.unref?.()
+    if (typeof ctx?.effect === 'function') {
+      ctx.effect(() => () => clearInterval(cloudflareHealth), 'dsh-pocket-ios: cloudflare 隧道健康检查')
+    }
+
   return attachStableProxy(ctx, route.handler)
 }
 

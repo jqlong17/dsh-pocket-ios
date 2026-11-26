@@ -17,6 +17,16 @@ import UserNotifications
 extension ConnectionModel {
 
     /// 用最新 session 列表更新 running 状态机，识别"运行中 → 已结束"的会话。
+    /// Cloudflare 隧道失效时，边缘会回一页 HTML（Origin DNS error / 1033）。
+    /// 直接把 HTML 塞进 localizedDescription 会把整页标签喷在界面上（2026-11-26 用户截图），
+    /// 这里识别出来换成一句人话，并让调用方标记「需要重新扫码」。
+    static func htmlTunnelMessage(_ error: Error) -> String? {
+        let lowered = String(describing: error).lowercased()
+        guard lowered.contains("<!doctype") || lowered.contains("<html")
+            || lowered.contains("origin dns error") || lowered.contains("error 1033") else { return nil }
+        return "这个地址已经失效（Cloudflare 找不到隧道）。请到电脑面板重新生成二维码，再扫码连接。"
+    }
+
     @MainActor
     func detectSessionCompletions() async {
         let latest = Dictionary(sessionStore.sessions.map { ($0.sessionId, $0.running) }, uniquingKeysWith: { first, _ in first })
@@ -134,7 +144,9 @@ extension ConnectionModel {
                 isTransient: transient,
                 isSilent: silently,
                 hasExistingSessions: !sessionStore.sessions.isEmpty,
-                message: transient ? "连接电脑超时，正在重试…" : "无法读取会话：\(error.localizedDescription)"
+                message: transient
+                    ? "连接电脑超时，正在重试…"
+                    : (Self.htmlTunnelMessage(error) ?? "无法读取会话：\(error.localizedDescription)")
             )
             switch action {
             case .ignore:
@@ -148,6 +160,11 @@ extension ConnectionModel {
             case .retryQuietly:
                 recordDiagnostic("会话列表刷新遇到网络抖动，保留当前列表")
             case .showMessage(let message):
+                if Self.htmlTunnelMessage(error) != nil {
+                    // 地址已死，不是网络抖动：引导重新扫码，别让他反复重试。
+                    connection.addressNeedsRescan = true
+                    recordDiagnostic("会话列表返回 HTML（Cloudflare 隧道已失效），已提示重新扫码")
+                }
                 recordDiagnostic("会话列表刷新失败：\(error.localizedDescription)")
                 connection.errorMessage = message
                 scheduleSessionListRetry()
