@@ -107,25 +107,24 @@ struct ComposerBar: View {
                     .pocketSystemGlassCircle(size: Self.controlHeight)
             }
             .accessibilityLabel(L10n.t("添加图片或拍照"))
-              // UIKit 版输入框：需要拦回车 + 判断输入法是否组字（SwiftUI TextField 收不到硬件回车）
-              ComposerTextView(
-                  text: $model.draft,
-                  placeholder: L10n.t("发送消息"),
-                  minHeight: Self.controlHeight - 12,
-                  maxHeight: Self.controlHeight * 5,
-                  isFocused: focused.wrappedValue,
-                  onFocusChange: { focused.wrappedValue = $0 },
-                  onSend: {
-                      guard canSend else { return }
+            TextField(L10n.t("发送消息"), text: $model.draft, axis: .vertical).lineLimit(1...5)
+                .focused(focused)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(minHeight: Self.controlHeight)
+                .pocketSystemGlassField(cornerRadius: Self.controlHeight / 2)
+                  // 外接键盘回车 = 发送；但**中文输入法组字时要把回车让给输入法**，
+                  // 否则回车会吞掉英文候选（2026-11-26 iPad 实测）。Shift+回车仍换行。
+                  .onKeyPress(phases: .down) { press in
+                      guard press.key == .return else { return .ignored }
+                      if TextCompositionState.hasMarkedText { return .ignored }
+                      if press.modifiers.contains(.shift) { return .ignored }
+                      guard canSend else { return .ignored }
                       focused.wrappedValue = false
                       model.sendMessage(in: session)
+                      return .handled
                   }
-              )
-                  .padding(.horizontal, 12)
-                  .padding(.vertical, 6)
-                  .frame(minHeight: Self.controlHeight)
-                  .pocketSystemGlassField(cornerRadius: Self.controlHeight / 2)
-                  .accessibilityIdentifier("composer-field")
+                .accessibilityIdentifier("composer-field")
             Button {
                 focused.wrappedValue = false
                 model.sendMessage(in: session)
