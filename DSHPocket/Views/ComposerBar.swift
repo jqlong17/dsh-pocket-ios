@@ -113,6 +113,17 @@ struct ComposerBar: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: Self.controlHeight)
                 .pocketSystemGlassField(cornerRadius: Self.controlHeight / 2)
+                  // 外接键盘回车 = 发送；但**中文输入法组字时要把回车让给输入法**，
+                  // 否则回车会吞掉英文候选（2026-11-26 iPad 实测）。Shift+回车仍换行。
+                  .onKeyPress(phases: .down) { press in
+                      guard press.key == .return else { return .ignored }
+                      if TextCompositionState.hasMarkedText { return .ignored }
+                      if press.modifiers.contains(.shift) { return .ignored }
+                      guard canSend else { return .ignored }
+                      focused.wrappedValue = false
+                      model.sendMessage(in: session)
+                      return .handled
+                  }
                 .accessibilityIdentifier("composer-field")
             Button {
                 focused.wrappedValue = false
@@ -127,7 +138,9 @@ struct ComposerBar: View {
             .accessibilityIdentifier("send-button")
         }
         .padding(.horizontal)
-        .padding(.vertical, 10)
+          .padding(.top, 10)
+          // iPad 上输入法候选栏紧贴输入框（2026-11-26 反馈）：底部多留 4pt 呼吸
+          .padding(.bottom, 14)
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
     }
