@@ -249,6 +249,9 @@ final class ConnectionModel {
     var networkWatcherStarted = false
     /// 本轮启动是否已尝试用设备凭证换票，避免 401 循环。
     var authRefreshAttempted = false
+    /// 同一地址的换票任务（串行化）。并发换票会互相把对方刚拿到的 cookie 作废，
+    /// 表现为服务端一直 `refresh ok`、客户端一直 401（2026-11-26 阿里云上实测）。
+    var refreshTasksByAddress: [String: Task<Bool, Never>] = [:]
     var sendTask: Task<Void, Never>?
     var pendingSendID: String?
     var pendingSendRpcId: String?

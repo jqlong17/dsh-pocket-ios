@@ -65,6 +65,19 @@ extension ConnectionModel {
     /// 还没切过去的那台。结果就是「探针 401 → 判定目标不可用」，永远换不过去。
     @MainActor
     func tryRefreshAuth(for address: String) async -> Bool {
+        // 串行化：并发换票会让彼此的 cookie 互相作废（服务端一直 ok、客户端一直 401）。
+        if let inFlight = refreshTasksByAddress[address] {
+            return await inFlight.value
+        }
+        let task = Task { @MainActor in await self.performRefresh(for: address) }
+        refreshTasksByAddress[address] = task
+        let result = await task.value
+        refreshTasksByAddress[address] = nil
+        return result
+    }
+
+    @MainActor
+    private func performRefresh(for address: String) async -> Bool {
         guard let token = ConnectionVault.loadDeviceToken(for: address),
               let base = try? Self.serverURL(from: address) else { return false }
         // 先删掉已失效的 dsh-auth cookie：带着旧凭证去换票，DSH 会当成「续期一个失效会话」，
@@ -93,6 +106,9 @@ extension ConnectionModel {
         let fresh = HTTPCookieStorage.shared.cookies(for: base)?
             .contains { $0.name.hasPrefix("dsh-auth") } ?? false
         if fresh {
+            // 换票成功说明登录态已恢复：复位「换过一次票」标记，
+            // 否则之后再遇 401 会直接登出，用户只能重扫（2026-11-26 复现）。
+            authRefreshAttempted = false
             ConnectionVault.saveAuthCookies(from: base, address: address)
             return true
         }

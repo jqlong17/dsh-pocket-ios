@@ -42,15 +42,27 @@ def api(path):
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read() or b"{}")
 
-builds = api(f"/builds?filter[app]={app_id}&limit=10&sort=-uploadedDate").get("data", [])
+if want:
+    # 按版本精确查：之前用「最近 10 个」再筛，会因为分页/排序拿不到目标构建，误报成 18。
+    builds = api(f"/builds?filter[app]={app_id}&filter[version]={want}&limit=1").get("data", [])
+else:
+    builds = api(f"/builds?filter[app]={app_id}&limit=1&sort=-uploadedDate").get("data", [])
 if not builds:
-    print("  ❌ 查不到任何构建"); sys.exit(1)
-target = next((b for b in builds if b["attributes"]["version"] == want), builds[0]) if want else builds[0]
+    print(f"  ❌ 查不到构建 {want or '(最新)'}"); sys.exit(1)
+target = builds[0]
 version = target["attributes"]["version"]
 print(f"  构建 {version} · {target['attributes']['processingState']}")
 
-detail = api(f"/builds/{target['id']}/buildBetaDetail").get("data", {}).get("attributes", {})
-internal = detail.get("internalBuildState")
+# 状态刚变更时接口有几秒延迟（2026-11-26：刚加完查到 READY，10 秒后变 IN）。
+# 所以轮询最多 90 秒，避免把「还在传播」误报成「没分发」。
+import time as _time
+internal = None
+for _ in range(7):
+    detail = api(f"/builds/{target['id']}/buildBetaDetail").get("data", {}).get("attributes", {})
+    internal = detail.get("internalBuildState")
+    if internal == "IN_BETA_TESTING":
+        break
+    _time.sleep(12)
 print(f"  内部状态: {internal} · 外部状态: {detail.get('externalBuildState')}")
 
 # 关键判据不是"组里有没有"，而是"内测状态是不是真的在分发"。
