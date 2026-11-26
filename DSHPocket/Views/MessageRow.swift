@@ -32,6 +32,8 @@ struct MessageRow: View {
     var maxBubbleWidth: CGFloat = 340
     @State private var previewItem: PreviewImageItem?
     @State private var copied = false
+    /// 打开纯文本选择面板（长按选不中时的兜底，2026-11-26）。
+    @State private var showingSelectableText = false
     /// 只在"复制成功"时递增，避免图标恢复时再触发一次触感。
     @State private var copyHapticTick = 0
 
@@ -417,6 +419,23 @@ struct MessageRow: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.t(copied ? "已复制" : "复制整条消息"))
                     .sensoryFeedback(.success, trigger: copyHapticTick)
+                    // 长按选不中（iPad 实测无高亮）：给一个明确的「选择文本」入口
+                    Button {
+                        showingSelectableText = true
+                    } label: {
+                        Image(systemName: "text.cursor")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, height: 14)
+                            .frame(minWidth: 32, minHeight: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.t("选择文本"))
+                    .accessibilityIdentifier("message-select-text")
+                    .sheet(isPresented: $showingSelectableText) {
+                        SelectableTextSheet(text: message.text)
+                    }
                     Button {
                         model.beginQuote(message)
                     } label: {

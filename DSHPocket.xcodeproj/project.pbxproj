@@ -74,6 +74,7 @@
 		D1CFA11E000000000000004E /* RenameSessionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CFA11E000000000000004D /* RenameSessionSheet.swift */; };
 		22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */; };
 		CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */; };
+		5DF1A6457396F2476BC4073F /* SelectableTextSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E573E506FD2EA401DAB42F /* SelectableTextSheet.swift */; };
 		5EFEC560F088917A446DD36C /* TextCompositionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57107BB2433FF779DA9ABD58 /* TextCompositionState.swift */; };
 		C0F4E7568CB76F4A4C033491 /* DirectoryPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F165A347E68DCB6AA617B0 /* DirectoryPickerView.swift */; };
 		D8BECC5DD7DFAE0316599C0C /* DirectoryError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56B339D2C371BDE65031A09 /* DirectoryError.swift */; };
@@ -197,6 +198,7 @@
 		D1CFA11E000000000000004D /* RenameSessionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenameSessionSheet.swift; sourceTree = "<group>"; };
 		DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Demo.swift"; sourceTree = "<group>"; };
 		242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnectionModel+Endpoints.swift"; sourceTree = "<group>"; };
+		36E573E506FD2EA401DAB42F /* SelectableTextSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Views/SelectableTextSheet.swift"; sourceTree = "<group>"; };
 		57107BB2433FF779DA9ABD58 /* TextCompositionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Support/TextCompositionState.swift"; sourceTree = "<group>"; };
 		C2F165A347E68DCB6AA617B0 /* DirectoryPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Views/DirectoryPickerView.swift"; sourceTree = "<group>"; };
 		A56B339D2C371BDE65031A09 /* DirectoryError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../Model/DirectoryError.swift"; sourceTree = "<group>"; };
@@ -356,6 +358,7 @@
 				D1CFA11E0000000000000017 /* DiagnosticSamples.swift */,
 				DC99A85848E67A75443E856D /* ConnectionModel+Demo.swift */,
 				242403103FB8583539EEB2D7 /* ConnectionModel+Endpoints.swift */,
+				36E573E506FD2EA401DAB42F /* SelectableTextSheet.swift */,
 				57107BB2433FF779DA9ABD58 /* TextCompositionState.swift */,
 				C2F165A347E68DCB6AA617B0 /* DirectoryPickerView.swift */,
 				A56B339D2C371BDE65031A09 /* DirectoryError.swift */,
@@ -643,6 +646,7 @@
 				D1CFA11E000000000000001C /* ConnectHeaderCard.swift in Sources */,
 				22CEEF6086235C79AF9AFB38 /* ConnectionModel+Demo.swift in Sources */,
 				CD7E0C3CD0CBAE04D3964B67 /* ConnectionModel+Endpoints.swift in Sources */,
+				5DF1A6457396F2476BC4073F /* SelectableTextSheet.swift in Sources */,
 				5EFEC560F088917A446DD36C /* TextCompositionState.swift in Sources */,
 				C0F4E7568CB76F4A4C033491 /* DirectoryPickerView.swift in Sources */,
 				D8BECC5DD7DFAE0316599C0C /* DirectoryError.swift in Sources */,
