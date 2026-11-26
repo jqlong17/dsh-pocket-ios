@@ -50,7 +50,12 @@ version = target["attributes"]["version"]
 print(f"  构建 {version} · {target['attributes']['processingState']}")
 
 detail = api(f"/builds/{target['id']}/buildBetaDetail").get("data", {}).get("attributes", {})
-print(f"  内部状态: {detail.get('internalBuildState')} · 外部状态: {detail.get('externalBuildState')}")
+internal = detail.get("internalBuildState")
+print(f"  内部状态: {internal} · 外部状态: {detail.get('externalBuildState')}")
+
+# 关键判据不是"组里有没有"，而是"内测状态是不是真的在分发"。
+# 2026-11-26：15/16 加组返回 204，但状态停在 READY_FOR_BETA_TESTING，从未分发。
+stuck = internal != "IN_BETA_TESTING"
 
 groups = api(f"/betaGroups?filter[app]={app_id}&limit=20").get("data", [])
 missing = []
@@ -63,9 +68,14 @@ for g in groups:
     if not ok:
         missing.append(name)
 
+if stuck:
+    print(f"  ❌ 内测状态是 {internal}，不是 IN_BETA_TESTING —— 加了组但没真正分发")
+    print("     → 修法：从组里移除后重加一次（compliance 必须先答）")
+    sys.exit(1)
+
 if missing:
     print(f"  ❌ 以下通道缺少 build {version}: {', '.join(missing)}")
     print("     → 内部/外部是两条独立通道；外部还需要 Beta 审核")
     sys.exit(1)
-print("  ✅ 所有测试通道都包含该构建")
+print("  ✅ 状态与通道都正确")
 PY

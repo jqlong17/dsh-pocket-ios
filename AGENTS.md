@@ -74,32 +74,32 @@
 
 **新增插件脚本或面板代码时，先把「能被自动检查的那部分」写成测试，再改实现。**
 
-## 1.6 发 TestFlight：**"加进某个组" ≠ "目标用户看得到"**
+## 1.6 发 TestFlight：**"加进组"不够，要看 internalBuildState**
 
-2026-11-26 踩的坑：构建 15/16/17 只加进了「内部测试」组，**没有加进「Public Beta（外部）」组**；
-而手机上 TestFlight 登的是外部测试者账号（`huangjiashiyao@icloud.com`），于是**只能看到外部组里的 build 14**。
-当时连查三次内部组都"在"，就误判成"推送失败 / 客户端缓存"，来回折腾了四轮。
+2026-11-26 踩的坑：构建 15/16 **调用加组接口返回 204（成功）**，但内测状态一直停在
+`READY_FOR_BETA_TESTING`，**从未真正分发**。手机上（TestFlight 登的是内部测试者 `jqlong@me.com`）
+只能看到上次正常分发的 build 14。连查三次"组里有没有它"都回答"有"，于是误判成推送/缓存问题。
 
-**正确心智模型：**
+**真正的原因是顺序**：15/16 是在 export compliance 还没答（`usesNonExemptEncryption` 为 null）
+的时候加进组的，加组成功但分发被卡住；后来补了 compliance，**旧的加组记录也不会自动重试**。
+17 是 compliance 已经为 false 之后才加组的，所以立刻变成 `IN_BETA_TESTING`。
 
-```
-内部测试（Internal）        … 团队成员账号，加进去立刻可见，不用审核
-Public Beta（External）     … 外部测试者，**每个构建都要过 Beta App Review**，且同一时间只能一个在审
-两条通道的构建列表互相独立；"我看到的是哪个" 取决于 TestFlight 登录的 Apple ID
-```
+**修复动作：把卡住的构建从组里移除再重加一次**（2026-11-26 实测 15/16 立刻变 `IN_BETA_TESTING`）。
 
-**发版后必须跑：**
+**判据（必须看状态，不是看成员）：**
 
 ```bash
-./scripts/check-testflight.sh 17     # 打印两个通道各自有没有这个构建 + 内外状态
+./scripts/check-testflight.sh 17   # 打印每组是否包含 + 内部/外部状态；状态不对直接失败
 ```
 
-**它的判据是"每个组里有没有这个 build"，而不是"我有没有调用过添加接口"** —— 这正是当时缺的一步。
+**三条规矩：**
 
-**另外两条规矩：**
+1. **先答 export compliance（`usesNonExemptEncryption=false`），再加组**。
+2. **加完核对 `internalBuildState == IN_BETA_TESTING`**；停在 `READY_FOR_BETA_TESTING` 就移除重加。
+3. **诊断顺序**：检查状态 → 再看是否在目标通道 → 最后才怀疑客户端缓存。
 
-1. **外部构建一次只能一个在审**：`Another build is in review` 时要等前一个过，别反复提交。
-2. **诊断顺序**：先 `check-testflight.sh` 看通道 → 再看 App Store Connect 的构建状态 → 最后才怀疑客户端缓存。
+**另外**：外部（Public Beta）通道每构建都要 Beta App Review，且**同一时间只能一个在审**
+（`Another build is in review`）；内部/外部构建列表互相独立。
 
 ## 2. 本仓库的约定
 
