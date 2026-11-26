@@ -21,7 +21,7 @@ import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } f
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { randomInt } from 'node:crypto'
-import { createLoginLimiter, randomPin } from './pin-policy.js'
+import { clientKey, createLoginLimiter, randomPin } from './pin-policy.js'
 import { homedir, hostname as osHostname } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1967,7 +1967,7 @@ function guessProto(req, host) {
               pinAttempt = new URLSearchParams(raw).get('token') ?? pinAttempt
             }
           }
-          const loginIp = String(req.socket?.remoteAddress ?? 'unknown')
+          const loginIp = clientKey(req.headers, req.socket?.remoteAddress)
           const now = Date.now()
           const limited = loginLimiter.check(loginIp, now)
           if (limited) {

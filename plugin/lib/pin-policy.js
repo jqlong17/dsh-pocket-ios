@@ -85,3 +85,20 @@ export function createLoginLimiter({
     },
   }
 }
+
+/**
+ * 取「真正的客户端标识」用于限流。
+ *
+ * 为什么不能直接用 socket.remoteAddress：经 tailscale serve / cloudflared 转发时，
+ * remoteAddress 恒为 127.0.0.1，所有用户会共用一个计数桶——一个人的失败会锁住所有人，
+ * 攻击者也能借此做拒绝服务。优先用转发头，最后才退回 socket 地址。
+ */
+export function clientKey(headers = {}, remoteAddress = '') {
+  const xff = String(headers['x-forwarded-for'] ?? '').split(',')[0].trim()
+  if (xff) return xff
+  const cf = String(headers['cf-connecting-ip'] ?? '').trim()
+  if (cf) return cf
+  const login = String(headers['tailscale-user-login'] ?? '').trim()
+  if (login) return `user:${login}`
+  return String(remoteAddress || 'unknown')
+}

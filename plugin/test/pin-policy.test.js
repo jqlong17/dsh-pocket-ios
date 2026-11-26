@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createLoginLimiter, randomPin } from '../lib/pin-policy.js'
+import { clientKey, createLoginLimiter, randomPin } from '../lib/pin-policy.js'
 
 test('密码 12 位，同时含字母和数字，且不含易混字符', () => {
   for (let i = 0; i < 500; i++) {
@@ -46,4 +46,11 @@ test('成功登录清零，不影响其他 IP', () => {
   limiter.clear('b')
   assert.equal(limiter.check('b', t0 + 10), null)
   assert.equal(limiter.size, 0)
+})
+
+test('限流按真实客户端取键：转发头优先，最后才用 socket 地址', () => {
+  assert.equal(clientKey({ 'x-forwarded-for': '1.1.1.1, 2.2.2.2' }, '127.0.0.1'), '1.1.1.1')
+  assert.equal(clientKey({ 'cf-connecting-ip': '3.3.3.3' }, '127.0.0.1'), '3.3.3.3')
+  assert.equal(clientKey({ 'tailscale-user-login': 'a@b.com' }, '127.0.0.1'), 'user:a@b.com')
+  assert.equal(clientKey({}, '10.0.0.9'), '10.0.0.9')
 })
