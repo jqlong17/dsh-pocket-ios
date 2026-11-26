@@ -138,15 +138,27 @@ enum ConnectionVault {
 
     /// 把地址归一化成 Keychain key 的一部分。
     ///
-    /// 为什么要按地址隔离：之前设备凭证和 cookie 只有**一份**全局的。
-    /// 用户保存了多台电脑/多种连接方式（家里局域网、公司、云服务器隧道），
-    /// 切到另一个地址时那份凭证对不上，只能重新输密码——
-    /// 而历史连接的意义就是「点一下就回去」（2026-11-15 用户反馈）。
-    /// 现在每个 host:port 各存一份，互不覆盖。
+    /// 为什么要按地址隔离：曾经设备凭证和 cookie 只有**一份**全局的，
+    /// 切到另一台电脑时凭证对不上，只能重新输密码（2026-11-15 用户反馈）。
+    ///
+    /// 为什么 key 只取 host、**不含端口**（2026-11-26 修）：
+    /// 同一台机器的同一个域名，写成 `host` 和 `host:443` 会得到两个 key，
+    /// 于是「换了一种写法」就找不到设备凭证，退化成空密码登录 → 401。
+    /// 端口变化不改变「这是哪台电脑」，所以不该参与身份判断；
+    /// 真正的隔离靠 host 不同（局域网 IP / ts.net / 隧道域名各不相同）。
     private static func vaultKey(_ address: String) -> String {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let host = url.host else {
             // 解析不出来就退化成原文（去掉会破坏 Keychain 的字符）
+            return trimmed.replacingOccurrences(of: "/", with: "_")
+        }
+        return host
+    }
+
+    /// 旧版 key（host-port）。只用于读取历史凭证，读到后迁移到新 key。
+    private static func legacyVaultKey(_ address: String) -> String {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let host = url.host else {
             return trimmed.replacingOccurrences(of: "/", with: "_")
         }
         let port = url.port.map { "-\($0)" } ?? ""
@@ -189,7 +201,12 @@ enum ConnectionVault {
     /// 取某个地址的设备凭证。地址为 nil 时返回 nil（没有地址就无从查起）。
     static func loadDeviceToken(for address: String?) -> String? {
         guard let address, !address.isEmpty else { return nil }
-        return read(service: deviceService(address))
+        if let token = read(service: deviceService(address)) { return token }
+        // 兼容旧 key（host-port）：读到就迁移到新 key，避免每次都要兼容查找
+        let legacyService = "\(deviceServiceBase).\(legacyVaultKey(address).replacingOccurrences(of: "/", with: "_"))"
+        guard let migrated = read(service: legacyService) else { return nil }
+        write(migrated, service: deviceService(address))
+        return migrated
     }
 
     static func clearDeviceToken(for address: String) {
