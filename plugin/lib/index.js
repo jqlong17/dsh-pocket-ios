@@ -21,6 +21,7 @@ import { snapshotFromTelemetry, messageDescriptor, buildTag, isSnapshotFresh } f
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { randomInt } from 'node:crypto'
+import { createLoginLimiter, randomPin } from './pin-policy.js'
 import { homedir, hostname as osHostname } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -831,6 +832,9 @@ async function ensureTailscaleServe(port) {
 
 const PIN_FILE = join(LOG_DIR, 'pin')
 
+/** 登录失败限流器（纯逻辑在 pin-policy.js，便于单测）。 */
+const loginLimiter = createLoginLimiter()
+
 /** 读取（或首次生成）本插件自己的访问密码，不依赖 dsh-pocket。 */
 const PIN_PATTERN = /^[A-Za-z0-9]{8,64}$/
 
@@ -845,7 +849,7 @@ async function readPin() {
     const existing = (await readFile(PIN_FILE, 'utf8')).trim()
     if (/^[A-Za-z0-9]{8,64}$/.test(existing)) return existing
   } catch { /* 首次运行：下面生成 */ }
-  const pin = String(randomInt(10_000_000, 100_000_000))
+  const pin = randomPin()
   try {
     await mkdir(LOG_DIR, { recursive: true })
     await writeFile(PIN_FILE, pin, { mode: 0o600 })
@@ -1963,13 +1967,29 @@ function guessProto(req, host) {
               pinAttempt = new URLSearchParams(raw).get('token') ?? pinAttempt
             }
           }
+          const loginIp = String(req.socket?.remoteAddress ?? 'unknown')
+          const now = Date.now()
+          const limited = loginLimiter.check(loginIp, now)
+          if (limited) {
+            res.writeHead(429, { 'retry-after': String(limited.retryAfter), 'content-type': 'application/json' })
+            res.end(JSON.stringify({ ok: false, error: 'too-many-attempts', retryAfter: limited.retryAfter }))
+            return
+          }
           const expected = await readPin()
           const attempt = String(pinAttempt ?? '')
           if (attempt !== expected) {
-            await logLine(`login 401 host=${String(req.headers.host ?? '')} attemptLen=${attempt.length}`)
+            const lockMs = loginLimiter.recordFailure(loginIp, now)
+            await logLine(`login 401 host=${String(req.headers.host ?? '')} attemptLen=${attempt.length}${lockMs ? ` locked=${Math.round(lockMs / 60000)}m` : ''}`)
+            if (lockMs) {
+              const retryAfter = Math.ceil(lockMs / 1000)
+              res.writeHead(429, { 'retry-after': String(retryAfter), 'content-type': 'application/json' })
+              res.end(JSON.stringify({ ok: false, error: 'too-many-attempts', retryAfter }))
+              return
+            }
             send(res, 401, { ok: false })
             return
           }
+          loginLimiter.clear(loginIp)
           // 重定向必须回到“客户端正在使用的地址”（localhost / 局域网 / Tailscale 都可），
           // 不能固定用配置里的 Tailscale 地址，否则局域网登录会被带到不可达的域名。
           const host = String(req.headers.host ?? '')
@@ -2326,7 +2346,7 @@ function guessProto(req, host) {
           return
         }
         if (endpoint === 'pin.refresh') {
-          const nextPin = String(randomInt(10_000_000, 100_000_000))
+          const nextPin = randomPin()
           await setPin(nextPin)
           await logLine('pin refreshed')
           const value = await tailscaleStatus()
