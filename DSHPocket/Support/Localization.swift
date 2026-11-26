@@ -74,6 +74,8 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "选择文本": "Select text",
+        "复制全部": "Copy all",
         "复制表格（可粘到表格软件）": "Copy table (pastes into spreadsheets)",
         "复制为 Markdown": "Copy as Markdown",
         "复制表格": "Copy table",
