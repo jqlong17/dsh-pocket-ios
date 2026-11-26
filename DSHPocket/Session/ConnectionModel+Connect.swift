@@ -133,6 +133,9 @@ extension ConnectionModel {
     func connect() async {
         connection.errorMessage = nil
         connection.addressNeedsRescan = false
+        // 机器名是「本次连接的目标机器」的属性，连接开始前必须清掉上一台的值，
+        // 否则新地址会带着旧机器名入库，进而被误合并（2026-11-26 iPad 实测）。
+        currentMachineName = nil
         // 扫码/输入地址会先把 serverAddress 改成新地址。失败时必须回滚，
         // 否则界面会出现「已连接 + 新地址」这种假状态，掩盖了没连上的事实。
         connectRollback = (connection.serverAddress, connection.isConnected)

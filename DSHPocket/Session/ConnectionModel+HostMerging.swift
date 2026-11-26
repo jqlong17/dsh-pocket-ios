@@ -16,8 +16,15 @@ extension ConnectionModel {
     @MainActor
     func captureMachineName(from response: URLResponse?) {
         guard let http = response as? HTTPURLResponse,
-              let name = http.value(forHTTPHeaderField: "x-dsh-machine"),
-              !name.isEmpty else { return }
+              let name = MachineNamePolicy.resolve(header: http.value(forHTTPHeaderField: "x-dsh-machine")),
+              !name.isEmpty else {
+            // 拿不到就清空，**不能沿用上一台机器的值**：
+            // 否则把 A 的机器名安到 B 的新地址上，两台不同 DSH 会被合并成一台
+            // （2026-11-26 iPad 实测：Mac 与阿里云被并成「DSH 1」）。
+            currentMachineName = nil
+            recordDiagnostic("配对响应没有机器名头，本次不归属任何已知机器")
+            return
+        }
         currentMachineName = name
     }
 
