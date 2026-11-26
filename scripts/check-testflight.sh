@@ -32,30 +32,45 @@ rm -f "$TOKEN_FILE"
 [ -n "$TOKEN" ] || { echo "  ❌ 生成 API token 失败"; exit 1; }
 
 python3 - "$TOKEN" "$APP_ID" "$BUILD" << 'PY'
-import json, sys, urllib.request
+import json, sys, time as _time, urllib.request
 
 token, app_id, want = sys.argv[1], sys.argv[2], sys.argv[3]
 BASE = "https://api.appstoreconnect.apple.com/v1"
 
 def api(path):
-    req = urllib.request.Request(BASE + path, headers={"Authorization": f"Bearer {token}"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read() or b"{}")
+    # Apple 的接口偶发 EOF/超时（2026-11-26 连挂两次）：重试 3 次，别把网络抖动
+    # 报成「状态不对」。
+    last = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(BASE + path, headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(req, timeout=45) as r:
+                return json.loads(r.read() or b"{}")
+        except Exception as error:   # noqa: BLE001 - 网络层什么都可能抛
+            last = error
+            _time.sleep(2 + attempt * 2)
+    raise last
 
 if want:
-    # 按版本精确查：之前用「最近 10 个」再筛，会因为分页/排序拿不到目标构建，误报成 18。
-    builds = api(f"/builds?filter[app]={app_id}&filter[version]={want}&limit=1").get("data", [])
+    # 按版本查，但**同版本号可能有多条历史记录**（编号跨时代复用，2026-11-26 实测
+    # version=19 有两条：今天上传的 a9940a24… 与 11-09 的 778a404a…）。
+    # 必须按 uploadedDate 取最新那条，否则会检查错构建、得出「状态没分发」的错误结论。
+    builds = api(f"/builds?filter[app]={app_id}&filter[version]={want}&limit=20").get("data", [])
+    if builds:
+        builds.sort(key=lambda b: b["attributes"].get("uploadedDate") or "", reverse=True)
 else:
     builds = api(f"/builds?filter[app]={app_id}&limit=1&sort=-uploadedDate").get("data", [])
 if not builds:
     print(f"  ❌ 查不到构建 {want or '(最新)'}"); sys.exit(1)
+if len(builds) > 1:
+    print(f"  ⚠️  版本 {want} 有 {len(builds)} 条记录，取最新上传的一条：" +
+          ", ".join(b["id"][:8] for b in builds[:3]))
 target = builds[0]
 version = target["attributes"]["version"]
 print(f"  构建 {version} · {target['attributes']['processingState']}")
 
 # 状态刚变更时接口有几秒延迟（2026-11-26：刚加完查到 READY，10 秒后变 IN）。
 # 所以轮询最多 90 秒，避免把「还在传播」误报成「没分发」。
-import time as _time
 internal = None
 for _ in range(7):
     detail = api(f"/builds/{target['id']}/buildBetaDetail").get("data", {}).get("attributes", {})

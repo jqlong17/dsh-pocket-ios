@@ -98,6 +98,11 @@
 2. **加完核对 `internalBuildState == IN_BETA_TESTING`**；停在 `READY_FOR_BETA_TESTING` 就移除重加。
 3. **诊断顺序**：检查状态 → 再看是否在目标通道 → 最后才怀疑客户端缓存。
 
+**第四个坑（2026-11-26 当天发现）**：**同一版本号可能有多条构建记录**（编号跨时代复用：
+`version=19` 同时存在今天上传的 `a9940a24…` 和 11-09 的 `778a404a…`）。
+只按 `filter[version]=19&limit=1` 取，会抓到旧的那条，于是反复得出「状态没分发」的错误结论。
+→ `check-testflight.sh` 现在按 `uploadedDate` 取最新一条，并打印同版本的多条记录提醒。
+
 **另外**：外部（Public Beta）通道每构建都要 Beta App Review，且**同一时间只能一个在审**
 （`Another build is in review`）；内部/外部构建列表互相独立。
 
