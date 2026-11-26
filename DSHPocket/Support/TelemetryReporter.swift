@@ -14,6 +14,11 @@ import Foundation
 enum TelemetryReporter {
     /// 上报一次。`baseURL` 是当前连接的服务器地址（含 scheme，不含尾斜杠）。
     static func report(_ payload: [String: Any], to baseURL: URL?) {
+        // 带上版本号：否则「你说改了没生效」时，我无法从服务端判断你装的是哪一版
+        // （2026-11-26 iPad 回车问题，就是卡在「不知道他跑的是 21 还是 22」）。
+        var payload = payload
+        payload["appVersion"] = AppInfo.version
+        payload["appBuild"] = AppInfo.build
         guard let baseURL else { return }
         // 只在有会话连接时上报：没连上就没有诊断价值，还会白打请求。
         guard let url = URL(string: baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/dsh-pocket-ios/telemetry") else {
