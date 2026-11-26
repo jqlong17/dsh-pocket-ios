@@ -228,7 +228,8 @@ extension ConnectionModel {
             connection.isConnected = true
             connection.errorMessage = nil
             connection.addressNeedsRescan = false
-            PinKeychain.save(connection.pin)
+            // 密码不落盘：登录成功拿到的长期设备凭证才是后续换票的依据（见 persistConnectedState）。
+            PinKeychain.clear()
             ConnectionVault.saveAuthCookies(from: url, address: connection.serverAddress)
             recordDiagnostic("token 登录成功：会话 \(sessionStore.sessions.count) 个")
             return
@@ -306,6 +307,8 @@ extension ConnectionModel {
             captureMachineName(from: pluginHTTP)
             persistConnectedState()
             connection.pin = ""
+            // 只用一次：登录成功即丢弃密码，不再写 Keychain。
+            PinKeychain.clear()
             recordDiagnostic("连接成功：会话 \(sessionStore.sessions.count) 个")
             // 连上就开探测：设置页只是「查看」，不该是探测的前置条件。
             // 否则用户不开设置页时遥测里的 probes 永远是 pending，服务端也没法分析。

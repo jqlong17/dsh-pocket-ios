@@ -726,6 +726,34 @@ function newDeviceToken() {
   return Array.from({ length: 43 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
+/**
+ * 签发（或复用）长期设备凭证，返回 Set-Cookie 的值。
+ *
+ * 为什么要抽出来：pair 和 login 都应该能换到这张票。
+ * 只给 pair 发的话，用「手动输入密码」连上的用户永远拿不到设备凭证，
+ * 于是 DSH 一重启就退化成空密码登录（2026-11-26 实测）。
+ */
+async function issueDeviceCookie(req) {
+  const devices = await readDevices()
+  // 按「设备家族」复用，不再按整条 UA（UA 带 build 号，升一次版本就成了新设备）。
+  const userAgent = String(req.headers['user-agent'] ?? 'iOS')
+  const family = deviceFamily(userAgent)
+  const deviceName = userAgent.slice(0, 80)
+  let existing = Object.keys(devices).find(
+    (key) => (devices[key]?.family ?? deviceFamily(devices[key]?.name)) === family
+  )
+  if (!existing) {
+    existing = newDeviceToken()
+    devices[existing] = { name: deviceName, family, createdAt: Date.now(), lastUsedAt: Date.now() }
+  } else {
+    devices[existing].lastUsedAt = Date.now()
+    devices[existing].name = deviceName
+    devices[existing].family = family
+  }
+  await saveDevices(devices)
+  return `dsh-pocket-device=${encodeURIComponent(existing)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`
+}
+
 /** 从请求里取设备凭证：优先 header，其次 cookie。 */
 function deviceTokenFrom(req, urlObject) {
   const header = String(req.headers['x-dsh-pocket-device'] ?? '').trim()
@@ -1920,28 +1948,7 @@ function guessProto(req, host) {
           // App 靠这份凭证换新 cookie，不必重新扫码。
           let deviceCookie = []
           try {
-            const devices = await readDevices()
-            // 按「设备家族」复用，不再按整条 UA。
-            // UA 里带 App build 号（DSHPocket/14），装一次新版本就成了「新设备」——
-            // 实测一台 iPhone 攒出 9 条记录，设备管理面板因此失真。
-            const userAgent = String(req.headers['user-agent'] ?? 'iOS')
-            const family = deviceFamily(userAgent)
-            const deviceName = userAgent.slice(0, 80)
-            let existing = Object.keys(devices).find(
-              (key) => (devices[key]?.family ?? deviceFamily(devices[key]?.name)) === family
-            )
-            if (!existing) {
-              existing = newDeviceToken()
-              devices[existing] = { name: deviceName, family, createdAt: Date.now(), lastUsedAt: Date.now() }
-              await saveDevices(devices)
-            } else {
-              devices[existing].lastUsedAt = Date.now()
-              // 名字跟最新 UA 走（面板显示当前版本），家族不变。
-              devices[existing].name = deviceName
-              devices[existing].family = family
-              await saveDevices(devices)
-            }
-            deviceCookie = [`dsh-pocket-device=${encodeURIComponent(existing)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax`]
+            deviceCookie = [await issueDeviceCookie(req)]
           } catch (error) {
             await logLine(`device token issue failed: ${error?.message ?? error}`)
           }
@@ -2002,11 +2009,21 @@ function guessProto(req, host) {
           // 顺带把机器名带回给客户端：同一台机器常有局域网 + Tailscale 两条地址，
           // 客户端没有机器名就没法把「这两条是同一台」归到一组。客户端本来就要走这个
           // 端点换票，带上它不额外增加一次往返。
-          res.writeHead(302, {
+          // 密码登录成功也签发长期设备凭证：用户只需输一次密码，
+          // 之后 DSH 重启由 App 用它换新票，不必再输（也不该把密码存下来）。
+          let loginDeviceCookie = []
+          try {
+            loginDeviceCookie = [await issueDeviceCookie(req)]
+          } catch (error) {
+            await logLine(`device token issue failed (login): ${error?.message ?? error}`)
+          }
+          const loginHeaders = {
             location: target,
             'cache-control': 'no-store',
             'x-dsh-machine': osHostname(),
-          })
+          }
+          if (loginDeviceCookie.length) loginHeaders['set-cookie'] = loginDeviceCookie
+          res.writeHead(302, loginHeaders)
           res.end()
           return
         }
