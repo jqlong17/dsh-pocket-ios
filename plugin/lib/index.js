@@ -30,6 +30,7 @@ import { portCandidates, selectProxyPort, readPersistedPort, writePersistedPort,
 import { promisify } from 'node:util'
 import QRCode from 'qrcode'
 import { CloudflareTunnel, findCloudflared } from './cloudflare.js'
+import { listSubdirectories } from './dir-list.js'
 import { selectLanIPv4, lanEntryUrl } from './lan.js'
 import { findEasytier, readWireGuardPortal, normalizeWireGuardConfig, clientAddressFrom, coreCommand, randomNetwork, shadowrocketConf, installServiceCommand, uninstallServiceCommand, EASYTIER_DAEMON_LABEL } from './easytier.js'
 
@@ -1643,6 +1644,8 @@ export function apply(ctx) {
         const isLogin = rawPath === `${CHANNEL}/login`
           || rawPath === `${CHANNEL}/pair`
           || rawPath === `${CHANNEL}/refresh`
+          // dir.list 用设备令牌（与 refresh 同一套），不依赖浏览器 cookie。
+          || rawPath === `${CHANNEL}/dir.list`
           // easytier.conf 免认证：代理客户端下载它时没有 DSH cookie。
           // 内容只有局域网 IP + SOCKS5 端口 + 网段，不含任何凭证。
           || rawPath === `${CHANNEL}/easytier.conf`
@@ -2003,6 +2006,31 @@ function guessProto(req, host) {
         const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : ''
         // 用长期设备凭证换新的 dsh-auth cookie。
         // DSH 重启后原 cookie 失效，App 调这里拿新的，不必重新扫码。
+          // App 端浏览 Mac 上的目录（新建工作区用，2026-11-26）。
+          // 只列子目录、只读；鉴权走设备令牌。
+          if (endpoint === 'dir.list') {
+            if (req.method !== 'POST') { send(res, 405, { ok: false }); return }
+            const deviceToken = deviceTokenFrom(req, urlObject)
+            const knownDevices = await readDevices()
+            if (!deviceToken || !knownDevices[deviceToken]) {
+              await logLine('dir.list rejected (unknown device)')
+              send(res, 401, { ok: false })
+              return
+            }
+            const body = await readBody(req)
+            const requestedPath = body?.path ?? body?.args?.path ?? ''
+            try {
+              const value = await listSubdirectories(requestedPath)
+              send(res, 200, { ok: true, value })
+            } catch (error) {
+              send(res, 200, {
+                ok: false,
+                error: { code: error?.code ?? 'dir-failed', message: String(error?.message ?? error) },
+              })
+            }
+            return
+          }
+
         if (endpoint === 'refresh') {
           if (req.method !== 'POST' && req.method !== 'GET') { send(res, 405, { ok: false }); return }
           const deviceToken = deviceTokenFrom(req, urlObject)

@@ -114,6 +114,73 @@ extension ConnectionModel {
         }
     }
 
+    /// 列出 Mac 上的子目录（新建工作区用）。
+    ///
+    /// 走插件端点 `dir.list`：DSH 自己没有目录浏览 RPC（桌面端用的是系统对话框），
+    /// 手机上只能靠这条只读通道。鉴权用设备令牌，和 refresh 同一套。
+    @MainActor
+    func listDirectories(at path: String? = nil) async throws -> DirectoryListing {
+        guard let base = try? Self.serverURL(from: connection.serverAddress) else {
+            throw DirectoryError(message: L10n.t("还没连上电脑"))
+        }
+        guard let token = ConnectionVault.loadDeviceToken(for: connection.serverAddress) else {
+            throw DirectoryError(message: L10n.t("设备凭证失效，请重新扫码"))
+        }
+        var request = URLRequest(url: base.appending(path: "dsh-pocket-ios/dir.list"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "x-dsh-pocket-device")
+        request.httpShouldHandleCookies = true
+        var payload: [String: Any] = [:]
+        if let path, !path.isEmpty { payload["path"] = path }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        if status == 401 { throw DirectoryError(message: L10n.t("设备凭证失效，请重新扫码")) }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DirectoryError(message: L10n.t("电脑返回了无法解析的内容"))
+        }
+        guard object["ok"] as? Bool == true,
+              let value = object["value"] as? [String: Any],
+              let current = value["path"] as? String else {
+            let error = object["error"] as? [String: Any]
+            throw DirectoryError(message: error?["message"] as? String ?? L10n.t("读取目录失败"))
+        }
+        let dirs = (value["dirs"] as? [[String: Any]] ?? []).compactMap { item -> DirectoryEntry? in
+            guard let name = item["name"] as? String, let full = item["path"] as? String else { return nil }
+            return DirectoryEntry(name: name, path: full)
+        }
+        return DirectoryListing(path: current, parent: value["parent"] as? String, dirs: dirs)
+    }
+
+    /// 把一个已存在的目录加成工作区。返回稳定的 workspaceId（已存在则直接返回它的 id）。
+    @MainActor
+    func createWorkspace(path: String, title: String? = nil) async -> Result<String, DirectoryError> {
+        do {
+            let value = try await rpcClient.rpcAdapted("workspace/create", args: ["request": ["path": path]])
+            guard let workspace = value["workspace"] as? [String: Any],
+                  let id = workspace["workspaceId"] as? String else {
+                return .failure(DirectoryError(message: L10n.t("创建成功但没拿到工作区 id")))
+            }
+            if let title, !title.trimmingCharacters(in: .whitespaces).isEmpty {
+                _ = try? await rpcClient.rpcAdapted("workspace/rename", args: [
+                    "request": ["workspaceId": id, "title": title],
+                ])
+            }
+            workspaces = await loadWorkspaces()
+            return .success(id)
+        } catch {
+            // 目录不存在/没权限，DSH 会给出 workspace/invalid-path 之类的原文；这里只翻最常用的一种。
+            let text = String(describing: error)
+            if text.contains("invalid-path") || text.lowercased().contains("enoent") {
+                return .failure(DirectoryError(message: L10n.t("这个目录在电脑上不存在，请重新选择")))
+            }
+            return .failure(DirectoryError(message: "\(L10n.t("添加工作区失败"))：\(error.localizedDescription)"))
+        }
+    }
+
     /// 默认工作区 id（`workspace/initializeDefault`）。
     @MainActor
     func defaultWorkspaceId() async -> String? {

@@ -376,6 +376,7 @@ struct ConnectedView: View {
         }
         .sheet(isPresented: $showsWorkspacePicker) {
             WorkspacePickerSheet(
+                model: model,
                 workspaces: WorkspaceParsing.orderedForPicker(workspaceOptions, defaultId: defaultWorkspaceId),
                 preselectedId: selectedWorkspaceIdForPicker,
                 isLoading: isLoadingWorkspaces,

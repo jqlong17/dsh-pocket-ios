@@ -74,6 +74,21 @@ enum L10n {
         String(format: t(format), arguments: args)
     }
     static let en: [String: String] = [
+        "上一级": "Up one level",
+        "创建成功但没拿到工作区 id": "Created, but the workspace id was missing",
+        "名称（可留空，默认用目录名）": "Name (optional, defaults to the folder name)",
+        "正在读取目录…": "Reading folders…",
+        "没读到目录": "Could not read folders",
+        "添加工作区失败": "Could not add workspace",
+        "添加目录": "Add folder",
+        "用这个目录": "Use this folder",
+        "这个目录下没有子目录": "No subfolders here",
+        "这个目录在电脑上不存在，请重新选择": "That folder no longer exists on the computer",
+        "还没连上电脑": "Not connected to the computer",
+        "设备凭证失效，请重新扫码": "Device credential expired, please scan again",
+        "电脑返回了无法解析的内容": "The computer returned something unreadable",
+        "读取目录失败": "Could not read the folder",
+        "选择文件夹": "Choose folder",
         "知道了": "OK",
         "删除整台": "Delete host",
         "删除这条地址？": "Delete this address?",

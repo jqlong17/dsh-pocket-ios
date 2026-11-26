@@ -8,6 +8,7 @@ import DSHKit
 /// 设计取舍：默认选中「上次用过的 / 默认工作区」，所以 90% 的情况只需点「创建」两下；
 /// 想换工作区时才去列表里挑。这样既满足「能选」，又不给每次都加负担。
 struct WorkspacePickerSheet: View {
+    @Bindable var model: ConnectionModel
     let workspaces: [PocketWorkspace]
     let preselectedId: String?
     let isLoading: Bool
@@ -16,6 +17,9 @@ struct WorkspacePickerSheet: View {
 
     @State private var selectedId: String?
     @State private var creating = false
+    /// 打开「选文件夹」：把 Mac 上已有目录加成工作区（2026-11-26）。
+    @State private var showingDirectoryPicker = false
+    @State private var addError: String?
 
     var body: some View {
         NavigationStack {
@@ -48,6 +52,41 @@ struct WorkspacePickerSheet: View {
                                     .onTapGesture { selectedId = workspace.workspaceId }
                                 Divider().padding(.leading, 56)
                             }
+                              // 添加 Mac 上已有的目录：选了就调 workspace/create。
+                              Button {
+                                  showingDirectoryPicker = true
+                              } label: {
+                                  HStack(spacing: 10) {
+                                      Image(systemName: "folder.badge.plus").foregroundStyle(.tint)
+                                      Text(L10n.t("添加目录")).foregroundStyle(.primary)
+                                      Spacer()
+                                  }
+                                  .padding(.horizontal, 20)
+                                  .padding(.vertical, 12)
+                                  .contentShape(Rectangle())
+                              }
+                              .buttonStyle(.plain)
+                              if let addError {
+                                  Text(addError)
+                                      .font(.caption)
+                                      .foregroundStyle(.red)
+                                      .frame(maxWidth: .infinity, alignment: .leading)
+                                      .padding(.horizontal, 20)
+                                      .padding(.bottom, 8)
+                              }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingDirectoryPicker) {
+                DirectoryPickerView(model: model) { path, title in
+                    Task {
+                        switch await model.createWorkspace(path: path, title: title) {
+                        case .success(let id):
+                            addError = nil
+                            selectedId = id
+                        case .failure(let error):
+                            addError = error.message
                         }
                     }
                 }
