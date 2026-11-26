@@ -199,6 +199,9 @@ struct MarkdownTable: View {
     let rows: [[String]]
     let tint: Color
 
+    /// 复制完成后短暂显示勾，给一个「确实复制了」的反馈。
+    @State private var copied = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             row(header, isHeader: true)
@@ -207,10 +210,46 @@ struct MarkdownTable: View {
                 row(cells, isHeader: false)
             }
         }
+        // 单元格文字可长按选择（每格各自可选；跨格做不到，所以另给「复制整表」）
+        .textSelection(.enabled)
         .background(tint.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6).stroke(tint.opacity(0.12), lineWidth: 0.5)
         )
+        .overlay(alignment: .topTrailing) {
+            // 表格是选择边界：多行多列用系统选择框选不出整张表，
+            // 所以给一个显式的「复制」入口（2026-11-26 用户反馈）。
+            Menu {
+                Button {
+                    UIPasteboard.general.string = MarkdownTableCopy.tsv(header: header, rows: rows)
+                    flashCopied()
+                } label: {
+                    Label(L10n.t("复制表格（可粘到表格软件）"), systemImage: "tablecells")
+                }
+                Button {
+                    UIPasteboard.general.string = MarkdownTableCopy.markdown(header: header, rows: rows)
+                    flashCopied()
+                } label: {
+                    Label(L10n.t("复制为 Markdown"), systemImage: "text.alignleft")
+                }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.caption2)
+                    .foregroundStyle(tint.opacity(0.7))
+                    .padding(5)
+                    .background(tint.opacity(0.08), in: Circle())
+            }
+            .padding(4)
+            .accessibilityLabel(L10n.t("复制表格"))
+        }
+    }
+
+    private func flashCopied() {
+        copied = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            copied = false
+        }
     }
 
     private func row(_ cells: [String], isHeader: Bool) -> some View {
