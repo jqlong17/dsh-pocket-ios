@@ -384,6 +384,27 @@ extension ConnectionModel {
                 return true
             }
         }
+        // 并发探针全失败时，还有一种常见情况：**网络通、但对方的 dsh-auth 已随 DSH 重启失效**。
+        // 探针用的是需要登录态的 sessions()，401 会被当成「不可达」，于是这条路径
+        // 从来不会去换票——2026-11-27 实测：Mac 上只看到一次 /api/session/list 401，
+        // 全程没有任何 /dsh-pocket-ios/refresh，用户看到的是「连不上，检查 DSH 是否在运行」。
+        // 这里补上：对每条地址，只要有长期设备凭证，就换票 → 重探 → 再切。
+        for endpoint in host.endpoints {
+            guard ConnectionVault.loadDeviceToken(for: endpoint.address) != nil,
+                  let url = try? Self.serverURL(from: endpoint.address) else { continue }
+            DiagFileLog.log("switch retry via refresh \(endpoint.kind.label)")
+            guard await tryRefreshAuth(for: endpoint.address) else { continue }
+            ConnectionVault.restoreAuthCookies(to: url, address: endpoint.address)
+            guard await probeSessions(at: url) else { continue }
+            if await switchConnection(to: endpoint.address, verified: true) {
+                invalidateModelCatalog()
+                currentHostId = hostId
+                persistHosts()
+                persistCurrentHostId()
+                recordDiagnostic("切换成功（设备凭证换票后）：\(DSHURL.redactedAddress(endpoint.address))")
+                return true
+            }
+        }
         return false
     }
 
