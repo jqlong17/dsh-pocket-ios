@@ -530,6 +530,16 @@ extension ConnectionModel {
         connection.serverAddress = target
         connection.errorMessage = nil
         await connect()
+        if connection.isConnected { return true }
+        // connect 失败最常见的原因：目标机器的 dsh-auth cookie 随 DSH 重启失效。
+        // 只要 Keychain 里有这个地址的长期设备凭证，就换一张新票再试一次——
+        // 否则「电脑重启后切过来」必然失败，报的还是误导性的「检查 DSH 是否在运行」
+        // （2026-11-27 实测：探活 HEAD / 401 被当成可达，切过去拉会话 401，全程没走 refresh）。
+        if ConnectionVault.loadDeviceToken(for: target) != nil, await tryRefreshAuth(for: target) {
+            ConnectionVault.restoreAuthCookies(to: url, address: target)
+            recordDiagnostic("切换后首次连接失败，已用设备凭证换票重试：\(DSHURL.redactedAddress(target))")
+            await connect()
+        }
         return connection.isConnected
     }
 
