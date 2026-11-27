@@ -24,11 +24,17 @@ public struct DSHURLSessionHTTPTransport: DSHHTTPTransport {
     }
 
     public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let started = Date()
+        func elapsedMs() -> Int { Int(Date().timeIntervalSince(started) * 1000) }
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw DSHError.invalidPayload }
+            HTTPTrace.shared.record(request, status: http.statusCode, ms: elapsedMs(), error: nil)
             return (data, http)
         } catch let error as URLError {
+            // 记录网络层错误码：-1001 超时 / -1004 连不上 / -1022 ATS，修法完全不同。
+            HTTPTrace.shared.record(request, status: nil, ms: elapsedMs(),
+                                    error: "URLError \(error.code.rawValue)")
             // 不要包装：`URLError` 的错误码是「要不要重试 / 算不算断网」的唯一依据。
             // 曾经在这里包成 DSHError.transport，导致飞行模式下发消息被判定为
             // 「发送失败」而不是「断网暂存」，联网后也不会自动补发。
@@ -36,6 +42,7 @@ public struct DSHURLSessionHTTPTransport: DSHHTTPTransport {
         } catch let error as DSHError {
             throw error
         } catch {
+            HTTPTrace.shared.record(request, status: nil, ms: elapsedMs(), error: "transport")
             throw DSHError.transport(error.localizedDescription)
         }
     }

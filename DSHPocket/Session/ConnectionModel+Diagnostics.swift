@@ -58,6 +58,14 @@ extension ConnectionModel {
             ("Has more", s.hasMore ? "yes" : "no"),
             ("Load", s.loadMs.map { "\($0) ms via \(s.loadSource ?? "unknown")" } ?? DiagnosticsReport.missing)
         ] : [("Title", DiagnosticsReport.missing)]))
+        // 最近请求：连不上时，这一节能看出 App 到底发了什么、拿到什么状态码。
+        // 与服务端插件的 access 日志配合，能对齐「请求有没有到、为什么被拒」。
+        let traces = HTTPTrace.shared.snapshot().suffix(10)
+        sections.append(.init("HTTP", traces.isEmpty ? [("Recent", DiagnosticsReport.missing)] :
+            traces.map { record in
+                (HTTPTrace.clock.string(from: record.at) + " " + record.method, HTTPTrace.line(record))
+            }))
+
         sections.append(.init("Storage", [
             ("Message text", DiagnosticsReport.bytes(s.messageBytes)),
             ("Step results", DiagnosticsReport.bytes(s.stepBytes)),
