@@ -63,8 +63,20 @@ extension ConnectionModel {
         let traces = HTTPTrace.shared.snapshot().suffix(10)
         sections.append(.init("HTTP", traces.isEmpty ? [("Recent", DiagnosticsReport.missing)] :
             traces.map { record in
-                (HTTPTrace.clock.string(from: record.at) + " " + record.method, HTTPTrace.line(record))
+                // 行标签只放时间：方法已经在 HTTPTrace.line 里，重复会变成「POST POST」。
+                (HTTPTrace.clock.string(from: record.at), HTTPTrace.line(record))
             }))
+
+        // 凭证状态：连不上时第一个要问的问题是「这台机器的长期凭证到底在不在」。
+        // 之前只能靠猜（看不到 Keychain），现在直接写进报告。
+        let deviceToken = ConnectionVault.loadDeviceToken(for: connection.serverAddress)
+        let cookieCount = URL(string: connection.serverAddress)
+            .flatMap { HTTPCookieStorage.shared.cookies(for: $0) }?.count ?? 0
+        sections.append(.init("Credentials", [
+            ("Device token", deviceToken == nil ? "none" : "present(\(deviceToken!.count))"),
+            ("Auth cookies", "\(cookieCount)"),
+            ("Vault key", ConnectionVault.debugVaultKey(for: connection.serverAddress))
+        ]))
 
         sections.append(.init("Storage", [
             ("Message text", DiagnosticsReport.bytes(s.messageBytes)),

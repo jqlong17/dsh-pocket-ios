@@ -209,6 +209,11 @@ enum ConnectionVault {
         return migrated
     }
 
+    /// 诊断用：这台地址在 Keychain 里用的 key（只有主机名，不含端口/路径）。
+    static func debugVaultKey(for address: String) -> String {
+        vaultKey(address)
+    }
+
     static func clearDeviceToken(for address: String) {
         delete(service: deviceService(address))
     }

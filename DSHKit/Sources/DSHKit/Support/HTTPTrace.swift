@@ -48,7 +48,12 @@ public final class HTTPTrace: @unchecked Sendable {
     }
 
     public func record(_ request: URLRequest, status: Int?, ms: Int, error: String?) {
-        let cookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
+        // 不能只看 Cookie 头：App 并不显式设置它，URLSession 在发送时才从 cookie store 补上。
+        // 之前只看头，导致服务端明明收到 auth=1/device=1，App 的诊断里却显示「都没带」。
+        let headerCookie = request.value(forHTTPHeaderField: "Cookie") ?? ""
+        let storedCookie = (request.url.flatMap { HTTPCookieStorage.shared.cookies(for: $0) } ?? [])
+            .map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        let cookie = headerCookie.isEmpty ? storedCookie : headerCookie + "; " + storedCookie
         let record = HTTPTraceRecord(
             at: Date(),
             method: (request.httpMethod ?? "GET").uppercased(),
